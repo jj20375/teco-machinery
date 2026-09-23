@@ -1,0 +1,19 @@
+# 開發／內網用最小設定；正式對外請改用網域 + 自動 HTTPS（拿掉 :80、換成網域）。
+:80 {
+    handle /api/* {
+        reverse_proxy api:8080
+    }
+    handle /hubs/* {
+        reverse_proxy api:8080
+    }
+    handle {
+        root * /srv/dist
+        # 這個網站是 Astro 靜態多頁輸出（每個路由是一個資料夾＋index.html，例如
+        # /admin/index.html、/login/index.html），不是單一 index.html 的 SPA。
+        # 原本只寫 try_files {path} /index.html：{path}（例如 /admin）比對的是「檔案」，
+        # 資料夾不算命中，於是每個路由都直接落到最後的 /index.html，永遠回傳首頁。
+        # 一定要先試 {path}/index.html，才會真的吃到各路由自己的頁面。
+        try_files {path} {path}/index.html /index.html
+        file_server
+    }
+}

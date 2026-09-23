@@ -1,0 +1,8 @@
+---
+import AdminAstroLayout from '@/layouts/AdminAstroLayout.astro';
+import LoginPage from '@/apps/monitoring/pages/admin/auth/LoginPage.vue';
+---
+
+<AdminAstroLayout title="登入｜東元電機智慧環境監控" requireAuth={false}>
+  <LoginPage client:load />
+</AdminAstroLayout>

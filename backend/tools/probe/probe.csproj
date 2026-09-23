@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <RuntimeIdentifiers>linux-x64;linux-arm64;win-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 供應商交付的 8 個 DLL；System.IO.Ports 的 Windows 平面檔排除，改走 NuGet 依 RID 挑實作 -->
+    <Reference Include="lib/CS_Communication_Golf_DDC">
+      <HintPath>lib/CS_Communication_Golf_DDC.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="lib/CS_Communication_Hanbell">
+      <HintPath>lib/CS_Communication_Hanbell.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="lib/CS_Communication_Modbus">
+      <HintPath>lib/CS_Communication_Modbus.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="lib/CS_GeneralNS">
+      <HintPath>lib/CS_GeneralNS.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="lib/CS_Network_CommonUse">
+      <HintPath>lib/CS_Network_CommonUse.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="lib/CS_Protocol_Modbus">
+      <HintPath>lib/CS_Protocol_Modbus.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="lib/Teco_Golf_DataCollector">
+      <HintPath>lib/Teco_Golf_DataCollector.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 交付版本 10.0.5 是 Windows 平面 DLL；改用套件讓 NuGet 依 RID 自動選 linux-x64/linux-arm64/win-x64 實作 -->
+    <PackageReference Include="System.IO.Ports" Version="10.0.5" />
+  </ItemGroup>
+
+</Project>

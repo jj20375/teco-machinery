@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <UserSecretsId>teco-hvac-collector</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Teco.Hvac.Contracts/Teco.Hvac.Contracts.csproj" />
+    <ProjectReference Include="../Teco.Hvac.Domain/Teco.Hvac.Domain.csproj" />
+    <ProjectReference Include="../Teco.Hvac.Infrastructure/Teco.Hvac.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      供應商交付的 8 個 DLL（無原始碼）。System.IO.Ports 排除平面檔，改走下方 PackageReference
+      讓 NuGet 依 RID 挑實作（P0 已驗證：linux-x64 / linux-arm64 / win-x64 皆可載入執行）。
+    -->
+    <Reference Include="../../lib/CS_Communication_Golf_DDC">
+      <HintPath>../../lib/CS_Communication_Golf_DDC.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="../../lib/CS_Communication_Hanbell">
+      <HintPath>../../lib/CS_Communication_Hanbell.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="../../lib/CS_Communication_Modbus">
+      <HintPath>../../lib/CS_Communication_Modbus.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="../../lib/CS_GeneralNS">
+      <HintPath>../../lib/CS_GeneralNS.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="../../lib/CS_Network_CommonUse">
+      <HintPath>../../lib/CS_Network_CommonUse.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="../../lib/CS_Protocol_Modbus">
+      <HintPath>../../lib/CS_Protocol_Modbus.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="../../lib/Teco_Golf_DataCollector">
+      <HintPath>../../lib/Teco_Golf_DataCollector.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.IO.Ports" Version="10.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>

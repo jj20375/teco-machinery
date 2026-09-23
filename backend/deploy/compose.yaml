@@ -1,0 +1,120 @@
+# 東元智慧環境監控 — 正式/開發共用 compose
+# 執行方式（在 backend/deploy 目錄下）：
+#   docker compose up -d --build          # 全部啟動
+#   docker compose up -d --build api      # 只啟動/重建 api（連同它依賴的 mariadb）
+#   docker compose up -d --build web      # 只啟動/重建前台網站
+# 遠端部署（Mac 端建好 docker context 後，不需要 SSH 進去）：
+#   docker --context teco compose -f deploy/compose.yaml up -d --build
+#
+# 本機連線位址（只綁 127.0.0.1，不對外網開放）：
+#   前台網站：http://localhost:8081
+#   API 直連：http://localhost:8082（例如 http://localhost:8082/readyz）
+#   MariaDB 沒有對外開 port，只能用 docker compose exec mariadb ... 連
+#
+# 環境變數由 .env（同目錄，不進版控）提供機密值：DB_ROOT_PASSWORD、DB_APP_PASSWORD、
+# INTERNAL_TOKEN、JWT_SIGNING_KEY。範例見 .env.example。
+
+# 明確指定專案名稱，容器/網路/volume 才會叫 teco-iot-area-*，不會被資料夾名稱（deploy）帶偏。
+name: teco-iot-area
+
+services:
+  mariadb:
+    image: mariadb:11.8
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?請在 .env 設定 DB_ROOT_PASSWORD}
+      MARIADB_APP_PASSWORD: ${DB_APP_PASSWORD:?請在 .env 設定 DB_APP_PASSWORD}
+      MARIADB_DATABASE: teco_hvac
+      TZ: Asia/Taipei
+    volumes:
+      - mariadb-data:/var/lib/mysql
+      - ./mariadb/init:/docker-entrypoint-initdb.d:ro
+      - ./mariadb/conf.d:/etc/mysql/conf.d:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    ports:
+      - "127.0.0.1:3307:3306"   # 給本機 GUI 工具（TablePlus/Navicat 等）用；只綁 127.0.0.1，不對外網開放
+    networks: [teco-internal]
+
+  collector:
+    build:
+      context: ..
+      dockerfile: deploy/collector.Dockerfile
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Taipei
+      ASPNETCORE_ENVIRONMENT: Production
+      TecoDb__ConnectionString: "Server=mariadb;Port=3306;Database=teco_hvac;User=teco_app;Password=${DB_APP_PASSWORD};TreatTinyAsBoolean=false;"
+      Collector__Hanbell__Ip: ${HANBELL_IP:-192.168.10.198}
+      Collector__Hanbell__Port: ${HANBELL_PORT:-4196}
+      Collector__Hanbell__BaudRate: ${HANBELL_BAUD:-9600}
+      Collector__Ddc1__Ip: ${DDC1_IP:-192.168.10.12}
+      Collector__Ddc1__Port: ${DDC1_PORT:-502}
+      Collector__Ddc2__Ip: ${DDC2_IP:-192.168.10.14}
+      Collector__Ddc2__Port: ${DDC2_PORT:-502}
+      Collector__ApiBaseUrl: "http://api:8080"
+      Collector__InternalToken: ${INTERNAL_TOKEN:?請在 .env 設定 INTERNAL_TOKEN}
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - teco-internal
+      - teco-field   # 接現場 192.168.10.0/24 網段的網路（見 host-setup）
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/api.Dockerfile
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Taipei
+      ASPNETCORE_ENVIRONMENT: Production
+      TecoDb__ConnectionString: "Server=mariadb;Port=3306;Database=teco_hvac;User=teco_app;Password=${DB_APP_PASSWORD};TreatTinyAsBoolean=false;"
+      Collector__InternalToken: ${INTERNAL_TOKEN:?請在 .env 設定 INTERNAL_TOKEN}
+      Jwt__Issuer: teco-hvac-api
+      Jwt__Audience: teco-hvac-clients
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:?請在 .env 設定 JWT_SIGNING_KEY（至少 32 字元）}
+      Cors__AllowedOrigins__0: ${FRONTEND_ORIGIN:-http://localhost:4321}
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/readyz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "127.0.0.1:8082:8080"   # 本機直連 API，不用經過 Caddy；只綁 127.0.0.1，不對外網開放
+    networks: [teco-internal]
+
+  web:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:80"    # 前台網站，本機用 http://localhost:8081；不佔用 80/443，也不對外網開放
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../../dist:/srv/dist:ro   # 前端 Astro build 輸出在專案根目錄，不是 backend/ 底下
+      - caddy-data:/data
+    depends_on: [api]
+    networks: [teco-internal]
+
+networks:
+  teco-internal:
+    driver: bridge
+  teco-field:
+    driver: bridge
+    # 現場網段。若容器需要直接路由到 192.168.10.0/24，依 host-setup/01 的 vSwitch 設定，
+    # 這裡通常維持一般 bridge + NAT 即可（VM 本身已在該網段），除非改用 macvlan。
+
+volumes:
+  mariadb-data:
+  caddy-data:

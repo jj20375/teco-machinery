@@ -1,0 +1,13 @@
+# P0 驗證用：確認 net10 專案 + 供應商 DLL 能在 Linux 容器內建置並執行
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY probe.csproj ./
+COPY lib/ ./lib/
+COPY Program.cs ./
+RUN dotnet restore probe.csproj
+RUN dotnet publish probe.csproj -c Release -o /app --no-self-contained
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
+WORKDIR /app
+COPY --from=build /app .
+ENTRYPOINT ["dotnet", "probe.dll"]

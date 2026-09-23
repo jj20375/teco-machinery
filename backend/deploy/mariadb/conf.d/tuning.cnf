@@ -1,0 +1,5 @@
+[mariadb]
+# 時序資料寫多讀少，容忍 1 秒內損失換吞吐；正式環境依實際硬體調整 innodb_buffer_pool_size。
+innodb_flush_log_at_trx_commit = 2
+innodb_buffer_pool_size = 1G
+max_connections = 100

@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Teco.Hvac.Api/Teco.Hvac.Api.csproj" />
+    <Project Path="src/Teco.Hvac.Collector/Teco.Hvac.Collector.csproj" />
+    <Project Path="src/Teco.Hvac.Contracts/Teco.Hvac.Contracts.csproj" />
+    <Project Path="src/Teco.Hvac.Domain/Teco.Hvac.Domain.csproj" />
+    <Project Path="src/Teco.Hvac.Infrastructure/Teco.Hvac.Infrastructure.csproj" />
+  </Folder>
+</Solution>

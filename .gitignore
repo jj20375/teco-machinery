@@ -1,0 +1,19 @@
+# 前端（Astro/Vite）
+node_modules/
+dist/
+.astro/
+.vite/
+
+# 編輯器／系統雜項
+.DS_Store
+*.log
+
+# 後端（.NET）
+backend/**/bin/
+backend/**/obj/
+backend/**/*.user
+backend/**/.vs/
+
+# 部署機密與本機產生的暫存狀態（見 backend/.gitignore 的說明，這裡是同一組規則的根目錄版本）
+backend/deploy/.env
+backend/deploy/.demo-data-range

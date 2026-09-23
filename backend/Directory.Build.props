@@ -1,0 +1,13 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- 繁中格式化與 Asia/Taipei 時區轉換必須，勿設為 true -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- 執行期只允許在 10.x 系列內前滾，不會跳大版號 -->
+    <RollForward>latestMinor</RollForward>
+  </PropertyGroup>
+</Project>

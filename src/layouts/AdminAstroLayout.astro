@@ -1,0 +1,52 @@
+---
+interface Props {
+  title?: string;
+  /** 這個頁面是否需要登入保護；只有 /login 本身要設 false，其餘後台頁面維持預設 true。 */
+  requireAuth?: boolean;
+}
+
+const { title = '東元電機智慧環境監控 - 維運管理後台', requireAuth = true } = Astro.props;
+import '@/styles/theme.css';
+---
+
+<!doctype html>
+<html lang="zh-TW" class="light" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+    {requireAuth && (
+      // is:inline：這個網站是純靜態輸出（沒有 SSR），沒辦法在伺服器端做 route guard。
+      // 用一支不經 Astro 打包、同步執行的 classic script 盡早檢查 localStorage 裡的工作階段，
+      // 沒有或已過期又沒有 refresh token 時，在畫面畫出來之前導去 /login，避免先閃一下受保護
+      // 內容才跳轉。access token 過期但還有 refresh token 時刻意「樂觀放行」不擋在這裡——
+      // 真正的換發由 auth-service.ts 的 authorizedFetchApi 在第一次 API 呼叫收到 401 時
+      // 非同步處理（is:inline 是同步執行的 classic script，這裡沒辦法等一個網路請求）。
+      // 邏輯跟 _services/auth-service.ts 的 isSessionValidApi 一致，但這裡不能 import 那支模組
+      // （is:inline 腳本不會被打包，得整段自帶），改動兩邊時要記得同步。
+      <script is:inline define:vars={{ requireAuth }}>
+        (function () {
+          try {
+            var raw = localStorage.getItem('teco_auth_session');
+            if (!raw) throw new Error('no session');
+            var session = JSON.parse(raw);
+            var token = session && session.accessToken;
+            if (!token) throw new Error('no token');
+            var payloadBase64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+            var payload = JSON.parse(atob(payloadBase64));
+            var tokenExpired = !payload.exp || payload.exp * 1000 <= Date.now();
+            if (tokenExpired && !session.refreshToken) throw new Error('expired, no refresh token');
+          } catch (e) {
+            var redirectTo = encodeURIComponent(location.pathname + location.search);
+            location.replace('/login?redirect=' + redirectTo);
+          }
+        })();
+      </script>
+    )}
+  </head>
+  <body class="bg-[#F4F6F8] text-[#1E293B] antialiased overflow-x-hidden min-h-screen">
+    <slot />
+  </body>
+</html>

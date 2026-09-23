@@ -1,0 +1,22 @@
+---
+interface Props {
+  title?: string;
+}
+
+const { title = '東元電機智慧環境監控 - HVAC 智慧監控中心' } = Astro.props;
+import '@/styles/theme.css';
+---
+
+<!doctype html>
+<html lang="zh-TW" class="dark" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+  </head>
+  <body class="bg-[#0D1117] text-[#F0F6FC] antialiased overflow-x-hidden min-h-screen">
+    <slot />
+  </body>
+</html>

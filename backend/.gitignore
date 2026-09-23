@@ -1,0 +1,7 @@
+bin/
+obj/
+*.user
+appsettings.*.local.json
+.vs/
+deploy/.env
+deploy/.demo-data-range
