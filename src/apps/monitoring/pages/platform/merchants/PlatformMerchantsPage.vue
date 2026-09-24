@@ -189,16 +189,32 @@ async function resetPassword(membershipId: number) {
                   </span>
                 </td>
                 <td class="px-4 py-3">
-                  <label class="flex items-center gap-2 cursor-pointer" :class="{ 'opacity-50 pointer-events-none': togglingId === m.id }">
-                    <input type="checkbox" class="w-3.5 h-3.5 rounded accent-[#4C7DF0]" :checked="m.isRoleCrudConfigurationEnabled" @change="toggleFlag(m, 'isRoleCrudConfigurationEnabled')" />
-                    <span class="text-xs text-[#64748B]">{{ m.isRoleCrudConfigurationEnabled ? '細項模式' : '簡化模式（授予即完整 CRUD）' }}</span>
-                  </label>
+                  <div class="flex flex-col gap-1.5">
+                    <span
+                      class="px-2 py-0.5 rounded text-xs font-semibold w-fit"
+                      :class="m.isRoleCrudConfigurationEnabled ? 'bg-[#FEF3C7] text-[#92400E]' : 'bg-[#E6FBF7] text-[#10B981]'"
+                    >
+                      目前：{{ m.isRoleCrudConfigurationEnabled ? '細項模式' : '簡化模式（授予即完整 CRUD）' }}
+                    </span>
+                    <label class="flex items-center gap-1.5 cursor-pointer" :class="{ 'opacity-50 pointer-events-none': togglingId === m.id }">
+                      <input type="checkbox" class="w-3.5 h-3.5 rounded accent-[#4C7DF0]" :checked="m.isRoleCrudConfigurationEnabled" @change="toggleFlag(m, 'isRoleCrudConfigurationEnabled')" />
+                      <span class="text-xs text-[#64748B]">啟用細項設定</span>
+                    </label>
+                  </div>
                 </td>
                 <td class="px-4 py-3">
-                  <label class="flex items-center gap-2 cursor-pointer" :class="{ 'opacity-50 pointer-events-none': togglingId === m.id }">
-                    <input type="checkbox" class="w-3.5 h-3.5 rounded accent-[#4C7DF0]" :checked="m.isRoleOptionConfigurationEnabled" @change="toggleFlag(m, 'isRoleOptionConfigurationEnabled')" />
-                    <span class="text-xs text-[#64748B]">{{ m.isRoleOptionConfigurationEnabled ? '細項模式' : '簡化模式（授予即完整子功能）' }}</span>
-                  </label>
+                  <div class="flex flex-col gap-1.5">
+                    <span
+                      class="px-2 py-0.5 rounded text-xs font-semibold w-fit"
+                      :class="m.isRoleOptionConfigurationEnabled ? 'bg-[#FEF3C7] text-[#92400E]' : 'bg-[#E6FBF7] text-[#10B981]'"
+                    >
+                      目前：{{ m.isRoleOptionConfigurationEnabled ? '細項模式' : '簡化模式（授予即完整子功能）' }}
+                    </span>
+                    <label class="flex items-center gap-1.5 cursor-pointer" :class="{ 'opacity-50 pointer-events-none': togglingId === m.id }">
+                      <input type="checkbox" class="w-3.5 h-3.5 rounded accent-[#4C7DF0]" :checked="m.isRoleOptionConfigurationEnabled" @change="toggleFlag(m, 'isRoleOptionConfigurationEnabled')" />
+                      <span class="text-xs text-[#64748B]">啟用細項設定</span>
+                    </label>
+                  </div>
                   <p v-if="toggleErrorByMerchant[m.id]" class="mt-1 text-xs text-[#FF4757]">{{ toggleErrorByMerchant[m.id] }}</p>
                 </td>
                 <td class="px-4 py-3">
