@@ -119,6 +119,13 @@ let chart: echarts.ECharts | null = null;
 
 function renderChart() {
   if (!chartRef.value || chartRows.value.length === 0) return;
+  // view 在報表／折線圖間切換時，chartRef 的 DOM 節點會被 v-if/v-else 整個換掉（不是同一個
+  // element），但 echarts 實例還是舊的、綁著已經被移除的舊節點——不重新 init 的話 setOption
+  // 會畫在看不到的舊節點上，畫面就一直停在第一次切換時的狀態。
+  if (chart && chart.getDom() !== chartRef.value) {
+    chart.dispose();
+    chart = null;
+  }
   if (!chart) chart = echarts.init(chartRef.value);
   const isWeek = period.value === 'week';
   const labels = chartRows.value.map((r) => {
