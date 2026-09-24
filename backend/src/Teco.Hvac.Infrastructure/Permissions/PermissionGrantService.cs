@@ -6,9 +6,9 @@ using Teco.Hvac.Domain.Permissions;
 namespace Teco.Hvac.Infrastructure.Permissions;
 
 /// <summary>
-/// 由角色與 role_permissions 統一計算 JWT 及前端使用的 grants（比照美達特 PermissionGrantService，
-/// 改用 Dapper 對應本專案的資料存取方式；核心演算法——場館簡化模式展開、merchant-admin 上限交集——
-/// 完全沿用美達特已驗證過的規則，搬到 Teco.Hvac.Domain.Permissions 供這裡呼叫）。
+/// 由角色與 role_permissions 統一計算 JWT 及前端使用的 grants（用 Dapper 對應本專案的資料存取方式；
+/// 核心演算法——場館簡化模式展開、merchant-admin 上限交集——放在 Teco.Hvac.Domain.Permissions
+/// 供這裡呼叫，方便單獨測試）。
 /// </summary>
 public sealed class PermissionGrantService(TecoDbConnectionFactory factory)
 {
@@ -71,34 +71,79 @@ public sealed class PermissionGrantService(TecoDbConnectionFactory factory)
             .ToArray();
     }
 
+    /// <summary>
+    /// 計算給定角色的有效 grants。<c>is_full_access</c> 角色（platform-admin／merchant-admin）
+    /// 不讀 <c>app_role_permission</c> 的既有資料列，一律即時算成「目前權限目錄裡同 scope 的
+    /// 全部權限＋全部子功能」——這是刻意的設計，不是遺漏：先前這兩個角色的完整權限完全靠
+    /// Seeder／migration 手動寫入 role_permission，每次權限目錄新增資源（例如
+    /// hvac.thresholds/hvac.floor_plan）都要記得回頭幫這兩個角色補一行，漏補就會讓管理員角色
+    /// 反而缺權限。改成動態計算後，未來新增權限只要寫進 app_permission，管理員角色自動涵蓋，
+    /// 不必再補 migration。一般角色仍照舊只讀 role_permission 的實際授予。
+    /// </summary>
     public async Task<IReadOnlyCollection<PermissionGrant>> ForRolesAsync(IReadOnlyCollection<int> roleIds, CancellationToken ct = default)
     {
         if (roleIds.Count == 0) return [];
 
         using var conn = await factory.CreateOpenAsync(ct);
-        var rows = await conn.QueryAsync<RolePermissionRow>(
-            """
-            SELECT p.code AS Code, rp.per_create AS PerCreate, rp.per_read AS PerRead,
-                   rp.per_update AS PerUpdate, rp.per_delete AS PerDelete, rp.options_json AS OptionsJson
-            FROM app_role_permission rp
-            JOIN app_permission p ON p.id = rp.permission_id
-            WHERE rp.role_id IN @roleIds
-            """,
-            new { roleIds });
+        var roleRows = (await conn.QueryAsync<RoleScopeRow>(
+            "SELECT id AS Id, scope AS Scope, is_full_access AS IsFullAccess FROM app_role WHERE id IN @roleIds",
+            new { roleIds })).ToList();
 
-        return rows.GroupBy(r => r.Code, StringComparer.OrdinalIgnoreCase)
-            .Select(group => new PermissionGrant(
-                group.Key,
-                group.SelectMany(r => new[]
-                {
-                    r.PerCreate ? "create" : null,
-                    r.PerRead ? "read" : null,
-                    r.PerUpdate ? "update" : null,
-                    r.PerDelete ? "delete" : null,
-                }.Where(a => a is not null).Cast<string>()).Distinct(StringComparer.Ordinal).ToArray(),
-                group.SelectMany(r => ReadSubFeatureKeys(r.OptionsJson)).Distinct(StringComparer.Ordinal).ToArray()))
+        var fullAccessScopes = roleRows.Where(r => r.IsFullAccess).Select(r => r.Scope).Distinct().ToArray();
+        var normalRoleIds = roleRows.Where(r => !r.IsFullAccess).Select(r => r.Id).ToArray();
+
+        var grantsByCode = new Dictionary<string, (HashSet<string> Actions, HashSet<string> Options)>(StringComparer.OrdinalIgnoreCase);
+
+        if (fullAccessScopes.Length > 0)
+        {
+            var permissionRows = await conn.QueryAsync<FullAccessPermissionRow>(
+                "SELECT code AS Code, sub_features_json AS SubFeaturesJson FROM app_permission WHERE scope IN @fullAccessScopes",
+                new { fullAccessScopes });
+            foreach (var row in permissionRows)
+            {
+                var entry = GetOrAdd(grantsByCode, row.Code);
+                entry.Actions.UnionWith(["create", "read", "update", "delete"]);
+                entry.Options.UnionWith(ReadSubFeatureKeys(row.SubFeaturesJson));
+            }
+        }
+
+        if (normalRoleIds.Length > 0)
+        {
+            var rows = await conn.QueryAsync<RolePermissionRow>(
+                """
+                SELECT p.code AS Code, rp.per_create AS PerCreate, rp.per_read AS PerRead,
+                       rp.per_update AS PerUpdate, rp.per_delete AS PerDelete, rp.options_json AS OptionsJson
+                FROM app_role_permission rp
+                JOIN app_permission p ON p.id = rp.permission_id
+                WHERE rp.role_id IN @normalRoleIds
+                """,
+                new { normalRoleIds });
+            foreach (var row in rows)
+            {
+                var entry = GetOrAdd(grantsByCode, row.Code);
+                if (row.PerCreate) entry.Actions.Add("create");
+                if (row.PerRead) entry.Actions.Add("read");
+                if (row.PerUpdate) entry.Actions.Add("update");
+                if (row.PerDelete) entry.Actions.Add("delete");
+                entry.Options.UnionWith(ReadSubFeatureKeys(row.OptionsJson));
+            }
+        }
+
+        return grantsByCode
+            .Select(kv => new PermissionGrant(kv.Key, kv.Value.Actions.ToArray(), kv.Value.Options.ToArray()))
             .OrderBy(g => g.Code, StringComparer.Ordinal)
             .ToArray();
+    }
+
+    private static (HashSet<string> Actions, HashSet<string> Options) GetOrAdd(
+        Dictionary<string, (HashSet<string> Actions, HashSet<string> Options)> map, string code)
+    {
+        if (!map.TryGetValue(code, out var entry))
+        {
+            entry = (new HashSet<string>(StringComparer.Ordinal), new HashSet<string>(StringComparer.Ordinal));
+            map[code] = entry;
+        }
+        return entry;
     }
 
     private static IReadOnlyCollection<string> ReadSubFeatureKeys(string? json)
@@ -134,5 +179,18 @@ public sealed class PermissionGrantService(TecoDbConnectionFactory factory)
         public bool PerUpdate { get; init; }
         public bool PerDelete { get; init; }
         public string? OptionsJson { get; init; }
+    }
+
+    private sealed class RoleScopeRow
+    {
+        public int Id { get; init; }
+        public int Scope { get; init; }
+        public bool IsFullAccess { get; init; }
+    }
+
+    private sealed class FullAccessPermissionRow
+    {
+        public required string Code { get; init; }
+        public string? SubFeaturesJson { get; init; }
     }
 }
