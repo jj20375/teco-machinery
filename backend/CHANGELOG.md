@@ -931,3 +931,40 @@ Docker 專家審查 `backend/deploy/` 底下的 Dockerfile 與 compose 設定，
 `is_platform_admin=1` 後重新登入，JWT 的 `isPlatformAdmin` 正確變成 `true`，同一支 API
 改成回 204。送出的內容跟 `platform-operator` 原本的 `platform.merchants` 權限值完全相同
 （唯讀），純粹測試「擋板有沒有解除」，讀取確認沒有意外改動任何實際權限資料。
+
+## 業主實測抓到的真的 bug：平台帳號登入後被送去場館專用的 `/admin` 頁面（2026-09-24 修正）
+
+業主照著操作說明登入 `platform_admin`，卻沒有到 `/platform/merchants`，而是停在 `/admin`
+（監控中心）——畫面側邊選單全部項目都顯示，但內容整頁顯示「目前登入的帳號沒有監控資料的
+查看權限」，看起來像帳號權限設定壞了。
+
+**根因**：業主應該是先打開過 `/admin`（那時候還沒登入），`AdminAstroLayout.astro` 的
+inline guard 沒有 session 就把他導去 `/login?redirect=%2Fadmin`。`LoginPage.vue` 的
+`redirectTarget()` 原本邏輯是「URL 有帶 `?redirect=` 就無條件採用，不管目前登入的是哪種
+身分」，於是平台帳號登入成功後還是被送回 `/admin`，而不是 `defaultHomePathApi()` 算出來的
+`/platform/merchants`。連帶暴露另一個既有問題：`AdminSidebar.vue` 的選單過濾邏輯
+（`visibleCodes`）只有場館 scope 才會過濾，非 merchant scope（含 platform）一律「不過濾、
+全部顯示」——這是設計時假設「平台帳號理論上不會走到這裡」留下的漏洞，一旦真的走到這裡就會
+出現選單全開但內容全部 403 的破碎畫面。
+
+**修法**（兩處都要修，缺一個都不夠）：
+1. `LoginPage.vue` 的 `redirectTarget()` 改成：只有 `redirect` 參數跟目前登入身分屬於
+   同一個區域（都是 `/platform/*` 或都不是）才採用，否則回退到 `defaultHomePathApi()`
+   算出來的預設首頁——平台帳號無論 URL 帶什麼 `?redirect=/admin/xxx`，都會被送去
+   `/platform/merchants`，不會再被舊的 redirect 參數牽著走。
+2. `AdminLayout.vue`（`/admin/*` 的共用外殼）新增對稱守衛：`onMounted` 時若目前 session 是
+   `platform` scope，直接導去 `/platform/merchants`——這樣就算之後又有其他路徑把平台帳號
+   送到 `/admin` 頁面，也會在畫面渲染前就被攔截，不會再卡在破碎畫面上。跟
+   `PlatformLayout.vue` 原本就有的「場館帳號誤入平台頁面」守衛互為鏡像。
+3. 修這兩處時自己也踩到一次 CHANGELOG 早就記錄過的同一類 bug：註解裡寫
+   `hvac.*/merchant.*` 這種帶 `*/` 的說明文字，在 `LoginPage.vue` 的 `/** */` 區塊註解裡
+   提早把註解關掉，導致 `npm run build` 直接編譯失敗（`Unexpected token`）。改成
+   「hvac 或 merchant 開頭的權限」這種不含 `*/` 字面組合的寫法。`AdminLayout.vue` 那邊雖然
+   用的是 `//` 單行註解不受影響，但為了避免視覺上誤導也一併改了用詞。
+
+**已用真實流程驗證**：`npm run typecheck`／`npm run build` 全過（`build` 一開始因為上述
+註解 bug 直接失敗，修完重跑成功）；`curl` 確認 `/login`、`/admin`、`/platform/merchants`
+三個路由開發伺服器都正常回應 200。**沒有實際用瀏覽器重現「先訪問 /admin 被彈回登入頁、
+再登入」這個確切操作路徑**（那需要清掉瀏覽器工作階段重新走一次），這點誠實列出——邏輯
+修正是照著業主回報的畫面症狀往回推導出的根因，程式碼審查後確認修法能解決該症狀，但這次
+沒有機會重新用瀏覽器複現原始 bug 再驗證修好。

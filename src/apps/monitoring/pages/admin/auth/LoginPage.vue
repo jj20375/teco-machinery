@@ -27,12 +27,24 @@ onMounted(() => {
   }
 });
 
+/**
+ * 這是 2026-09-24 修過的真實 bug：如果使用者先前是打開 /admin/xxx（還沒登入）被彈回這裡，
+ * URL 會帶 ?redirect=/admin/xxx；原本邏輯不管目前登入的是哪種身分，一律照抄這個參數，
+ * 導致平台帳號登入後被送去場館專用的 /admin 頁面（側邊選單全開、內容卻整頁 403，
+ * 因為平台 token 沒有任何 hvac 或 merchant 開頭的權限）。現在只有 redirect 目標跟目前身分
+ * 屬於同一個區域（都是 /platform/* 或都不是）才採用，否則一律回退到該身分對應的預設首頁。
+ */
 function redirectTarget(): string {
+  const session = getSessionApi();
+  const home = session ? defaultHomePathApi(session.user) : '/admin';
+
   const params = new URLSearchParams(window.location.search);
   const redirect = params.get('redirect');
-  if (redirect && redirect.startsWith('/')) return redirect;
-  const session = getSessionApi();
-  return session ? defaultHomePathApi(session.user) : '/admin';
+  if (!redirect || !redirect.startsWith('/')) return home;
+
+  const isPlatformRedirect = redirect.startsWith('/platform');
+  const isPlatformScope = session?.user.scopeKind === 'platform';
+  return isPlatformRedirect === isPlatformScope ? redirect : home;
 }
 
 async function handleLogin() {
