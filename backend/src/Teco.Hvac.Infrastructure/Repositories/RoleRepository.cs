@@ -16,12 +16,20 @@ public sealed class RolePermissionDetail
 
 public sealed class RoleRepository(TecoDbConnectionFactory factory)
 {
+    /// <summary>
+    /// 一般角色清單（角色管理頁、成員角色下拉選單、平台角色列表用）。
+    /// 「編輯成員」六個核取方塊面板會幫每個成員建立一個 code = "member-{membershipId}" 的
+    /// 專屬角色（見 MerchantEndpoints.SetUserFeatures），這種角色是內部實作細節、不是給人挑選
+    /// 的一般角色，一律排除，否則多個成員都存過這個面板後，角色清單會混進好幾筆同樣叫
+    /// 「自訂權限」但 id 不同的項目。真的需要解析某個成員目前的專屬角色名稱時，直接讀
+    /// membership 列表 JOIN 出來的 RoleName（MembershipRepository.ListAsync），不要走這裡。
+    /// </summary>
     public async Task<IReadOnlyList<AppRole>> ListAsync(RoleScope? scope = null, int? merchantId = null, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
         var sql = "SELECT id, code, name, scope AS Scope, merchant_id AS MerchantId, is_system AS IsSystem, " +
                   "is_full_access AS IsFullAccess, is_permissions_customized AS IsPermissionsCustomized, created_at AS CreatedAt " +
-                  "FROM app_role WHERE 1=1";
+                  "FROM app_role WHERE code NOT LIKE 'member-%'";
         if (scope is not null) sql += " AND scope = @scope";
         if (merchantId is not null) sql += " AND (merchant_id = @merchantId OR merchant_id IS NULL)";
         sql += " ORDER BY scope, is_system DESC, code";

@@ -59,8 +59,12 @@ function invalidateUsers() {
   return queryClient.invalidateQueries({ queryKey: ['merchant-users'] });
 }
 
-function roleLabel(roleId: number | null): string {
-  return roles.value.find((r) => r.id === roleId)?.name ?? '（未指派）';
+// 角色名稱優先用 MerchantUserRow 自帶的 roleName（後端 JOIN app_role 算出來的，一定準確）。
+// 不能只靠去 roles 清單裡找 roleId，因為「編輯成員」六個核取方塊面板產生的個人專屬角色
+// （member-{membershipId}）故意不會出現在 /api/v1/merchant/roles 清單裡（見後端
+// RoleRepository.ListAsync 的註解），用清單反查會把這批人的角色名稱誤判成「（未指派）」。
+function roleLabel(user: Pick<MerchantUserRow, 'roleId' | 'roleName'>): string {
+  return user.roleName ?? '（未指派）';
 }
 function formatLastLogin(value: string | null): string {
   if (!value) return '—';
@@ -201,6 +205,38 @@ async function toggleEnabled(u: MerchantUserRow) {
   }
 }
 
+// ── 改名（顯示姓名，跟角色/頁面權限無關，場館管理員帳號也能改）──────
+const renameOpen = ref(false);
+const renameError = ref('');
+const renameTarget = ref<MerchantUserRow | null>(null);
+const renameForm = reactive({ displayName: '' });
+const renameMutation = useMutation({
+  mutationFn: (input: { membershipId: number; displayName: string }) =>
+    updateMerchantUserApi(input.membershipId, { displayName: input.displayName }),
+  onSuccess: () => invalidateUsers(),
+});
+
+function openRename(u: MerchantUserRow) {
+  renameTarget.value = u;
+  renameForm.displayName = u.displayName;
+  renameError.value = '';
+  renameOpen.value = true;
+}
+async function confirmRename() {
+  if (!renameTarget.value || renameMutation.isPending.value) return;
+  if (!renameForm.displayName.trim()) {
+    renameError.value = '使用者名稱不能是空白。';
+    return;
+  }
+  renameError.value = '';
+  try {
+    await renameMutation.mutateAsync({ membershipId: renameTarget.value.membershipId, displayName: renameForm.displayName.trim() });
+    renameOpen.value = false;
+  } catch (err) {
+    renameError.value = err instanceof Error ? err.message : '改名失敗，請稍後再試。';
+  }
+}
+
 // ── 重設密碼 ─────────────────────────
 const resetOpen = ref(false);
 const resetting = resetPasswordMutation.isPending;
@@ -335,7 +371,14 @@ async function submitAdd() {
             </thead>
             <tbody>
               <tr v-for="u in paged" :key="u.membershipId" class="border-b border-[#F1F5F9] hover:bg-slate-50/70">
-                <td class="px-4 py-3 font-medium">{{ u.displayName }}</td>
+                <td class="px-4 py-3 font-medium">
+                  <button type="button" class="flex items-center gap-1.5 hover:text-[#00A88E]" title="編輯使用者名稱" @click="openRename(u)">
+                    {{ u.displayName }}
+                    <svg class="w-3.5 h-3.5 text-[#94A3B8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                </td>
                 <td class="px-4 py-3 font-tabular text-[#64748B]">{{ u.username }}</td>
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-1.5">
@@ -343,7 +386,7 @@ async function submitAdd() {
                       class="px-2 py-0.5 rounded text-xs font-semibold"
                       :class="u.roleCode === 'merchant-admin' ? 'bg-[#E6FBF7] text-[#10B981]' : 'bg-[#F1F5F9] text-[#64748B]'"
                     >
-                      {{ roleLabel(u.roleId) }}
+                      {{ roleLabel(u) }}
                     </span>
                     <span v-if="u.isLocked" class="px-2 py-0.5 rounded text-xs font-semibold bg-[#FFF5F5] text-[#FF4757]" title="連續登入失敗次數過多，暫時鎖定中">
                       已鎖定
@@ -408,7 +451,7 @@ async function submitAdd() {
           <div class="rounded-lg border border-[#E2E8F0] divide-y divide-[#E2E8F0] text-sm">
             <div class="flex justify-between px-3 py-2.5"><span class="text-[#64748B]">使用者名稱</span><span class="font-medium text-[#334155]">{{ activeUser.displayName }}</span></div>
             <div class="flex justify-between px-3 py-2.5"><span class="text-[#64748B]">帳號</span><span class="font-medium text-[#334155]">{{ activeUser.username }}</span></div>
-            <div class="flex justify-between px-3 py-2.5"><span class="text-[#64748B]">角色</span><span class="font-medium text-[#334155]">{{ roleLabel(activeUser.roleId) }}</span></div>
+            <div class="flex justify-between px-3 py-2.5"><span class="text-[#64748B]">角色</span><span class="font-medium text-[#334155]">{{ roleLabel(activeUser) }}</span></div>
             <div class="flex justify-between px-3 py-2.5"><span class="text-[#64748B]">信箱</span><span class="font-medium text-[#334155]">{{ activeUser.email ?? '—' }}</span></div>
           </div>
         </section>
@@ -451,6 +494,26 @@ async function submitAdd() {
         </section>
       </div>
     </AdminRightPanel>
+
+    <!-- 改名 -->
+    <div v-if="renameOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40" @click.self="renameOpen = false">
+      <div class="bg-white rounded-xl shadow-2xl border border-[#E2E8F0] w-full max-w-[420px] overflow-hidden">
+        <div class="px-6 pt-6 pb-4 border-b border-[#E2E8F0]"><h3 class="text-base font-bold text-[#1A202C]">編輯使用者名稱</h3></div>
+        <form class="px-6 py-5 flex flex-col gap-4" @submit.prevent="confirmRename">
+          <div v-if="renameError" class="p-2.5 rounded-lg bg-[#FFF5F5] text-[#FF4757] text-xs">{{ renameError }}</div>
+          <label class="flex flex-col gap-1.5 text-xs text-[#64748B]">
+            使用者名稱
+            <input v-model="renameForm.displayName" type="text" class="px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2]" />
+          </label>
+          <div class="flex justify-end gap-3 pt-1">
+            <AdminButton variant="tertiary" :disabled="renameMutation.isPending.value" type="button" @click="renameOpen = false">取消</AdminButton>
+            <AdminButton variant="primary" :disabled="renameMutation.isPending.value" type="submit">
+              {{ renameMutation.isPending.value ? '儲存中…' : '儲存' }}
+            </AdminButton>
+          </div>
+        </form>
+      </div>
+    </div>
 
     <!-- 重設密碼 -->
     <div v-if="resetOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40" @click.self="resetOpen = false">

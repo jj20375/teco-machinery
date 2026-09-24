@@ -11,7 +11,7 @@ namespace Teco.Hvac.Api.Endpoints;
 /// <summary>
 /// 場館自己的日常管理：自家帳號與自訂角色。只有 merchant scope 的 token 能呼叫，
 /// 且必須持有 merchant.users／merchant.roles 權限——平台管理員要動場館資料得先切到該場館 scope。
-/// 自訂角色的每一項 CRUD／子功能都不得超過 merchant-admin 的實際授予（比照美達特上限規則）。
+/// 自訂角色的每一項 CRUD／子功能都不得超過 merchant-admin 的實際授予。
 /// </summary>
 public static class MerchantEndpoints
 {
@@ -188,6 +188,14 @@ public static class MerchantEndpoints
         if (!scope.Has("merchant.users", "update")) return Results.Forbid();
         if (request.RoleId is not null && !scope.HasOption("merchant.users", "assign_role")) return Results.Forbid();
 
+        string? trimmedDisplayName = null;
+        if (request.DisplayName is not null)
+        {
+            trimmedDisplayName = request.DisplayName.Trim();
+            if (trimmedDisplayName.Length == 0)
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["displayName"] = ["使用者名稱不能是空白。"] });
+        }
+
         // 一定要先查出這個 membership 屬於哪個場館，否則管理員理論上能對別的場館的 membershipId
         // 呼叫這支 API（PATCH body 沒有 merchantId 可核對，membershipId 是全域唯一的整數）。
         var membership = await memberships.FindByIdAsync(membershipId, ct);
@@ -210,12 +218,17 @@ public static class MerchantEndpoints
         {
             summaryParts.Add(request.IsActive.Value ? "啟用帳號" : "停用帳號");
         }
+        if (trimmedDisplayName is not null && trimmedDisplayName != targetName)
+        {
+            await users.UpdateDisplayNameAsync(membership.UserId, trimmedDisplayName, ct);
+            summaryParts.Add($"姓名改為「{trimmedDisplayName}」");
+        }
         if (summaryParts.Count > 0)
         {
             await opLog.LogAsync(scope, "merchant.user.update", "merchant_membership", membershipId.ToString(),
                 $"將「{targetName}」{string.Join('、', summaryParts)}",
-                before: new { membership.RoleId, membership.IsActive },
-                after: new { RoleId = request.RoleId ?? membership.RoleId, IsActive = request.IsActive ?? membership.IsActive }, ct: ct);
+                before: new { membership.RoleId, membership.IsActive, DisplayName = targetName },
+                after: new { RoleId = request.RoleId ?? membership.RoleId, IsActive = request.IsActive ?? membership.IsActive, DisplayName = trimmedDisplayName ?? targetName }, ct: ct);
         }
         return Results.NoContent();
     }
@@ -549,7 +562,7 @@ public static class MerchantEndpoints
     }
 
     public sealed record AddMerchantUserRequest(string Username, string DisplayName, string? Email, string? Password, int RoleId);
-    public sealed record UpdateMerchantUserRequest(int? RoleId, bool? IsActive);
+    public sealed record UpdateMerchantUserRequest(int? RoleId, bool? IsActive, string? DisplayName = null);
     public sealed record CreateMerchantRoleRequest(string Code, string Name);
     public sealed record RenameMerchantRoleRequest(string Name);
     public sealed record SetRolePermissionRequestItem(string PermissionCode, bool PerCreate, bool PerRead, bool PerUpdate, bool PerDelete, string[] Options);

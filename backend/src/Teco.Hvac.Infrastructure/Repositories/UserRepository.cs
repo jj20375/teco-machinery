@@ -96,6 +96,12 @@ public sealed class UserRepository(TecoDbConnectionFactory factory)
         await conn.ExecuteAsync("UPDATE app_user SET password_hash = @passwordHash WHERE id = @userId", new { userId, passwordHash });
     }
 
+    public async Task UpdateDisplayNameAsync(int userId, string displayName, CancellationToken ct = default)
+    {
+        using var conn = await factory.CreateOpenAsync(ct);
+        await conn.ExecuteAsync("UPDATE app_user SET display_name = @displayName WHERE id = @userId", new { userId, displayName });
+    }
+
     /// <summary>密碼、角色或場館設定變更時呼叫，遞增授權版本使舊 JWT 立即失效。</summary>
     public async Task IncrementAuthVersionAsync(int userId, CancellationToken ct = default)
     {

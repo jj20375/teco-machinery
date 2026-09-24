@@ -1,7 +1,7 @@
 /**
  * @file user-service.ts
  * 東元電機智慧環境監控 - 場館使用者與角色管理服務
- * 嚴格遵守 Metat 規範：所有對外呼叫函式一律以 *Api 結尾
+ * 嚴格遵守專案規範：所有對外呼叫函式一律以 *Api 結尾
  *
  * 打的是 backend/ 的 /api/v1/merchant/* 端點（見 backend/src/Teco.Hvac.Api/Endpoints/MerchantEndpoints.cs）。
  * 這條路徑只有 merchant scope 的帳號能用，且要有 merchant.users／merchant.roles 權限——
@@ -60,10 +60,10 @@ export function createMerchantUserApi(input: CreateMerchantUserInput): Promise<{
   });
 }
 
-/** 更新成員的角色指派與啟用狀態；兩個欄位都可以只傳其中一個。 */
+/** 更新成員的角色指派、啟用狀態、顯示姓名；欄位都可以只傳其中幾個。 */
 export function updateMerchantUserApi(
   membershipId: number,
-  patch: { roleId?: number; isActive?: boolean },
+  patch: { roleId?: number; isActive?: boolean; displayName?: string },
 ): Promise<void> {
   return authorizedJsonApi(`/api/v1/merchant/users/${membershipId}`, {
     method: 'PATCH',
