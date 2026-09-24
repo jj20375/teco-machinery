@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import AdminButton from '../_components/AdminButton.vue';
-import { loginApi, getSessionApi, isSessionValidApi } from '../_services/auth-service';
+import {
+  loginApi, getSessionApi, isSessionValidApi, listScopesApi, selectScopeApi, defaultHomePathApi,
+  type ScopeOption,
+} from '../_services/auth-service';
 
 const username = ref('');
 const password = ref('');
@@ -10,6 +13,12 @@ const rememberMe = ref(false);
 const errorMessage = ref('');
 const isLoggingIn = ref(false);
 const forgotOpen = ref(false);
+
+// 雙軌帳號（同時是平台帳號又是某場館成員）登入成功後要先選身分，不能直接猜一個——
+// 選完之前這裡先擋著，不進入下面的登入表單畫面。
+const scopeOptions = ref<ScopeOption[] | null>(null);
+const isSwitchingScope = ref(false);
+const scopeError = ref('');
 
 /** 已經有有效工作階段就不用再看登入表單，直接跳回去（或跳到被導來這裡之前想去的頁面）。 */
 onMounted(() => {
@@ -21,7 +30,9 @@ onMounted(() => {
 function redirectTarget(): string {
   const params = new URLSearchParams(window.location.search);
   const redirect = params.get('redirect');
-  return redirect && redirect.startsWith('/') ? redirect : '/admin';
+  if (redirect && redirect.startsWith('/')) return redirect;
+  const session = getSessionApi();
+  return session ? defaultHomePathApi(session.user) : '/admin';
 }
 
 async function handleLogin() {
@@ -37,16 +48,68 @@ async function handleLogin() {
       errorMessage.value = result.message;
       return;
     }
+    // 後端 Login 只會回傳「其中一種」身分的 JWT（有平台身分就給平台，沒有才退回場館第一筆），
+    // 這裡另外查一次這個帳號實際有幾種身分可選——只有 1 種就不用多問，維持原本直接跳轉的體驗。
+    const options = await listScopesApi().catch(() => []);
+    if (options.length > 1) {
+      scopeOptions.value = options;
+      return;
+    }
     window.location.href = redirectTarget();
   } finally {
     isLoggingIn.value = false;
+  }
+}
+
+async function chooseScope(option: ScopeOption) {
+  if (isSwitchingScope.value) return;
+  isSwitchingScope.value = true;
+  scopeError.value = '';
+  try {
+    await selectScopeApi(option);
+    // 刻意不套用 redirectTarget() 的 ?redirect= 參數——使用者在這個畫面是主動挑了一個身分，
+    // 那個 redirect 目標很可能是登入前想去的「另一個身分」的頁面（例如從 /admin/users 被彈回
+    // 登入頁），套用會造成「明明選了平台管理，卻被送去場館頁面然後 403」的混亂體驗。
+    window.location.href = defaultHomePathApi(option);
+  } catch (err) {
+    scopeError.value = err instanceof Error ? err.message : '切換身分失敗，請稍後再試。';
+  } finally {
+    isSwitchingScope.value = false;
   }
 }
 </script>
 
 <template>
   <div class="min-h-screen bg-[#F4F6F8] flex items-center justify-center px-4">
-    <div class="w-full max-w-[420px] bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-8">
+    <!-- 雙軌帳號選身分：帳密驗證已經通過，只是這個帳號同時掛在多個場館／又是平台帳號，
+         要先問清楚這次要用哪個身分進系統，才知道要換發哪一種 JWT、導去哪一套畫面。 -->
+    <div v-if="scopeOptions" class="w-full max-w-[420px] bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-8">
+      <h1 class="text-xl font-bold text-[#1A202C]">選擇要用哪個身分登入</h1>
+      <p class="text-sm text-[#94A3B8] mt-1">這個帳號同時有多種身分，請選擇這次要用哪一個。</p>
+
+      <div v-if="scopeError" class="mt-4 p-2.5 rounded-lg bg-[#FFF5F5] text-[#FF4757] text-xs">{{ scopeError }}</div>
+
+      <div class="mt-5 flex flex-col gap-2.5">
+        <button
+          v-for="option in scopeOptions"
+          :key="`${option.scopeKind}-${option.merchantId ?? 'platform'}`"
+          type="button"
+          class="w-full flex items-center justify-between px-4 py-3.5 rounded-lg border border-[#E2E8F0] hover:border-[#00D1B2] hover:bg-[#F0FDFB] text-left transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          :disabled="isSwitchingScope"
+          @click="chooseScope(option)"
+        >
+          <div>
+            <div class="text-sm font-bold text-[#1A202C]">{{ option.name }}</div>
+            <div class="text-xs text-[#94A3B8] mt-0.5">{{ option.scopeKind === 'platform' ? '平台管理' : '場館帳號' }}</div>
+          </div>
+          <svg class="w-4 h-4 text-[#94A3B8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div v-else class="w-full max-w-[420px] bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-8">
       <h1 class="text-2xl font-bold text-[#1A202C]">東元電機智慧環境監控</h1>
       <p class="text-sm text-[#94A3B8] mt-1">請輸入帳號與密碼登入系統</p>
 

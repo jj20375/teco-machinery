@@ -7,15 +7,42 @@
  * 姓名/場館名稱/頭像字母都讀自 getSessionApi()，不是寫死的 Figma 稿文字。
  */
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { clearSessionApi, getSessionApi } from '../_services/auth-service';
+import {
+  clearSessionApi, getSessionApi, listScopesApi, selectScopeApi, defaultHomePathApi, type ScopeOption,
+} from '../_services/auth-service';
 
-defineProps<{ pageTitle: string }>();
+withDefaults(defineProps<{ pageTitle: string; badgeLabel?: string }>(), { badgeLabel: '後台管理中心' });
 
 const emit = defineEmits<{
   (e: 'open-change-password'): void;
 }>();
 
 const menuOpen = ref(false);
+
+// 只有雙軌身分（同時是平台帳號又是場館成員，或身兼多個場館）的帳號才需要「切換身分」——
+// 單一身分的帳號（TECO 目前絕大多數）這支查詢會回傳 <= 1 筆，選單直接不顯示這個項目，
+// 不會讓人以為點了會有作用。
+const scopeOptions = ref<ScopeOption[]>([]);
+onMounted(() => {
+  listScopesApi().then((options) => { scopeOptions.value = options; }).catch(() => {});
+});
+const canSwitchScope = computed(() => scopeOptions.value.length > 1);
+
+const switchScopeOpen = ref(false);
+const switchingScope = ref(false);
+const switchScopeError = ref('');
+async function chooseScope(option: ScopeOption) {
+  if (switchingScope.value) return;
+  switchingScope.value = true;
+  switchScopeError.value = '';
+  try {
+    await selectScopeApi(option);
+    window.location.href = defaultHomePathApi(option);
+  } catch (err) {
+    switchScopeError.value = err instanceof Error ? err.message : '切換身分失敗，請稍後再試。';
+    switchingScope.value = false;
+  }
+}
 
 // SSR 階段 getSessionApi() 一律回傳 null（見該函式上的註解），這裡沿用 AdminSidebar.vue 同一套
 // 「computed 直接呼叫，hydrate 後在瀏覽器重新執行 setup 自然算出正確值」的作法，不用另外處理。
@@ -46,7 +73,7 @@ function handleLogout() {
     <div class="flex items-center gap-3">
       <h1 class="text-lg font-bold text-[#1A202C]">{{ pageTitle }}</h1>
       <span class="px-2.5 py-1 rounded-md bg-[#F1F5F9] text-[#64748B] text-xs font-medium">
-        後台管理中心
+        {{ badgeLabel }}
       </span>
     </div>
 
@@ -100,6 +127,17 @@ function handleLogout() {
             修改密碼
           </button>
           <button
+            v-if="canSwitchScope"
+            type="button"
+            class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[#334155] hover:bg-slate-50 text-left"
+            @click="menuOpen = false; switchScopeOpen = true"
+          >
+            <svg class="w-4 h-4 text-[#64748B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4M16 17H4m0 0l4 4m-4-4l4-4" />
+            </svg>
+            切換身分
+          </button>
+          <button
             type="button"
             class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[#334155] hover:bg-slate-50 text-left"
             @click="handleLogout"
@@ -108,6 +146,33 @@ function handleLogout() {
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
             登出
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 切換身分 -->
+    <div v-if="switchScopeOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40" @click.self="switchScopeOpen = false">
+      <div class="bg-white rounded-xl shadow-2xl border border-[#E2E8F0] w-full max-w-[420px] overflow-hidden">
+        <div class="px-6 pt-6 pb-4 border-b border-[#E2E8F0]"><h3 class="text-base font-bold text-[#1A202C]">切換身分</h3></div>
+        <div class="px-6 py-5 flex flex-col gap-4">
+          <div v-if="switchScopeError" class="p-2.5 rounded-lg bg-[#FFF5F5] text-[#FF4757] text-xs">{{ switchScopeError }}</div>
+          <button
+            v-for="option in scopeOptions"
+            :key="`${option.scopeKind}-${option.merchantId ?? 'platform'}`"
+            type="button"
+            class="w-full flex items-center justify-between px-4 py-3 rounded-lg border border-[#E2E8F0] hover:border-[#00D1B2] hover:bg-[#F0FDFB] text-left transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            :disabled="switchingScope"
+            @click="chooseScope(option)"
+          >
+            <div>
+              <div class="text-sm font-bold text-[#1A202C]">{{ option.name }}</div>
+              <div class="text-xs text-[#94A3B8] mt-0.5">{{ option.scopeKind === 'platform' ? '平台管理' : '場館帳號' }}</div>
+            </div>
+            <span
+              v-if="option.scopeKind === currentUser?.scopeKind && option.merchantId === currentUser?.merchantId"
+              class="text-xs font-semibold text-[#00A88E]"
+            >目前使用中</span>
           </button>
         </div>
       </div>

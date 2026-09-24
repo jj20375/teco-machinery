@@ -108,6 +108,43 @@ export function clearSessionApi(): void {
   localStorage.removeItem(STORAGE_KEY);
 }
 
+export interface ScopeOption {
+  scopeKind: 'platform' | 'merchant';
+  merchantId: number | null;
+  name: string;
+}
+
+/**
+ * 列出目前帳號可以切換的身分——後端 AppUser 是雙軌設計，一個人可能同時是平台帳號、又是
+ * 一或多個場館的成員（見 backend/README.md「權限機制」）。回傳長度 <= 1 時代表這個帳號
+ * 只有單一身分，不需要顯示切換畫面。
+ */
+export function listScopesApi(): Promise<ScopeOption[]> {
+  return authorizedJsonApi('/api/v1/auth/scopes');
+}
+
+/**
+ * 切換到指定身分，換發該身分範圍的 JWT 並整組覆寫工作階段。
+ * 後端 SelectScope 刻意不換發新的 refresh token（呼叫當下的 access token 通常還沒過期，
+ * 純粹是切身分不是重新登入），這裡要保留原本工作階段的 refreshToken，不能整個用 null 蓋掉，
+ * 否則之後 access token 過期就沒有 refresh token 可用、被迫重新輸入密碼。
+ */
+export async function selectScopeApi(option: { scopeKind: string; merchantId?: number | null }): Promise<AuthSession> {
+  const response = await authorizedJsonApi<AuthSession>('/api/v1/auth/scopes/select', {
+    method: 'POST',
+    body: JSON.stringify({ scopeKind: option.scopeKind, merchantId: option.merchantId ?? null }),
+  });
+  const current = getSessionApi();
+  const merged: AuthSession = { ...response, refreshToken: response.refreshToken ?? current?.refreshToken ?? null };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+  return merged;
+}
+
+/** 登入或切換身分後該去哪個首頁，平台身分跟場館身分是完全不同的畫面組。 */
+export function defaultHomePathApi(user: Pick<AuthUser, 'scopeKind'>): string {
+  return user.scopeKind === 'platform' ? '/platform/merchants' : '/admin';
+}
+
 
 export class ApiError extends Error {
   constructor(
