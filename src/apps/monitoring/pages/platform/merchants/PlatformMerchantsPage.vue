@@ -74,6 +74,13 @@ const togglingId = ref<number | null>(null);
 const toggleConfirmOpen = ref(false);
 const toggleConfirmError = ref('');
 const pendingToggle = ref<{ merchant: PlatformMerchant; field: 'isRoleCrudConfigurationEnabled' | 'isRoleOptionConfigurationEnabled' } | null>(null);
+// 純 `:checked="value"` 綁定（不是 v-model）只有在 value 這個響應式來源真的改變時，
+// Vue 才會重新把 checked 這個 DOM 屬性寫回去；使用者用滑鼠點擊 checkbox 是瀏覽器自己
+// 原生切換 DOM 狀態，不會經過 Vue 的響應式系統，所以「開確認框但按取消」這種
+// value 從頭到尾沒變的情境，Vue 不會主動把畫面上被點掉的勾勾改回來。用 `:key` 綁這個
+// nonce，取消時遞增，強迫 Vue 把整個 checkbox 元素當成新節點重建（不是 patch 既有節點），
+// 新節點一律照 `m.field` 目前的值重新產生 checked 屬性，畫面就會正確回到未勾選。
+const checkboxResetNonce = ref(0);
 
 const TOGGLE_LABELS: Record<'isRoleCrudConfigurationEnabled' | 'isRoleOptionConfigurationEnabled', string> = {
   isRoleCrudConfigurationEnabled: 'CRUD',
@@ -86,6 +93,11 @@ function openToggleConfirm(merchant: PlatformMerchant, field: 'isRoleCrudConfigu
   toggleConfirmOpen.value = true;
 }
 
+function closeToggleConfirm() {
+  toggleConfirmOpen.value = false;
+  checkboxResetNonce.value += 1;
+}
+
 async function confirmToggle() {
   if (!pendingToggle.value || togglingId.value === pendingToggle.value.merchant.id) return;
   const { merchant, field } = pendingToggle.value;
@@ -96,6 +108,7 @@ async function confirmToggle() {
     toggleConfirmOpen.value = false;
   } catch (err) {
     toggleConfirmError.value = err instanceof Error ? err.message : '更新失敗，請稍後再試。';
+    checkboxResetNonce.value += 1; // 存檔失敗，checkbox 也要強制回到失敗前（伺服器目前）的狀態
   } finally {
     togglingId.value = null;
   }
@@ -217,7 +230,7 @@ async function resetPassword(membershipId: number) {
                       目前：{{ m.isRoleCrudConfigurationEnabled ? '細項模式' : '簡化模式（授予即完整 CRUD）' }}
                     </span>
                     <label class="flex items-center gap-1.5 cursor-pointer" :class="{ 'opacity-50 pointer-events-none': togglingId === m.id }">
-                      <input type="checkbox" class="w-3.5 h-3.5 rounded accent-[#4C7DF0]" :checked="m.isRoleCrudConfigurationEnabled" @change="openToggleConfirm(m, 'isRoleCrudConfigurationEnabled')" />
+                      <input :key="`crud-${m.id}-${checkboxResetNonce}`" type="checkbox" class="w-3.5 h-3.5 rounded accent-[#4C7DF0]" :checked="m.isRoleCrudConfigurationEnabled" @change="openToggleConfirm(m, 'isRoleCrudConfigurationEnabled')" />
                       <span class="text-xs text-[#64748B]">啟用細項設定</span>
                     </label>
                   </div>
@@ -231,7 +244,7 @@ async function resetPassword(membershipId: number) {
                       目前：{{ m.isRoleOptionConfigurationEnabled ? '細項模式' : '簡化模式（授予即完整子功能）' }}
                     </span>
                     <label class="flex items-center gap-1.5 cursor-pointer" :class="{ 'opacity-50 pointer-events-none': togglingId === m.id }">
-                      <input type="checkbox" class="w-3.5 h-3.5 rounded accent-[#4C7DF0]" :checked="m.isRoleOptionConfigurationEnabled" @change="openToggleConfirm(m, 'isRoleOptionConfigurationEnabled')" />
+                      <input :key="`option-${m.id}-${checkboxResetNonce}`" type="checkbox" class="w-3.5 h-3.5 rounded accent-[#4C7DF0]" :checked="m.isRoleOptionConfigurationEnabled" @change="openToggleConfirm(m, 'isRoleOptionConfigurationEnabled')" />
                       <span class="text-xs text-[#64748B]">啟用細項設定</span>
                     </label>
                   </div>
@@ -363,7 +376,7 @@ async function resetPassword(membershipId: number) {
     </div>
 
     <!-- 切換 CRUD/子項細項模式確認 -->
-    <div v-if="toggleConfirmOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40" @click.self="toggleConfirmOpen = false">
+    <div v-if="toggleConfirmOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40" @click.self="closeToggleConfirm">
       <div class="bg-white rounded-xl shadow-2xl border border-[#E2E8F0] w-full max-w-[480px] overflow-hidden">
         <div class="px-6 pt-6 pb-4 border-b border-[#E2E8F0]">
           <h3 class="text-base font-bold text-[#1A202C]">
@@ -392,7 +405,7 @@ async function resetPassword(membershipId: number) {
             你要的結果。
           </div>
           <div class="flex justify-end gap-3 pt-1">
-            <AdminButton variant="tertiary" :disabled="togglingId !== null" type="button" @click="toggleConfirmOpen = false">取消</AdminButton>
+            <AdminButton variant="tertiary" :disabled="togglingId !== null" type="button" @click="closeToggleConfirm">取消</AdminButton>
             <AdminButton variant="primary" :disabled="togglingId !== null" type="button" @click="confirmToggle">
               {{ togglingId !== null ? '處理中…' : '確定切換' }}
             </AdminButton>
