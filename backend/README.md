@@ -113,8 +113,9 @@ backend/
 - Collector／Ingest／SignalR 完全不受這次改動影響，仍照常運作。
 
 **已知缺口**（誠實列出）：
-- `platform.roles` 目前只有 API，沒有前端 UI（平台管理員的角色管理仍是後端專案階段）；
-  `merchant.roles` 已在 2026-09-21 補上完整前端（見下方「場館角色管理 CRUD」一節）。
+- ~~`platform.roles` 目前只有 API，沒有前端 UI~~ **已於 2026-09-24 補上**，見下方
+  「平台管理前端＋雙軌身分切換」一節；`merchant.roles` 已在 2026-09-21 補上完整前端
+  （見下方「場館角色管理 CRUD」一節）。
 - ~~角色的 `IsFullAccess` 目前靠 Seeder 手動維持~~ **已於 2026-09-24 修正**：
   `PermissionGrantService.ForRolesAsync` 改成動態計算，見下方「`IsFullAccess` 角色權限改為動態計算」一節。
 - 沒有做 `scope_kind` 多重身分「模擬進入」（impersonation）功能——TECO 目前不需要平台
@@ -965,6 +966,100 @@ Docker 專家審查 `backend/deploy/` 底下的 Dockerfile 與 compose 設定，
   的既有 `role_permission` 列本來就跟權限目錄一致（10/10、4/4），這次修改對現有登入行為
   沒有造成任何權限增減，純粹是面向未來的防呆。
 - 改動檔案：[`backend/src/Teco.Hvac.Infrastructure/Permissions/PermissionGrantService.cs`](src/Teco.Hvac.Infrastructure/Permissions/PermissionGrantService.cs)。
+
+## 平台管理前端＋雙軌身分切換（2026-09-24）
+
+平台範圍（`/platform/*`）先前只有 API，完全沒有前端頁面——連「第一顆平台管理員帳號」都只能
+用 SQL 灌（`deploy/test-permissions.sh` 就是這樣建 `platform_admin` 測試帳號的）。這次補上
+場館管理、系統帳號、平台角色管理三個頁面，以及登入後在平台／場館兩種身分之間切換的畫面。
+
+- **雙軌身分切換**：`AppUser` 一個人可以同時是平台帳號又是一或多個場館的成員（見「權限機制」
+  一節），但先前 `POST /auth/login` 只會回傳其中一種身分的 JWT，前端也完全沒接已經寫好的
+  `GET /auth/scopes`／`POST /auth/scopes/select`。這次補上：
+  - `LoginPage.vue` 登入成功後多查一次 `/auth/scopes`，選項 > 1 才顯示「選擇要用哪個身分」
+    畫面，只有 1 個選項（TECO 目前絕大多數帳號）維持原本直接跳轉的體驗。
+  - `AdminHeader.vue`（後台/平台共用）的使用者選單加「切換身分」，同樣只在有多個選項時顯示。
+  - `selectScopeApi()` 刻意合併舊 session 的 `refreshToken`——後端 `SelectScope` 不換發新的
+    refresh token（呼叫當下的 access token 通常還沒過期，純粹切身分不是重新登入），整組覆寫
+    會把 refreshToken 蓋成 `null`，之後 access token 一過期就沒有 refresh token 可用。
+  - 登入或切身分後要去哪個首頁用 `defaultHomePathApi()` 判斷（platform → `/platform/merchants`，
+    merchant → `/admin`），不是永遠導去 `/admin`。
+- **新前端模組** `src/apps/monitoring/pages/platform/`（co-located 慣例跟 `admin/` 一致）：
+  - `PlatformLayout.vue`／`PlatformSidebar.vue`：重用 `admin/_components/AdminHeader.vue`／
+    `ChangePasswordModal.vue`（這兩個本質是登入者資訊列、改密碼，跟 hvac 業務無關，跨模組共用
+    比複製一份更好維護），側邊欄選單是場館管理／系統帳號／角色管理三項。進頁面時做
+    `isPlatformScopeApi()` 守衛，場館帳號手動打 `/platform/xxx` 網址會被導回 `/admin`（純 UX，
+    真正防線仍是後端 JWT 檢查）。
+  - `PlatformMerchantsPage.vue`（`/platform/merchants`）：場館清單、CRUD/子項細項模式開關
+    （表格內直接切換即送出）、新增場館、以及「管理成員」面板——這是解決雞生蛋問題的關鍵：
+    新場館剛建立時沒有任何成員，沒有人能用場館自己的 `/merchant/users` 端點（要求呼叫者已經是
+    該場館 scope）新增第一個成員，只能從平台這邊建。
+  - `PlatformSystemUsersPage.vue`（`/platform/system-users`）：平台帳號清單、新增系統帳號。
+    刻意沒做停用/刪除——後端目前也沒有對應端點，只做「能新增」這個最急迫的雞生蛋問題。
+  - `PlatformRolesPage.vue`（`/platform/roles`）：比照 `AdminRolesPage.vue` 的編輯權限面板，
+    但刻意沒有「改名」「刪除」——`PlatformEndpoints` 目前只有 `List`/`Create`/
+    `GetPermissions`/`SetPermissions`，沒有對應的 `PATCH`/`DELETE`，跟場館角色管理不對稱，
+    照實反映後端現況，不是前端漏做。
+- **後端補的端點/修正**（這次順手做，不是預先規劃好的）：
+  - `PlatformEndpoints.CreateMerchantMembership` 擴充成 find-or-create（比照
+    `MerchantEndpoints.AddUser` 的模式）：帶 `userId` 就掛既有帳號，不帶就用
+    `username`/`displayName`/`password` 建全新帳號——這是新場館能不能有第一個成員的關鍵。
+  - 新增 `GET /platform/merchants/{id}/memberships`（查某場館目前的成員，新增前要看得到
+    現有名單）與 `GET /platform/merchants/{id}/roles`（該場館可指派的角色，重用
+    `RoleRepository.ListAsync(scope, merchantId)`）。
+  - **修好一個真的資安問題**：`GET /platform/system-users` 原本直接把 `AppUser` 實體整包
+    `Results.Ok(...)`，`AppUser.PasswordHash` 是 public 屬性，等於把 PBKDF2 雜湊值＋鹽值
+    整包送進 API 回應。新增 `PlatformSystemUserRow`（不含密碼欄位，JOIN 角色名稱），跟
+    `MembershipRepository.MerchantUserRow` 是同一個理由、同一種修法。
+  - **修好兩個 scope 過濾遺漏**：`ListRoles`／`ListPermissions` 原本都不帶 `scope` 篩選，
+    會把場館範圍的自訂角色／`hvac.*`／`merchant.*` 權限也混進「平台角色管理」「平台權限目錄」，
+    改成明確帶 `RoleScope.Platform`。
+  - **修好一個真的 bug**：`merchant.code` 有唯一鍵，但 `CreateMerchant` 原本沒有先查重複就
+    直接 `INSERT`，代碼重複時 `MySqlException` 沒人接住、一路變成 500——使用者看到「系統發生
+    錯誤」，不知道是自己填了已存在的代碼。新增 `MerchantRepository.FindByCodeAsync`，
+    建立前先查一次，重複回 409 並附清楚訊息。
+- **已用真實流程驗證**（`docker compose up -d --build api` + curl，這台開發機因為
+  `127.0.0.1:8081` 被另一個無關本機專案占用，`web`/Caddy 起不來，改直接打 `api` 容器
+  `127.0.0.1:8082` 跟透過 `astro dev` 的 vite proxy 驗證，沒有用瀏覽器點過畫面——前端邏輯
+  已用 `npm run typecheck`／`npm run build` 確認無型別錯誤，但按鈕點擊互動本身沒有實際跑過，
+  這點誠實列在這裡，不要當作跟瀏覽器驗證等價）：
+  - 建立測試場館 → 切換 CRUD 開關 → 查可指派角色（正確只有 merchant-admin/editor/viewer）→
+    新增第一個成員（全新帳號）→ 查成員清單（正確顯示）→ 用新帳號實際登入確認真的能用
+    （拿到 10 項場館權限的完整 CRUD，證實 `IsFullAccess` 動態計算也套用在這個新場館上）→
+    重設該成員密碼 → 重複新增同帳號正確擋 409。
+  - 讓 `platform_admin` 也加入測試場館（模擬雙軌身分）→ 重新登入預設仍拿 platform scope →
+    `GET /auth/scopes` 正確回傳兩個選項 → `POST /auth/scopes/select` 切到 merchant scope
+    正確換發 token 且 `refreshToken` 為 `null`（驗證前端合併邏輯的必要性）。
+  - 系統帳號清單確認回應不含 `passwordHash` 欄位、新增系統帳號成功。
+  - 平台角色清單確認只有 2 筆（`platform-admin`/`platform-operator`），權限目錄確認只有 4 筆
+    `platform.*`；新增自訂平台角色 → 讀取權限（空）→ 設定權限 → 再讀一次確認存檔。
+  - 場館帳號的 token 打 `/platform/merchants` 正確 403；未帶 token 正確 401。
+  - 重複場館代碼建立正確回 409 並附訊息（`{"message":"場館代碼「test-branch」已經被使用，
+    請換一個。"}`），修復前是無訊息的 500。
+  - 驗證完清除全部測試資料（測試場館、測試成員、測試系統帳號、測試角色），只留下
+    `platform_admin` 帳號本身（密碼因驗證需要重設過，這是既有測試帳號，不是正式帳號）。
+- 改動檔案：`backend/src/Teco.Hvac.Api/Endpoints/PlatformEndpoints.cs`、
+  `backend/src/Teco.Hvac.Infrastructure/Repositories/{UserRepository,MerchantRepository}.cs`、
+  `src/apps/monitoring/pages/admin/_services/auth-service.ts`、
+  `src/apps/monitoring/pages/admin/_components/AdminHeader.vue`、
+  `src/apps/monitoring/pages/admin/auth/LoginPage.vue`、
+  新增 `src/apps/monitoring/pages/platform/**`、`src/pages/platform/*.astro`。
+- **已知缺口（誠實列出）**：
+  - 平台角色沒有改名/刪除（後端沒有對應端點）；系統帳號沒有停用/刪除；場館沒有停用/刪除
+    （`Merchant.Status` 欄位存在但沒有任何地方會把它改成 `suspended`）。
+  - 「管理成員」面板新增成員只支援建全新帳號，不支援選擇「已存在的其他帳號」（雖然後端
+    `CreateMerchantMembership` 的 API 有支援帶 `userId`）——因為沒有「搜尋既有使用者」的端點，
+    UI 上讓人手動輸入一個 `userId` 數字體驗太差，先不做。
+  - `SetRolePermissions` 對系統範本角色（`is_system=1`）的檢查是 `scope.IsPlatformAdmin`
+    （`AppUser.IsPlatformAdmin` 這個獨立的超級旗標），不是「有 `system_role_id` 指到
+    platform-admin 角色」就可以——目前包括 `platform_admin` 測試帳號在內，沒有任何帳號的
+    `is_platform_admin=1`，所以目前沒有人能透過 API 編輯 `platform-admin`/`platform-operator`
+    這兩個系統範本角色自己的權限（自訂平台角色不受此限）。這是刻意的多一層防線設計
+    （`AppUser.cs` 上的註解本來就寫「即使沒有另外指派 SystemRoleId 也視為平台管理員」，
+    是獨立於角色之外的超級旗標），不是這次的 bug，但要註記清楚：需要調整這兩個系統角色的
+    權限時，只能直接改資料庫的 `is_platform_admin` 欄位。
+  - 沒有做瀏覽器端的點擊互動驗證（見上方「已用真實流程驗證」的說明），只驗證到 API 行為與
+    typecheck/build 通過。
 
 ## 尚未實作 / 已知缺口（誠實列出，不要假裝做完了）
 
