@@ -89,7 +89,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 return Task.CompletedTask;
             },
 
-            // 比照美達特：帳號停用、密碼重設、角色/權限或場館 CRUD-子項開關變更時 AuthVersion 會遞增，
+            // 帳號停用、密碼重設、角色/權限或場館 CRUD-子項開關變更時 AuthVersion 會遞增，
             // 這裡即時比對資料庫，讓已簽發的舊 JWT 立刻失效，不用等到過期。
             OnTokenValidated = async context =>
             {

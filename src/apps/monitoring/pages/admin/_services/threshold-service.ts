@@ -1,7 +1,7 @@
 /**
  * @file threshold-service.ts
  * 東元電機智慧環境監控 - 告警門檻設定服務
- * 嚴格遵守 Metat 規範：所有對外呼叫函式一律以 *Api 結尾
+ * 嚴格遵守專案規範：所有對外呼叫函式一律以 *Api 結尾
  *
  * 打的是 backend/ 的 /api/v1/thresholds/*（見
  * backend/src/Teco.Hvac.Api/Endpoints/ThresholdEndpoints.cs）。

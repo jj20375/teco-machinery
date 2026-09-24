@@ -1,7 +1,7 @@
 namespace Teco.Hvac.Domain.Permissions;
 
 /// <summary>
-/// 依場館選擇的簡化模式展開角色的有效權限（比照美達特 CustomerRolePermissionConfigurationRules）。
+/// 依場館選擇的簡化模式展開角色的有效權限。
 /// 資料庫保留細項設定不變，這裡只影響「發 JWT 那一刻」算出的有效 grant，讓場館之後隨時能切回細項模式。
 /// </summary>
 public static class MerchantRolePermissionConfigurationRules

@@ -3,7 +3,7 @@ using System.Security.Claims;
 namespace Teco.Hvac.Api.Auth;
 
 /// <summary>
-/// 從已驗證 JWT 解析出的使用者、場館與權限範圍（比照美達特 RequestScope）。
+/// 從已驗證 JWT 解析出的使用者、場館與權限範圍。
 /// 共用檢查形式：<c>scope.Has(code, action)</c> 與 <c>scope.HasOption(code, option)</c>；
 /// 前端隱藏按鈕不能取代這裡的檢查——每個寫入端點都要再驗證一次。
 /// </summary>

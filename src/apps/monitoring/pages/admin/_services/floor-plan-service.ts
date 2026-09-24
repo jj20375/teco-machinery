@@ -1,7 +1,7 @@
 /**
  * @file floor-plan-service.ts
  * 東元電機智慧環境監控 - 樓層平面圖配置服務
- * 嚴格遵守 Metat 規範：所有對外呼叫函式一律以 *Api 結尾
+ * 嚴格遵守專案規範：所有對外呼叫函式一律以 *Api 結尾
  *
  * 打的是 backend/ 的 /api/v1/floor-plan/*（見
  * backend/src/Teco.Hvac.Api/Endpoints/FloorPlanEndpoints.cs）。

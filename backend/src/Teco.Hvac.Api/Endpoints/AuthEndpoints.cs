@@ -11,7 +11,7 @@ using Teco.Hvac.Infrastructure.Repositories;
 namespace Teco.Hvac.Api.Endpoints;
 
 /// <summary>
-/// 登入與工作範圍切換（比照美達特 IdentityEndpoints，拿掉 tenant closure table 的部分——
+/// 登入與工作範圍切換（拿掉 tenant closure table 的部分——
 /// TECO 場館是扁平的，一個 membership 就是一個場館 + 一個角色，不需要子節點繼承）。
 /// </summary>
 public static partial class AuthEndpoints

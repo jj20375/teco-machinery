@@ -64,7 +64,7 @@ CALL _seed_fcu();
 DROP PROCEDURE _seed_fcu;
 
 -- =========================================================================
--- 場館主檔、角色與權限目錄（比照美達特權限模型，見 docs/BACKEND_INTEGRATION_PLAN.md
+-- 場館主檔、角色與權限目錄（見 docs/BACKEND_INTEGRATION_PLAN.md
 -- 與 backend/README.md 的「權限機制」章節）
 -- =========================================================================
 
@@ -75,7 +75,7 @@ INSERT IGNORE INTO merchant (code, name, is_role_crud_configuration_enabled, is_
     VALUES ('default', '東元高爾夫球場', 0, 0);
 
 -- 系統內建角色。scope: 0=Platform, 1=Merchant。merchant_id 為 NULL 的 merchant-scope
--- 角色是跨場館共用的全域範本（比照美達特 customer-admin/editor/viewer 的做法），
+-- 角色是跨場館共用的全域範本（admin/editor/viewer 三層），
 -- 場館自訂角色則會有非空的 merchant_id。
 INSERT IGNORE INTO app_role (code, name, scope, merchant_id, is_system, is_full_access) VALUES
     ('platform-admin',    '平台管理員', 0, NULL, 1, 1),

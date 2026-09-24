@@ -4,7 +4,7 @@ namespace Teco.Hvac.Domain.Entities;
 public enum RoleScope { Platform, Merchant }
 
 /// <summary>
-/// 平台或場館範圍的角色定義（比照美達特 PlatformRole）。
+/// 平台或場館範圍的角色定義。
 /// </summary>
 public sealed class AppRole
 {

@@ -77,7 +77,7 @@ public static class AlarmEndpoints
             AlarmRepository repo, OperationLogger opLog, CancellationToken ct) =>
         {
             if (!RequestScope.TryRead(principal, out var scope) || scope is null) return Results.Forbid();
-            // 確認告警是 hvac.alarms 的子功能，不是 CRUD 動作——比照美達特子功能的用法。
+            // 確認告警是 hvac.alarms 的子功能，不是 CRUD 動作。
             if (!scope.Has("hvac.alarms", "update") || !scope.HasOption("hvac.alarms", "ack")) return Results.Forbid();
 
             await repo.AckAsync(id, scope.UserId, DateTimeOffset.UtcNow, body?.Memo, ct);

@@ -1,7 +1,7 @@
 namespace Teco.Hvac.Domain.Entities;
 
 /// <summary>
-/// 角色與權限的 CRUD／子功能授予關聯（比照美達特 PlatformRolePermission）。
+/// 角色與權限的 CRUD／子功能授予關聯。
 /// 資料庫永遠存細項真相；場館的 CRUD/子項簡化開關只影響「發 JWT 時怎麼展開」，不改這張表。
 /// </summary>
 public sealed class AppRolePermission

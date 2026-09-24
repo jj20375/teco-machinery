@@ -9,7 +9,7 @@ using Teco.Hvac.Domain.Permissions;
 namespace Teco.Hvac.Api.Auth;
 
 /// <summary>
-/// 簽發含 scope、AuthVersion 與資源型 grants 的 JWT（比照美達特 JwtTokenService）。
+/// 簽發含 scope、AuthVersion 與資源型 grants 的 JWT。
 /// 注意：Program.cs 的 JwtBearerOptions 必須設 MapInboundClaims=false，
 /// 否則 ASP.NET Core 預設會把 "sub" 這類短名稱改寫成長版 XML URI，RequestScope 就讀不到。
 /// </summary>

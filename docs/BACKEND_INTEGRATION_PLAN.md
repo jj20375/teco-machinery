@@ -311,7 +311,7 @@ public sealed class CollectorHostedService : BackgroundService
   → 若 Pomelo 尚未釋出對應 EF Core 10 的版本，退路是 `MySqlConnector` + Dapper（時序查詢本來就適合手寫 SQL），只在後台 CRUD 用 EF。這點要在 P0 一併確認。
 
 > 呼應 `teco-spec-review-findings` 第 2 項：**單庫即可**。
-> 這是單站自用系統，不要照搬美達特的 Platform/Customer 雙庫與經銷處/租戶語彙。
+> 這是單站自用系統，不需要 Platform/Customer 雙庫與經銷處/租戶語彙那類多租戶架構。
 
 ### 6.2 資料表
 
@@ -420,7 +420,7 @@ POST /internal/ingest                    僅限 compose 內網 + 共享 token
 }
 ```
 
-認證沿用美達特慣例：JWT access + refresh token、角色/權限授權原則（policy-based）。
+認證機制：JWT access + refresh token、角色/權限授權原則（policy-based）。
 
 ---
 

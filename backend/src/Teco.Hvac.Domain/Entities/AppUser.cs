@@ -1,7 +1,7 @@
 namespace Teco.Hvac.Domain.Entities;
 
 /// <summary>
-/// 所有登入主體統一用這張表（比照美達特：PlatformUser 一張表同時涵蓋平台帳號與商家/場館帳號）。
+/// 所有登入主體統一用這張表（一張表同時涵蓋平台帳號與商家/場館帳號）。
 /// 一個人可以同時是平台帳號（SystemRoleId 非空）與多個場館的成員（見 MerchantMembership），
 /// 但 v1 不支援個別帳號的權限覆寫——權限一律從角色算出。
 /// </summary>

@@ -1,7 +1,7 @@
 namespace Teco.Hvac.Domain.Permissions;
 
 /// <summary>
-/// 場館角色權限上限的純規則（比照美達特 CustomerRolePermissionCeilingRules）：
+/// 場館角色權限上限的純規則：
 /// 所有場館自訂角色算出的 grant，最終都不得超過 merchant-admin 實際持有的 CRUD 與子功能。
 /// 這是 JWT 簽發前的最後一道 fail-closed 防線，即使資料或邏輯有 bug 也不會讓人越權。
 /// </summary>

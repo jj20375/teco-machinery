@@ -1,9 +1,9 @@
 namespace Teco.Hvac.Domain.Entities;
 
 /// <summary>
-/// 場館／商家主檔（比照美達特 PlatformCustomer，但不做「一商家一資料庫」——
+/// 場館／商家主檔（不做「一商家一資料庫」——
 /// TECO 目前的多租戶需求是「同集團的其他場館」，用單庫 + MerchantId 範圍隔離即可，
-/// 不需要 Metat 那種跨公司資料實體隔離與 provisioning 流程）。
+/// 不需要跨公司資料實體隔離與 provisioning 流程）。
 /// </summary>
 public sealed class Merchant
 {
@@ -16,7 +16,7 @@ public sealed class Merchant
 
     /// <summary>
     /// 場館是否使用 CRUD 細項角色權限設定；停用時（false）授予資源即自動取得完整 CRUD。
-    /// 只有平台管理員能改（比照美達特 IsRoleCrudConfigurationEnabled）。
+    /// 只有平台管理員能改。
     /// </summary>
     public bool IsRoleCrudConfigurationEnabled { get; set; } = true;
 

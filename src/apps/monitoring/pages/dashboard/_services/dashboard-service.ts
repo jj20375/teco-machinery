@@ -1,7 +1,7 @@
 /**
  * @file dashboard-service.ts
  * 東元電機智慧環境監控 - 前台戰情室真實 API 服務
- * 嚴格遵守 Metat 規範：所有對外呼叫函式一律以 *Api 結尾
+ * 嚴格遵守專案規範：所有對外呼叫函式一律以 *Api 結尾
  *
  * 前台頁面（`/`）刻意設計成不用登入的大廳螢幕，打的是 backend/ 的 /api/v1/public/*
  * （不掛 JWT 驗證，見 PublicEndpoints.cs）——不是後台監控中心總覽頁用的 /api/v1/{chillers,fcus,alarms}。

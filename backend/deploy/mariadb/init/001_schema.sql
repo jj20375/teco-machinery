@@ -1,5 +1,5 @@
 -- 東元智慧環境監控 — MariaDB Schema
--- 單一自用系統，單庫（結案 spec 審查第 2 項：不照搬美達特 Platform/Customer 雙庫）。
+-- 單一自用系統，單庫（結案 spec 審查第 2 項：不做 Platform/Customer 雙庫）。
 -- 分割表使用 RANGE(TO_DAYS(ts))，清除用 DROP PARTITION（零成本），初期先建立涵蓋
 -- 未來 24 個月的分割區，之後由排程（見 collector 的每日維護工作）自動增補與清除。
 
@@ -195,13 +195,13 @@ CREATE TABLE IF NOT EXISTS rollup_fcu_1h (
 ) ENGINE=InnoDB;
 
 -- =========================================================================
--- 後台使用者與權限（比照美達特權限模型：Role/Permission/RolePermission 三層
--- CRUD＋子功能，PlatformUser 風格的雙軌帳號，Merchant 級 CRUD/子項簡化開關）
+-- 後台使用者與權限（Role/Permission/RolePermission 三層
+-- CRUD＋子功能，雙軌帳號設計，Merchant 級 CRUD/子項簡化開關）
 -- 補 spec §陸 ERD 缺項（審查第 3 項）。
 -- =========================================================================
 
 -- 場館／商家主檔。TECO 的多租戶需求是「同集團其他場館」，用本表 + merchant_id
--- 範圍隔離即可，不做美達特那種「一商家一資料庫」的實體隔離與 provisioning。
+-- 範圍隔離即可，不做「一商家一資料庫」的實體隔離與 provisioning。
 CREATE TABLE IF NOT EXISTS merchant (
     id                              INT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
     code                            VARCHAR(32)  NOT NULL,
@@ -299,7 +299,7 @@ CREATE TABLE IF NOT EXISTS app_role_permission (
     FOREIGN KEY (permission_id) REFERENCES app_permission(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
--- 使用者在單一場館的角色指派。TECO 場館是扁平的，不像美達特有 tenant closure table 要繼承。
+-- 使用者在單一場館的角色指派。TECO 場館是扁平的，沒有 tenant closure table 要繼承。
 CREATE TABLE IF NOT EXISTS merchant_membership (
     id              INT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
     merchant_id     INT UNSIGNED NOT NULL,

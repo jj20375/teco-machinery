@@ -1,7 +1,7 @@
 /**
  * @file hvac-service.ts
  * 東元電機智慧環境監控 - 冰水主機/FCU/告警即時資料服務
- * 嚴格遵守 Metat 規範：所有對外呼叫函式一律以 *Api 結尾
+ * 嚴格遵守專案規範：所有對外呼叫函式一律以 *Api 結尾
  *
  * 打的是 backend/ 的 /api/v1/{chillers,fcus,alarms}（見
  * backend/src/Teco.Hvac.Api/Endpoints/{Chiller,Fcu,Alarm}Endpoints.cs）。

@@ -1,7 +1,7 @@
 /**
  * @file auth-service.ts
  * 東元電機智慧環境監控 - 後台登入與工作階段服務
- * 嚴格遵守 Metat 規範：所有對外呼叫函式一律以 *Api 結尾
+ * 嚴格遵守專案規範：所有對外呼叫函式一律以 *Api 結尾
  *
  * 打的是 backend/ 那套真實 API（見 ../../../../../../backend/README.md 的「權限機制」章節），
  * 不是這個檔案旁邊的 admin-mock-service.ts。透過 Caddy 反代，相對路徑 /api/v1/... 在正式部署

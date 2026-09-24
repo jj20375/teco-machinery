@@ -7,8 +7,8 @@ using Teco.Hvac.Infrastructure.Repositories;
 namespace Teco.Hvac.Api.Endpoints;
 
 /// <summary>
-/// 平台管理端點：只有 platform scope 且持有對應 platform.* 權限的帳號能呼叫
-/// （比照美達特 /api/platform/*）。場館自己的日常管理（自家帳號/角色）走 MerchantEndpoints。
+/// 平台管理端點：只有 platform scope 且持有對應 platform.* 權限的帳號能呼叫。
+/// 場館自己的日常管理（自家帳號/角色）走 MerchantEndpoints。
 /// </summary>
 public static class PlatformEndpoints
 {
@@ -212,7 +212,7 @@ public static class PlatformEndpoints
     }
 
     /// <summary>
-    /// 系統內建角色僅 platform-admin 可修改（比照美達特：IsSystem 角色鎖定，只有平台管理員能動）。
+    /// 系統內建角色僅 platform-admin 可修改（IsSystem 角色鎖定，只有平台管理員能動）。
     /// </summary>
     private static async Task<IResult> SetRolePermissions(
         ClaimsPrincipal principal, int roleId, SetRolePermissionRequest[] requests, RoleRepository repo,

@@ -1,7 +1,7 @@
 namespace Teco.Hvac.Domain.Entities;
 
 /// <summary>
-/// 資源、CRUD 與子功能組成的權限目錄項目（比照美達特 PlatformPermission）。
+/// 資源、CRUD 與子功能組成的權限目錄項目。
 /// CRUD 由 AppRolePermission 的獨立欄位表示，不併入 Code。
 /// </summary>
 public sealed class AppPermission
