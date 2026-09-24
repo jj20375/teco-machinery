@@ -199,6 +199,19 @@ function isOptionAllowedByCeiling(code: string, key: string): boolean {
   return ceilingByCode.value[code]?.options.includes(key) ?? false;
 }
 
+// hvac.overview／hvac.reports 只控制側邊欄選單看不看得到（見 AdminSidebar.vue 的 route_path／
+// is_menu），不是資料權限本身——監控中心／各張報表實際讀的是冰水主機/FCU 設定/告警這三個資源
+// 權限（見 AdminOverviewPage.vue、AdminChillerReportPage.vue 等頁面的 403 錯誤訊息）。這兩層
+// 完全獨立、不會互相連動勾選，只勾「監控中心」或「報表」而不勾對應資源權限，畫面會變成選單
+// 進得去、內容卻整頁顯示沒有權限——這裡加提示文字，讓管理員勾選時就看得到這個依賴關係。
+const PERMISSION_DEPENDENCY_HINTS: Record<string, string> = {
+  'hvac.overview': '只控制「監控中心」選單看不看得到；頁面要能顯示資料，還要同時勾選下面的「冰水主機」「FCU 設定」讀取。',
+  'hvac.reports': '只控制「統計報表」選單看不看得到；個別報表要能顯示資料，還要同時勾選對應的「冰水主機」「FCU 設定」「告警」讀取。',
+};
+function permissionDependencyHint(code: string): string {
+  return PERMISSION_DEPENDENCY_HINTS[code] ?? '';
+}
+
 const isSystemRole = computed(() => activeRole.value?.isSystem ?? false);
 
 async function openPanel(role: MerchantRoleOption) {
@@ -352,6 +365,9 @@ async function savePermissions() {
                   </label>
                 </div>
               </div>
+              <p v-if="permissionDependencyHint(item.code)" class="mt-1 text-xs text-[#94A3B8]">
+                {{ permissionDependencyHint(item.code) }}
+              </p>
               <div v-if="parseSubFeatures(item.subFeaturesJson).length > 0" class="flex flex-wrap gap-3 mt-2 pl-1">
                 <label
                   v-for="opt in parseSubFeatures(item.subFeaturesJson)"
