@@ -3,22 +3,45 @@ using Teco.Hvac.Domain.Entities;
 
 namespace Teco.Hvac.Infrastructure.Repositories;
 
+/// <summary>
+/// 平台系統帳號清單專用（`GET /api/v1/platform/system-users`）。刻意不重用 AppUser 實體直接
+/// 序列化——AppUser.PasswordHash 是 public 屬性，直接 Results.Ok(AppUser 清單) 會把 PBKDF2
+/// 雜湊值＋鹽值整包送進 API 回應，即使雜湊過也不該讓前端拿到。跟 MembershipRepository 的
+/// MerchantUserRow 是同一個理由、同一種修法。
+/// </summary>
+public sealed class PlatformSystemUserRow
+{
+    public int Id { get; init; }
+    public required string Username { get; init; }
+    public required string DisplayName { get; init; }
+    public string? Email { get; init; }
+    public bool IsActive { get; init; }
+    public int? SystemRoleId { get; init; }
+    public string? RoleName { get; init; }
+    public bool IsPlatformAdmin { get; init; }
+    public DateTimeOffset? LastLoginAt { get; init; }
+    public DateTimeOffset? LockedUntil { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+}
+
 public sealed class UserRepository(TecoDbConnectionFactory factory)
 {
-    /// <summary>平台系統帳號（system_role_id 非空）清單，不含場館成員帳號。</summary>
-    public async Task<IReadOnlyList<AppUser>> ListSystemUsersAsync(CancellationToken ct = default)
+    /// <summary>平台系統帳號（system_role_id 非空或 is_platform_admin=1）清單，不含場館成員帳號。</summary>
+    public async Task<IReadOnlyList<PlatformSystemUserRow>> ListSystemUsersAsync(CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
-        var rows = await conn.QueryAsync<UserRow>(
+        var rows = await conn.QueryAsync<PlatformSystemUserRow>(
             """
-            SELECT id, username, display_name AS DisplayName, email AS Email, password_hash AS PasswordHash, is_active AS IsActive,
-                   system_role_id AS SystemRoleId, is_platform_admin AS IsPlatformAdmin, auth_version AS AuthVersion,
-                   failed_login_count AS FailedLoginCount, locked_until AS LockedUntil, last_login_at AS LastLoginAt,
-                   created_at AS CreatedAt
-            FROM app_user WHERE system_role_id IS NOT NULL OR is_platform_admin = 1
-            ORDER BY created_at
+            SELECT u.id AS Id, u.username AS Username, u.display_name AS DisplayName, u.email AS Email,
+                   u.is_active AS IsActive, u.system_role_id AS SystemRoleId, r.name AS RoleName,
+                   u.is_platform_admin AS IsPlatformAdmin, u.last_login_at AS LastLoginAt,
+                   u.locked_until AS LockedUntil, u.created_at AS CreatedAt
+            FROM app_user u
+            LEFT JOIN app_role r ON r.id = u.system_role_id
+            WHERE u.system_role_id IS NOT NULL OR u.is_platform_admin = 1
+            ORDER BY u.created_at
             """);
-        return rows.Select(ToEntity).ToList();
+        return rows.ToList();
     }
 
     public async Task<int> CreateAsync(AppUser user, CancellationToken ct = default)

@@ -19,7 +19,9 @@ public static class PlatformEndpoints
         group.MapGet("/merchants", ListMerchants);
         group.MapPost("/merchants", CreateMerchant);
         group.MapPatch("/merchants/{merchantId:int}", UpdateMerchant);
+        group.MapGet("/merchants/{merchantId:int}/memberships", ListMerchantMemberships);
         group.MapPost("/merchants/{merchantId:int}/memberships", CreateMerchantMembership);
+        group.MapGet("/merchants/{merchantId:int}/roles", ListMerchantAssignableRoles);
         group.MapPost("/merchants/{merchantId:int}/memberships/{membershipId:int}/reset-password", ResetMembershipPassword);
 
         group.MapGet("/system-users", ListSystemUsers);
@@ -48,13 +50,26 @@ public static class PlatformEndpoints
         return Results.Ok(await repo.ListAsync(ct));
     }
 
+    /// <summary>
+    /// 這是業主驗收平台管理介面時抓到的真的 bug（2026-09-24）：`merchant.code` 有唯一鍵，
+    /// 建立場館前沒有先查重複就直接 INSERT，代碼重複時 MySqlException 沒有任何地方接住，
+    /// 一路變成 500——使用者看到的是「系統發生錯誤」，不知道是自己填了已存在的代碼。
+    /// 比照 MerchantEndpoints.AddUser 對帳號重複的處理方式，先查一次再決定要不要 INSERT。
+    /// </summary>
     private static async Task<IResult> CreateMerchant(
         ClaimsPrincipal principal, CreateMerchantRequest request, MerchantRepository repo, OperationLogger opLog, CancellationToken ct)
     {
         if (!RequirePlatform(principal, "platform.merchants", "create", out var scope)) return Results.Forbid();
+
+        var trimmedCode = request.Code.Trim();
+        if (await repo.FindByCodeAsync(trimmedCode, ct) is not null)
+        {
+            return Results.Conflict(new { message = $"場館代碼「{trimmedCode}」已經被使用，請換一個。" });
+        }
+
         var merchant = new Merchant
         {
-            Code = request.Code.Trim(),
+            Code = trimmedCode,
             Name = request.Name.Trim(),
             IsRoleCrudConfigurationEnabled = request.IsRoleCrudConfigurationEnabled ?? true,
             IsRoleOptionConfigurationEnabled = request.IsRoleOptionConfigurationEnabled ?? true,
@@ -94,6 +109,40 @@ public static class PlatformEndpoints
         return Results.Ok(merchant);
     }
 
+    /// <summary>
+    /// 幫場館加成員——支援兩種情境，跟 MerchantEndpoints.AddUser（場館自己新增成員）同一套
+    /// find-or-create 邏輯：<c>request.UserId</c> 有值就掛既有帳號（例如同一人身兼多個場館）；
+    /// 沒有就用 Username/DisplayName/Password 建一個全新帳號。**這是新場館能不能有第一個
+    /// 管理員帳號的關鍵入口**：新場館還沒有任何成員，不可能先登入那個場館的 scope 去呼叫
+    /// MerchantEndpoints.AddUser（那支端點要求呼叫者已經是該場館的 merchant scope token），
+    /// 所以「建立第一個成員」只能從平台這邊、用全新帳號的方式完成。
+    /// </summary>
+    /// <summary>
+    /// 平台管理員檢視某場館目前的成員清單——新增成員前要先看得到現有名單（避免重複加入、
+    /// 判斷這個場館還有沒有管理員），且跟場館自己 GET /merchant/users 用同一份
+    /// MembershipRepository.ListForMerchantAsync，不重寫第二份查詢。
+    /// </summary>
+    private static async Task<IResult> ListMerchantMemberships(
+        ClaimsPrincipal principal, int merchantId, MerchantRepository merchants, MembershipRepository memberships, CancellationToken ct)
+    {
+        if (!RequirePlatform(principal, "platform.merchants", "read", out _)) return Results.Forbid();
+        if (await merchants.FindByIdAsync(merchantId, ct) is null) return Results.NotFound();
+        return Results.Ok(await memberships.ListForMerchantAsync(merchantId, ct));
+    }
+
+    /// <summary>
+    /// 新增成員時要選角色，這支回傳「這個場館可指派的角色」（系統範本 merchant-admin/editor/
+    /// viewer ＋這個場館自己的自訂角色），跟 MerchantEndpoints 自己那支 GET /merchant/roles
+    /// 概念一樣，差別只在這裡是平台管理員用 URL 上的 merchantId、不是從呼叫者自己的 JWT 拿。
+    /// </summary>
+    private static async Task<IResult> ListMerchantAssignableRoles(
+        ClaimsPrincipal principal, int merchantId, MerchantRepository merchants, RoleRepository roles, CancellationToken ct)
+    {
+        if (!RequirePlatform(principal, "platform.merchants", "read", out _)) return Results.Forbid();
+        if (await merchants.FindByIdAsync(merchantId, ct) is null) return Results.NotFound();
+        return Results.Ok(await roles.ListAsync(RoleScope.Merchant, merchantId, ct));
+    }
+
     private static async Task<IResult> CreateMerchantMembership(
         ClaimsPrincipal principal, int merchantId, CreateMembershipRequest request,
         MerchantRepository merchants, MembershipRepository memberships, RoleRepository roles, UserRepository users,
@@ -106,12 +155,46 @@ public static class PlatformEndpoints
         var role = await roles.FindByIdAsync(request.RoleId, ct);
         if (role is null || role.Scope != RoleScope.Merchant) return Results.BadRequest(new { message = "角色不存在或不是場館範圍角色。" });
 
-        var id = await memberships.CreateAsync(new MerchantMembership { MerchantId = merchantId, UserId = request.UserId, RoleId = request.RoleId }, ct);
+        int userId;
+        string targetName;
+        if (request.UserId is int existingUserId)
+        {
+            var existingUser = await users.FindByIdAsync(existingUserId, ct);
+            if (existingUser is null) return Results.BadRequest(new { message = "指定的使用者不存在。" });
+            var existingMembership = await memberships.FindAsync(merchantId, existingUserId, ct);
+            if (existingMembership is not null) return Results.Conflict(new { message = "此帳號已經是本場館的成員。" });
+            userId = existingUserId;
+            targetName = existingUser.DisplayName;
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.DisplayName))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["username"] = ["沒有指定既有帳號時，帳號與使用者名稱為必填。"] });
+            }
+            if (await users.FindByUsernameAsync(request.Username.Trim(), ct) is not null)
+            {
+                return Results.Conflict(new { message = "此帳號名稱已被使用。" });
+            }
+            if (string.IsNullOrWhiteSpace(request.Password))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["password"] = ["新建帳號必須提供初始密碼。"] });
+            }
+            userId = await users.CreateAsync(new AppUser
+            {
+                Username = request.Username.Trim(),
+                DisplayName = request.DisplayName.Trim(),
+                Email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim(),
+                PasswordHash = PasswordHasher.Hash(request.Password!),
+            }, ct);
+            targetName = request.DisplayName.Trim();
+        }
 
-        var targetUser = await users.FindByIdAsync(request.UserId, ct);
+        var id = await memberships.CreateAsync(new MerchantMembership { MerchantId = merchantId, UserId = userId, RoleId = request.RoleId }, ct);
+
         await opLog.LogAsync(scope!, "platform.membership.create", "merchant_membership", id.ToString(),
-            $"將使用者「{targetUser?.DisplayName ?? request.UserId.ToString()}」加入商家「{merchant.Name}」，角色：{role.Name}",
-            after: new { MerchantId = merchantId, request.UserId, request.RoleId }, ct: ct);
+            $"將使用者「{targetName}」加入商家「{merchant.Name}」，角色：{role.Name}",
+            after: new { MerchantId = merchantId, UserId = userId, request.RoleId }, ct: ct);
         return Results.Created($"/api/v1/platform/merchants/{merchantId}/memberships/{id}", new { id });
     }
 
@@ -184,10 +267,15 @@ public static class PlatformEndpoints
 
     // ---- 角色 ----
 
+    /// <summary>
+    /// 只回傳平台範圍角色（platform-admin/platform-operator 這類）。原本不帶 scope 篩選會把
+    /// 系統裡每一個場館的自訂角色都混進來——這支是「平台角色管理」頁用的，不該連別人場館的
+    /// 角色清單都看得到，語意上也不對（平台角色管理管的是 platform.* 這層，不是場館內部角色）。
+    /// </summary>
     private static async Task<IResult> ListRoles(ClaimsPrincipal principal, RoleRepository repo, CancellationToken ct)
     {
         if (!RequirePlatform(principal, "platform.roles", "read", out _)) return Results.Forbid();
-        return Results.Ok(await repo.ListAsync(ct: ct));
+        return Results.Ok(await repo.ListAsync(RoleScope.Platform, ct: ct));
     }
 
     private static async Task<IResult> CreateRole(
@@ -238,15 +326,21 @@ public static class PlatformEndpoints
 
     // ---- 權限目錄 ----
 
+    /// <summary>
+    /// 只回傳平台範圍權限目錄（platform.* 這 4 項）。原本不帶 scope 篩選會連場館範圍的
+    /// hvac.*/merchant.* 權限都混進來——跟 ListRoles 同一類問題（見該處註解），這支是畫平台
+    /// 角色編輯面板勾選格用的，混進場館權限會讓平台角色出現「冰水主機」「FCU 設備」這種語意
+    /// 不通的勾選項。
+    /// </summary>
     private static async Task<IResult> ListPermissions(ClaimsPrincipal principal, PermissionRepository repo, CancellationToken ct)
     {
         if (!RequirePlatform(principal, "platform.permissions", "read", out _)) return Results.Forbid();
-        return Results.Ok(await repo.ListAsync(ct: ct));
+        return Results.Ok(await repo.ListAsync(RoleScope.Platform, ct));
     }
 
     public sealed record CreateMerchantRequest(string Code, string Name, bool? IsRoleCrudConfigurationEnabled, bool? IsRoleOptionConfigurationEnabled);
     public sealed record UpdateMerchantRequest(bool? IsRoleCrudConfigurationEnabled, bool? IsRoleOptionConfigurationEnabled);
-    public sealed record CreateMembershipRequest(int UserId, int RoleId);
+    public sealed record CreateMembershipRequest(int? UserId, string? Username, string? DisplayName, string? Email, string? Password, int RoleId);
     public sealed record CreateSystemUserRequest(string Username, string DisplayName, string Password, int SystemRoleId);
     public sealed record CreateRoleRequest(string Code, string Name, RoleScope Scope, int? MerchantId);
     public sealed record SetRolePermissionRequest(string PermissionCode, bool PerCreate, bool PerRead, bool PerUpdate, bool PerDelete, string[] Options);

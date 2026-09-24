@@ -33,6 +33,20 @@ public sealed class MerchantRepository(TecoDbConnectionFactory factory)
         return row is null ? null : ToEntity(row);
     }
 
+    public async Task<Merchant?> FindByCodeAsync(string code, CancellationToken ct = default)
+    {
+        using var conn = await factory.CreateOpenAsync(ct);
+        var row = await conn.QuerySingleOrDefaultAsync<MerchantRow>(
+            """
+            SELECT id, code, name, status,
+                   is_role_crud_configuration_enabled AS IsRoleCrudConfigurationEnabled,
+                   is_role_option_configuration_enabled AS IsRoleOptionConfigurationEnabled,
+                   created_at AS CreatedAt, updated_at AS UpdatedAt
+            FROM merchant WHERE code = @code
+            """, new { code });
+        return row is null ? null : ToEntity(row);
+    }
+
     public async Task<int> CreateAsync(Merchant merchant, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
