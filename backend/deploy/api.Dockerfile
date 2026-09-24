@@ -3,13 +3,21 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 COPY global.json Directory.Build.props ./
-COPY src/Teco.Hvac.Contracts/ ./src/Teco.Hvac.Contracts/
-COPY src/Teco.Hvac.Domain/ ./src/Teco.Hvac.Domain/
-COPY src/Teco.Hvac.Infrastructure/ ./src/Teco.Hvac.Infrastructure/
-COPY src/Teco.Hvac.Api/ ./src/Teco.Hvac.Api/
+# 先只複製 .csproj 做 restore，跟下面複製完整原始碼的 layer 分開——這樣改 .cs 檔不會讓
+# restore（連網解析 NuGet）的 cache 失效，只有動到套件相依時才會重新 restore。
+COPY src/Teco.Hvac.Contracts/*.csproj src/Teco.Hvac.Contracts/
+COPY src/Teco.Hvac.Domain/*.csproj src/Teco.Hvac.Domain/
+COPY src/Teco.Hvac.Infrastructure/*.csproj src/Teco.Hvac.Infrastructure/
+COPY src/Teco.Hvac.Api/*.csproj src/Teco.Hvac.Api/
+RUN --mount=type=cache,target=/root/.nuget/packages,sharing=locked \
+    dotnet restore src/Teco.Hvac.Api/Teco.Hvac.Api.csproj
 
-RUN dotnet restore src/Teco.Hvac.Api/Teco.Hvac.Api.csproj
-RUN dotnet publish src/Teco.Hvac.Api/Teco.Hvac.Api.csproj \
+COPY src/Teco.Hvac.Contracts/ src/Teco.Hvac.Contracts/
+COPY src/Teco.Hvac.Domain/ src/Teco.Hvac.Domain/
+COPY src/Teco.Hvac.Infrastructure/ src/Teco.Hvac.Infrastructure/
+COPY src/Teco.Hvac.Api/ src/Teco.Hvac.Api/
+RUN --mount=type=cache,target=/root/.nuget/packages,sharing=locked \
+    dotnet publish src/Teco.Hvac.Api/Teco.Hvac.Api.csproj \
     -c Release -o /app --no-self-contained
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0

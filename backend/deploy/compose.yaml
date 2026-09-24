@@ -104,7 +104,9 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ../../dist:/srv/dist:ro   # 前端 Astro build 輸出在專案根目錄，不是 backend/ 底下
       - caddy-data:/data
-    depends_on: [api]
+    depends_on:
+      api:
+        condition: service_healthy
     networks: [teco-internal]
 
 networks:
