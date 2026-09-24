@@ -2,10 +2,10 @@
 
 本檔案是這個 repo 的專案層級規則。修改程式碼前，先確認 [backend/README.md](backend/README.md)（後端現況與已驗證項目）與 [docs/BACKEND_INTEGRATION_PLAN.md](docs/BACKEND_INTEGRATION_PLAN.md)（完整規劃）。
 
-> 本檔案的部分規則是從 `美達特官網`（Metat Platform）與 `義享樂漾叫號系統與電視牆` 兩個專案的
-> `AGENTS.md` / `.agent/rules/` 篩選並改寫而來，只保留跟本專案架構相容的部分——例如兩邊都
-> 用 EF Core、義享樂漾是雙後端遷移、美達特是多租戶雙資料庫，這些跟本專案（單一 Dapper 後端、
-> 單一 MariaDB、單一場館為主）衝突的部分**沒有**照搬，而是改寫成本專案自己的版本。
+> 本檔案的部分規則是從 `義享樂漾叫號系統與電視牆` 專案的 `AGENTS.md` / `.agent/rules/`
+> 篩選並改寫而來，只保留跟本專案架構相容的部分——例如原專案是 EF Core + 雙後端遷移，
+> 這些跟本專案（單一 Dapper 後端、單一 MariaDB、單一場館為主）衝突的部分**沒有**照搬，
+> 而是改寫成本專案自己的版本。
 
 ## 專案邊界
 
@@ -18,7 +18,7 @@
 
 1. **資料存取一律用 Dapper + 參數化 SQL，這是既定架構決策，不是例外。**
    因為 Pomelo 的 EF Core MySQL provider 目前只支援到 EF Core 9.x，跟 .NET 10/EF Core 10 不相容，
-   所以本專案不用 EF Core。這點跟美達特／義享樂漾「業務邏輯禁止寫原生 SQL、一律 EF Core／LINQ」
+   所以本專案不用 EF Core。這點跟義享樂漾「業務邏輯禁止寫原生 SQL、一律 EF Core／LINQ」
    剛好相反，**不要把那條規則套用到這個 repo**。
    - 一律用 Dapper 的參數化查詢（`@paramName`），**禁止字串拼接 SQL**（SQL injection 風險），這點跟來源專案的精神一致，只是換了工具。
    - Dapper 的 record-mapping 遇到原生 ADO.NET 型別（`uint`/`sbyte`/`DateTime`）會失敗，
@@ -51,15 +51,15 @@
      整個公開大屏直接壞掉。
 
 3. **前端：頁面專屬的元件/服務就近存放，不散落在全域目錄。**
-   （沿用美達特 `frontend-rules.md` 的 co-located 慣例，本專案已經照這個結構在做）
+   （沿用先前專案驗證過的 co-located 慣例，本專案已經照這個結構在做）
    - 頁面元件：`src/apps/monitoring/pages/<module>/_components/`
    - 頁面 API 服務：`src/apps/monitoring/pages/<module>/_services/<module>-service.ts`
    - 底線前綴（`_components`／`_services`）是為了避免 Astro 把資料夾誤判成路由。
    - 只有跨頁共用的元件才放到 `pages/admin/_components/` 以外的共用位置。
 
 4. **所有對外打 API 的 service 函式一律以 `Api` 結尾。**
-   例如 `loginApi`、`listMerchantUsersApi`、`resetMerchantUserPasswordApi`。這是既有慣例
-   （沿用美達特規範），讓呼叫端一眼就能分辨這是不是網路請求。
+   例如 `loginApi`、`listMerchantUsersApi`、`resetMerchantUserPasswordApi`。這是既有慣例，
+   讓呼叫端一眼就能分辨這是不是網路請求。
 
 5. **Astro dev 環境要打真後端時，走 `astro.config.mjs` 的 vite proxy，不要在程式碼裡寫死 base URL。**
    正式部署（docker compose 的 `web` 服務）靠 Caddy 反代同源，相對路徑 `/api/v1/...` 就能打到；
@@ -81,7 +81,7 @@
      `v-for="(a, b) in someObject"` 都要先確認 `a` 是值、`b` 才是鍵，不要憑變數名稱直覺猜。
 
 6. **註解只寫「為什麼」，不要每行機械補註解。**
-   （採用美達特 `backend-rules.md` 的版本，**不採用**義享樂漾「每個宣告都要中文註解、不可有無註解的裸代碼」那條——那條規則是為了它自己的多 AI 工具協作情境設計的，套到這裡只會製造雜訊。）
+   （**不採用**義享樂漾「每個宣告都要中文註解、不可有無註解的裸代碼」那條——那條規則是為了它自己的多 AI 工具協作情境設計的，套到這裡只會製造雜訊。）
    - 只在隱藏限制、不明顯的業務決策、繞過某個 bug 的 workaround、會讓人意外的行為時才寫註解。
    - 如果拿掉這行註解不會讓後面的人看不懂，就不要寫。
 
@@ -156,11 +156,21 @@
   認證端點——新增涉及即時監控資料的功能時，要意識到有兩組平行端點（認證版 + 公開版），
   公開版沒有 JWT 檢查，只能放不涉及使用者/密碼/操作紀錄等機敏資訊的唯讀資料。
 - P6（Hyper-V VM 現場部署）的腳本寫好了但沒有在真正的現場主機上跑過，因為沒有那台主機的存取權限。
+- **角色清單查詢一律要排除 `member-%` 個人專屬角色**（`WHERE code NOT LIKE 'member-%'`）：
+  「編輯成員」六個核取方塊面板會自動幫每個成員建立一個 `Code = "member-{membershipId}"`、
+  `Name = "自訂權限"` 的專屬角色，這是內部實作細節，不該出現在給人挑選的一般角色下拉選單裡。
+  2026-09-23 修過的真實 bug：`RoleRepository.ListAsync` 漏了這條 WHERE，導致多個成員都設定過
+  個人權限後，新增使用者的角色選單出現好幾筆同名「自訂權限」。日後任何新寫的角色清單查詢
+  都要記得加這條過濾，不要只複製舊的 `ListAsync` 就以為已經處理過。
 
 ## 驗證最低要求
 
 - 後端變更：`dotnet build backend/Teco.Hvac.slnx`；有跑得動的環境時額外用
   `backend/deploy/test-permissions.sh` 驗證權限機制、`docker compose ps` 確認全部 healthy。
+  **API／Collector 實際跑在 `backend/deploy/compose.yaml` 的 docker 容器裡，不是本機
+  `dotnet run`**——`dotnet build` 只驗證編譯得過，容器裡的既有 image 不會自動套用新程式碼，
+  要瀏覽器驗證或呼叫真的 API 之前必須先 `docker compose up -d --build <service>` 重新建置、
+  重啟容器，否則會出現「明明改了程式碼，行為卻還是舊的」的假象。
 - 前端變更：`npm run typecheck`（`astro check`）與 `npm run build`。
 - Docker/deploy 相關變更：`docker compose config` 確認語法，並實際 `up` 後看 healthcheck。
 - 涉及使用者可操作流程（登入、權限、密碼）的改動，用瀏覽器實際跑一次，不能只靠 build/typecheck 過關就回報完成。
@@ -168,7 +178,7 @@
 ## 明確不採用的來源規則（附原因，避免以後又誤套）
 
 - ~~業務查詢禁止原生 SQL、一律 EF Core/LINQ~~ — 本專案用 Dapper，見上方原則 1。
-- ~~每個宣告都要有中文語意註解，不可有無註解裸代碼~~ — 只採用美達特「只註解不明顯決策」那版，見原則 6。
+- ~~每個宣告都要有中文語意註解，不可有無註解裸代碼~~ — 本專案只採用「只註解不明顯決策」那個版本，見原則 6。
 - ~~多租戶雙資料庫（Platform DB／Customer DB 分離）~~ — 本專案單一 MariaDB，資料規模與租戶數不需要這種切分。
 - ~~Node/ASP 雙後端相容路由、SSE/SignalR 語意統一 adapter~~ — 本專案只有一個 ASP.NET Core 後端，沒有遷移期雙軌問題。
 - ~~CMS／public-site 分離、multi-site single-port 部署~~ — 本專案是單一場館的內部監控系統，不是多站台 CMS，不需要這套路由策略。

@@ -3,10 +3,23 @@
 
 ---
 
+> ⚠️ **本文件為專案初期依 Figma 設計稿撰寫的規格書，多處內容已被後續技術驗證推翻，不再是目前的
+> 架構現況**，包括但不限於：雙資料庫架構（實際是單一 MariaDB）、FCU 設定溫度／溫差公式（供應商
+> SDK 沒有設定溫度，實際改用絕對室溫上下限）、水流量欄位（供應商 SDK 沒有這個量測值，已刻意
+> 拿掉）、固定密碼 `12345@ABC`（實際是隨機產生的臨時密碼）、資料庫 ERD 與前後端資料夾結構
+> （實際結構見 `CLAUDE.md`「專案邊界」）。**目前唯一權威來源是
+> [`backend/README.md`](../backend/README.md) 與 [`docs/BACKEND_INTEGRATION_PLAN.md`](BACKEND_INTEGRATION_PLAN.md)**，
+> 本文件僅保留供追溯 Figma 原始設計意圖與 UI 文案之用，內容如與上述兩份文件衝突，一律以
+> 上述兩份文件為準。
+
+---
+
 ## 壹、系統願景與架構定位
 
 本系統為「東元電機智慧環境監控」專用之工業物聯網 (IIoT) 與 HVAC 暖通空調節能監控戰情室平台。
-系統依據 Figma 設計規範（File Key: `rkUjbLhosU30ba9hoBog18`）與美達特（Metat Platform）工程標準建構，提供高可靠性之雙資料庫架構、多層級廠區/樓層空間拓撲、設備即時監控、獨立閾值判定、報表分析與使用者權限管理。
+系統依據 Figma 設計規範（File Key: `rkUjbLhosU30ba9hoBog18`）建構，提供多層級廠區/樓層空間拓撲、
+設備即時監控、獨立閾值判定、報表分析與使用者權限管理。**下方架構圖為初期規劃的雙資料庫構想，
+實際實作是單一 MariaDB（原因見 `docs/BACKEND_INTEGRATION_PLAN.md` §6.1），僅供參考原始設計意圖。**
 
 ```mermaid
 flowchart TD
@@ -27,10 +40,10 @@ flowchart TD
         FCUReport[FCU 運轉日/週報表]
         AlarmReport[異常告警歷史報表]
         OpLog[操作日誌 Audit Log]
-        UserManager[使用者管理 & 密碼重設: 12345@ABC]
+        UserManager[使用者管理 & 密碼重設]
     end
 
-    subgraph 資料庫與邊界 [Metat Dual-DB Architecture]
+    subgraph 資料庫與邊界 [初期規劃構想，實際為單一 MariaDB]
         PlatformDB[(Platform DB: 帳號/角色/權限/Audit)]
         CustomerDB[(Customer DB: 廠區樓層/設備台帳/時序數據/告警)]
     end

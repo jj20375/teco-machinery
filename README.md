@@ -1,6 +1,8 @@
 # 東元電機智慧環境監控 (TECO Smart HVAC Environmental Monitoring)
 
-本專案為東元電機工業環境監控與 HVAC 暖通空調節能戰情室系統。
+本專案為東元電機工業環境監控與 HVAC 暖通空調節能戰情室系統。本檔案只說明前端（空間設備配置、
+CAD 底圖產生流程）；完整代理人規則見 [`CLAUDE.md`](CLAUDE.md)，後端現況與已驗證項目見
+[`backend/README.md`](backend/README.md)，整體規劃見 [`docs/BACKEND_INTEGRATION_PLAN.md`](docs/BACKEND_INTEGRATION_PLAN.md)。
 
 ## 空間設備配置（B1／B2）
 
@@ -13,8 +15,15 @@
 | B1 | 72 | `B1-Z01`～`B1-Z72` | 編號依圖面位置自動給（由上而下、由左而右） |
 | B2 | 41 | `B2-E01`…、`N`、`W`、`C`、`S` | 沿用設計稿紅框 id，字母代表方位（E東／N北／W西／C中／S南） |
 
-- 正常設備為藍色，異常或待保養為紅色，離線或停止為灰色；設備資料目前來自既有模擬服務。
-- 配置儲存於同一瀏覽器、同一網站來源的 localStorage（`teco-floor-plan-b1-v3` / `teco-floor-plan-b2-v4`），前台戰情室與後台總覽會同步已儲存的配置。尚未串接後端或跨裝置共用。讀取失敗會保留原始儲存資料並暫停編輯。
+- 正常設備為藍色，異常或待保養為紅色，離線或停止為灰色；設備資料與即時狀態來自真實後端 API
+  （`GET /chillers`／`GET /fcus`／`GET /alarms`，登入後台走認證版、前台戰情室走
+  `/api/v1/public/*` 公開版），不是 mock service。
+- 配置已改由後端保存（`device_floor_placement` 表，`GET/PUT /api/v1/floor-plan/{floor}/placements`，
+  2026-09-16），跨瀏覽器／跨裝置都會看到相同配置，不再只存在單一瀏覽器的 localStorage；儲存採
+  整層覆寫＋樂觀鎖（`expectedVersion`），期間有別人存過檔會回 409。細節見
+  [`backend/README.md`](backend/README.md)「平面圖配置改由後端保存」一節。
+- ⚠️ 目前 95 台 FCU 的分區對照（`zone_code`）全部是驗收用的模擬對照表，不是真實物理位置，
+  正式上線前必須由現場人員在這個頁面重新拖拉、存檔覆蓋掉，細節見 `backend/README.md` 同名章節。
 - 檢查：`node tests/floor-plan.test.mjs`、`npm run typecheck`、`npm run build`。
 
 ## 底圖與分區（CAD 原圖）
@@ -38,8 +47,10 @@
 
 ## 專案規格文件
 
-- 完整系統需求規格書：[`docs/TECO_HVAC_SPECIFICATION.md`](docs/TECO_HVAC_SPECIFICATION.md)
+- **後端現況與已驗證項目（權威來源）**：[`backend/README.md`](backend/README.md)
+- **整合規劃全文（權威來源）**：[`docs/BACKEND_INTEGRATION_PLAN.md`](docs/BACKEND_INTEGRATION_PLAN.md)
+- Figma 初期規格書（**多處已過時，僅供追溯原始設計意圖**，內容如與上述兩份文件衝突以上述為準）：
+  [`docs/TECO_HVAC_SPECIFICATION.md`](docs/TECO_HVAC_SPECIFICATION.md)
   - **前台戰情室 (1920x1080 Fixed Dashboard)**：冰水主機卡片、FCU 監控、樓層輪播、告警輪播與狀態對照。
   - **後台管理系統 (Console)**：溫度設定＆超標警示（獨立事件/全場 FCU 共用溫差）、運算公式規範 (`formula-spec`)、4 大報表引擎（日/週報表/折線圖/空狀態）、設備台帳、使用者管理與密碼重設。
   - **Figma 決策對照表**：完整收錄 11 筆歷史需求變更與決策點。
-  - **資料模型 (Schema) 與架構規劃**：美達特雙資料庫架構與就近存放 (Co-located) 目錄規劃。

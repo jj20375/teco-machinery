@@ -6,11 +6,15 @@
 規劃全文見 [`../docs/BACKEND_INTEGRATION_PLAN.md`](../docs/BACKEND_INTEGRATION_PLAN.md)；
 本檔案是「這個 repo 目前實際長什麼樣子、怎麼跑」的操作說明。
 
-## 現況（2026-09-14）
+## 現況（持續更新，最後一次大幅修訂 2026-09-23）
 
-P0–P4 已完整實作並跑過真正的 `docker compose` 端對端驗證（見下方「已驗證」）；
-P5 告警引擎的核心邏輯已接上資料流；P6 部署腳本已寫好但**尚未在真正的 Hyper-V VM 上跑過**
-（我這邊沒有那台 Windows 主機的存取權限，這步驟需要你在現場執行 `deploy/host-setup/`）。
+P0–P4 的技術驗證與端對端資料流早已完整跑過（見下方「已驗證」）；P5 告警引擎（含可設定門檻、
+熱重載）、報表、資料保留排程、權限與稽核系統、refresh token、場館角色 CRUD 等後續功能也都
+已經完成並用真實 docker compose 環境驗證過——**全部後台頁面跟前台戰情室都已接真實 API**，
+沒有任何頁面還在打 mock service。完整時間軸見下方各節標題日期，不要只看這段摘要就以為進度
+停在早期階段。目前唯一還沒完成的是 **P6：部署腳本已寫好但尚未在真正的 Hyper-V VM 上跑過**
+（我這邊沒有那台 Windows 主機的存取權限，這步驟需要你在現場執行 `deploy/host-setup/`），
+以及少數需要供應商/東元回覆才能繼續的項目（見檔案最下方「需要向東元/供應商確認」）。
 
 ### 專案結構
 
@@ -65,16 +69,16 @@ backend/
 - P6：在真正的 Hyper-V VM 上執行 `deploy/host-setup/`
 - SignalR 前端訂閱（後端廣播邏輯已驗證會被觸發，但沒有瀏覽器端訂閱測試）
 
-## 權限機制（2026-09-14 新增：比照美達特官網）
+## 權限機制（2026-09-14 新增）
 
-使用者要求「平台管理員」這層、以及「決定某商家是否啟用 CRUD／子項功能」的開關比照
-`/Users/emmt-1246/Documents/projects/美達特官網` 的做法。已完整比照該專案的權限模型實作：
+使用者要求「平台管理員」這層、以及「決定某商家是否啟用 CRUD／子項功能」的開關。
+已實作完整的權限模型：
 
 - **雙軌帳號**：`AppUser` 一張表同時涵蓋平台帳號（`SystemRoleId` 非空或 `IsPlatformAdmin=1`）
   與場館帳號（透過 `MerchantMembership` 掛到一或多個 `Merchant`）。JWT 只會是 `platform` 或
   `merchant` scope 其中一種，不會混。
 - **場館 = TECO 的多租戶單位**：目前假設是「同集團其他場館」（單庫 + `merchant_id` 範圍隔離），
-  **不是**美達特那種「一商家一資料庫」的實體隔離＋provisioning。這是與使用者確認過的決策
+  **不是**「一商家一資料庫」的實體隔離＋provisioning 架構。這是與使用者確認過的決策
   （若未來真的需要跨公司資料實體隔離，才需要再加那層）。
 - **Role/Permission/RolePermission 三層 CRUD＋子功能**：權限代碼（如 `hvac.chillers`）+
   `PerCreate/PerRead/PerUpdate/PerDelete` + `OptionsJson`（子功能，如 `hvac.alarms` 的 `ack`）。
@@ -111,10 +115,9 @@ backend/
 **已知缺口**（誠實列出）：
 - `platform.roles` 目前只有 API，沒有前端 UI（平台管理員的角色管理仍是後端專案階段）；
   `merchant.roles` 已在 2026-09-21 補上完整前端（見下方「場館角色管理 CRUD」一節）。
-- 角色的 `IsFullAccess` 目前靠 Seeder 手動維持「跟目前權限目錄同步」；美達特有一個持續自動同步的機制，
-  TECO 這裡新增權限後，`platform-admin`/`merchant-admin` 的 `role_permission` 需要手動補一行
-  （或之後補一個啟動時自動同步 IsFullAccess 角色的背景工作）。
-- 沒有做 Metat 的 `scope_kind` 多重身分「模擬進入」（impersonation）功能——TECO 目前不需要平台
+- ~~角色的 `IsFullAccess` 目前靠 Seeder 手動維持~~ **已於 2026-09-24 修正**：
+  `PermissionGrantService.ForRolesAsync` 改成動態計算，見下方「`IsFullAccess` 角色權限改為動態計算」一節。
+- 沒有做 `scope_kind` 多重身分「模擬進入」（impersonation）功能——TECO 目前不需要平台
   管理員假扮場館帳號操作。
 - `device_chiller`/`device_fcu` 還沒加 `merchant_id`——現在的 Collector 硬編碼連單一場館的三個 IP，
   多場館的設備資料隔離要等實際有第二個場館時再做（那需要 Collector 也跟著支援多實例或多站連線）。
@@ -865,6 +868,103 @@ EF Core 10 不相容。與其混用 EFCore9 + net10 app（會有一堆隱性版�
   既有角色測試刪除，正確被擋下並顯示動態人數訊息 → 刪除剛剛的測試角色（0 人使用），成功且
   清單即時更新 → 資料庫確認 `app_role` 無殘留測試角色（`operation_log` 保留操作紀錄，
   屬於預期中的稽核軌跡）。
+
+## 修好真的 bug：角色清單混入每個成員的個人專屬角色，出現多筆同名「自訂權限」（2026-09-23）
+
+業主在 `/admin/users` 的「新增使用者」角色下拉選單回報看到兩筆一模一樣的「自訂權限」選項。
+
+- **根本原因**：`RoleRepository.ListAsync` 沒有排除「編輯成員」六個核取方塊面板
+  （`MerchantEndpoints.SetUserFeatures`）幫每個成員自動建立的個人專屬角色——這批角色
+  `Code = "member-{membershipId}"`、`Name` 一律是「自訂權限」，本來就是內部實作細節，
+  設計上就不該出現在給人挑選的一般角色清單裡。只要有兩個以上成員存過這個面板，
+  `GET /api/v1/merchant/roles` 就會把每個人的專屬角色都混進來，變成好幾筆同名但 `id` 不同的
+  「自訂權限」；同樣的問題也存在於 `/admin/roles` 角色管理頁與 `GET /api/v1/platform/roles`
+  （尚無前端 UI），三者共用同一個 `ListAsync`。
+- **修法**：`RoleRepository.ListAsync` 的 SQL 加上 `WHERE code NOT LIKE 'member-%'`，
+  三個呼叫端點一次修好。
+- **連帶修正**：`AdminUsersPage.vue` 的 `roleLabel()` 原本是拿 `roleId` 去反查
+  `/merchant/roles` 清單取名稱——一旦清單排除個人專屬角色，既有成員若剛好指派的就是自己的
+  專屬角色，會被誤判成「（未指派）」。改成直接讀 `MerchantUserRow.roleName`
+  （`MembershipRepository.ListAsync` 已經 JOIN `app_role` 算好的正確名稱），不再依賴那份
+  清單反查。
+- 瀏覽器驗證（`merchant-admin` 帳號 Anna Chen）：重新 `docker compose up -d --build api`
+  套用後端修改後，「新增使用者」下拉選單只剩系統範本角色（編輯者/場館管理員/檢視者），
+  沒有「自訂權限」；使用者列表裡已經用過六個核取方塊的成員（測試編輯者、測試檢視者）
+  仍正確顯示「自訂權限」標籤。
+- **提醒**：這個 repo 的 API 是跑在 `backend/deploy/compose.yaml` 的 docker 容器裡，不是本機
+  `dotnet run`——改完後端程式碼後，`dotnet build` 只驗證編譯得過，容器裡的既有 image
+  不會自動套用，必須 `docker compose up -d --build api` 重新建置並重啟容器才會生效。
+
+## Docker 建置優化：補 .dockerignore、restore/publish 分層、web healthcheck 依賴（2026-09-23）
+
+Docker 專家審查 `backend/deploy/` 底下的 Dockerfile 與 compose 設定，抓到幾個實際會造成問題的地方（不是純理論上的最佳實踐建議）：
+
+- **缺 `.dockerignore` 造成的真實問題**：`api.Dockerfile`／`collector.Dockerfile` 的 build
+  context 是 `backend/`，但完全沒有 `.dockerignore`。因為 Dockerfile 是用
+  `COPY src/Teco.Hvac.Api/ ./src/Teco.Hvac.Api/` 這種整資料夾複製，本機開發留下的
+  `bin/`／`obj/`（含綁定本機路徑的 `project.assets.json` 等中繼檔）會被一起複製進 build
+  context，除了拖慢 build、讓 cache 常態失效，也有機率讓 container 內的 `dotnet restore`／
+  `publish` 誤用到過期中繼資料。更嚴重的是 `backend/deploy/.env`（`DB_ROOT_PASSWORD`／
+  `DB_APP_PASSWORD`／`INTERNAL_TOKEN`／`JWT_SIGNING_KEY` 明文機密）也在 context 目錄底下，
+  會被整包送進 docker daemon（遠端部署時等於明文機密從 Mac 傳到 VM 的 daemon）。
+  新增 [`backend/.dockerignore`](.dockerignore)，排除 `**/bin/`／`**/obj/`／`**/.vs/`／
+  `**/.DS_Store`／`deploy/`／`tests/`／`tools/`／`*.user`。
+- **Dockerfile 的 restore/publish 沒有分層，快取效益差**：原本是先 `COPY` 整個 `src/`
+  原始碼才跑 `dotnet restore`，導致任何一行程式碼變更（即使套件相依完全沒動）都會讓
+  restore layer 失效，每次 build 都要重新連網解析 NuGet。`Teco.Hvac.Api`／
+  `Teco.Hvac.Collector` 的 `ProjectReference` 都是標準相對路徑，`Collector` 參照供應商 DLL
+  也是走 `HintPath`（見 `Teco.Hvac.Collector.csproj`）而非 restore-time 相依，可以安全拆成
+  「先複製 `*.csproj` 做 restore，再複製完整原始碼做 publish」兩層，並用 BuildKit 的
+  `--mount=type=cache,target=/root/.nuget/packages` 讓 NuGet 套件快取跨 build 保留。
+  `collector.Dockerfile` 的 `lib/`（廠商 DLL）挪到 restore 之後、publish 之前複製，
+  不影響 restore layer 的快取命中率。
+- **`web` 服務的 `depends_on` 沒等 `api` 真的 healthy**：`compose.yaml` 的 `web` 原本是
+  `depends_on: [api]` 簡寫，只保證 `api` 容器啟動、不保證 `/readyz` 已回 200，跟
+  `collector`／`api` 等 `mariadb` 的寫法（用 `condition: service_healthy`）不一致。
+  已改成 `depends_on: { api: { condition: service_healthy } }`。
+- **改完 restore/publish 分層後踩到的真的 bug：`sharing=locked` 沒加，平行 build 把 NuGet
+  快取寫壞**：`docker compose build`（不加 `--parallelism`）預設會同時平行建置 `api`／
+  `collector` 兩個 target，兩邊的 `RUN --mount=type=cache,target=/root/.nuget/packages`
+  沒有指定 `sharing`，預設值 `shared` 不保證併發寫入安全——兩個 build 同時對同一份 NuGet
+  快取寫入時，其中一邊的下載被取消（因為另一邊先完成），會留下寫到一半的暫存檔
+  （`Could not find file '.../0da5rff1.qzc'`，`.qzc` 是 NuGet client 下載中的暫存檔名），
+  下次 restore 直接失敗。因為兩個 Dockerfile 的 restore 有共同相依（`Contracts`／
+  `Domain`／`Infrastructure`），想繼續共用快取又要避免競爭寫入，兩邊的 cache mount 都加上
+  `sharing=locked`，讓平行 build 互斥存取同一份快取、不再同時寫。
+- **驗證**：`docker compose config --quiet` 通過；`docker compose build api collector`
+  加上 `sharing=locked` 後實際跑成功（兩個 image 都建出來）；`docker compose up -d --build`
+  也跑過，`mariadb`／`api`／`collector` 三個服務都變成 `healthy`
+  （`web` 這次在這台開發機上因為 host 的 127.0.0.1:8081 被另一個無關的本機專案占用而沒能
+  實際啟動，純屬本機環境的 port 衝突，`compose.yaml` 的設定本身已經過 `config` 語法驗證，
+  不影響改動正確性）。
+- 改動檔案：[`backend/.dockerignore`](.dockerignore)（新增）、
+  [`backend/deploy/api.Dockerfile`](deploy/api.Dockerfile)、
+  [`backend/deploy/collector.Dockerfile`](deploy/collector.Dockerfile)、
+  [`backend/deploy/compose.yaml`](deploy/compose.yaml)。
+
+## `IsFullAccess` 角色權限改為動態計算，不再依賴 Seeder 手動同步（2026-09-24）
+
+補上先前列在「已知缺口」的項目：`platform-admin`／`merchant-admin`（`app_role.is_full_access=1`）
+先前的「完整權限」完全是靠 Seeder／migration 手動寫入 `app_role_permission` 撐出來的假象——
+`PermissionGrantService.ForRolesAsync` 原本不管這個旗標，單純讀 `app_role_permission` 的實際
+儲存列。這代表**每次權限目錄新增一項資源，都要記得回頭幫這兩個角色手動補一行 migration**，
+漏補就會讓管理員角色本身反而缺權限（本次盤點時發現目前 10 個場館範圍權限、4 個平台範圍權限
+剛好都有補齊，沒有實際踩雷，但這是僥倖，不是機制保證）。
+
+- **修法**：`ForRolesAsync` 改成先查給定角色的 `is_full_access`，true 的角色不讀
+  `app_role_permission`，直接把「目前 `app_permission` 裡同 `scope` 的全部權限代碼＋全部
+  `sub_features_json` 子功能」即時組成 grants；一般角色（`is_full_access=0`）行為不變，仍照舊
+  讀實際授予的列。之後新增權限只要寫進 `app_permission`，`platform-admin`/`merchant-admin`
+  自動涵蓋，不必再補一支 migration 去更新 `role_permission`。
+- **已用真實流程驗證**：`docker compose up -d --build api` 套用新程式碼後，直接在資料庫插入
+  一筆全新的測試權限 `test.autosync_check`（scope=1，刻意不寫任何 `app_role_permission` 列）→
+  用臨時建立的 `merchant-admin` 角色帳號登入，`POST /api/v1/auth/login` 回傳的 `grants`
+  正確包含 `test.autosync_check` 且是完整 CRUD；用另一個臨時 `editor`（`is_full_access=0`）
+  角色帳號登入，`grants` 正確**不含**這個測試權限，確認一般角色不會被誤波及。驗證完清除
+  測試權限與兩個臨時帳號。另外用 SQL 比對確認這次修改前 `merchant-admin`/`platform-admin`
+  的既有 `role_permission` 列本來就跟權限目錄一致（10/10、4/4），這次修改對現有登入行為
+  沒有造成任何權限增減，純粹是面向未來的防呆。
+- 改動檔案：[`backend/src/Teco.Hvac.Infrastructure/Permissions/PermissionGrantService.cs`](src/Teco.Hvac.Infrastructure/Permissions/PermissionGrantService.cs)。
 
 ## 尚未實作 / 已知缺口（誠實列出，不要假裝做完了）
 
