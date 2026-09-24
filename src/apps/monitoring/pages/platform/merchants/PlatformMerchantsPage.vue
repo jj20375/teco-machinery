@@ -64,18 +64,38 @@ async function submitAdd() {
   }
 }
 
-// ── CRUD/子項模式開關：直接在表格上切換，切了就送 ────
+// ── CRUD/子項模式開關 ──────────────────
+// 這是 2026-09-24 業主實測踩到的真實事故：直接切換這個開關會「立即」改變所有成員登入時
+// 實際拿到的權限——透過「編輯成員」簡化面板設定的個人專屬角色（member-{id}），資料庫裡
+// 永遠只存最基本的 read，完全依賴簡化模式在發 JWT 那一刻自動展開成完整 CRUD；一旦切到
+// 細項模式，這個自動展開就沒有了，那些成員會突然只剩讀取權限，且完全沒有任何畫面提示。
+// 不能讓使用者一勾就送出，一定要先講清楚後果再讓人確認。
 const togglingId = ref<number | null>(null);
-const toggleErrorByMerchant = reactive<Record<number, string>>({});
-async function toggleFlag(merchant: PlatformMerchant, field: 'isRoleCrudConfigurationEnabled' | 'isRoleOptionConfigurationEnabled') {
-  if (togglingId.value === merchant.id) return;
+const toggleConfirmOpen = ref(false);
+const toggleConfirmError = ref('');
+const pendingToggle = ref<{ merchant: PlatformMerchant; field: 'isRoleCrudConfigurationEnabled' | 'isRoleOptionConfigurationEnabled' } | null>(null);
+
+const TOGGLE_LABELS: Record<'isRoleCrudConfigurationEnabled' | 'isRoleOptionConfigurationEnabled', string> = {
+  isRoleCrudConfigurationEnabled: 'CRUD',
+  isRoleOptionConfigurationEnabled: '子功能',
+};
+
+function openToggleConfirm(merchant: PlatformMerchant, field: 'isRoleCrudConfigurationEnabled' | 'isRoleOptionConfigurationEnabled') {
+  pendingToggle.value = { merchant, field };
+  toggleConfirmError.value = '';
+  toggleConfirmOpen.value = true;
+}
+
+async function confirmToggle() {
+  if (!pendingToggle.value || togglingId.value === pendingToggle.value.merchant.id) return;
+  const { merchant, field } = pendingToggle.value;
   togglingId.value = merchant.id;
-  delete toggleErrorByMerchant[merchant.id];
   try {
     await updateMerchantApi(merchant.id, { [field]: !merchant[field] });
     await invalidateMerchants();
+    toggleConfirmOpen.value = false;
   } catch (err) {
-    toggleErrorByMerchant[merchant.id] = err instanceof Error ? err.message : '更新失敗，請稍後再試。';
+    toggleConfirmError.value = err instanceof Error ? err.message : '更新失敗，請稍後再試。';
   } finally {
     togglingId.value = null;
   }
@@ -197,7 +217,7 @@ async function resetPassword(membershipId: number) {
                       目前：{{ m.isRoleCrudConfigurationEnabled ? '細項模式' : '簡化模式（授予即完整 CRUD）' }}
                     </span>
                     <label class="flex items-center gap-1.5 cursor-pointer" :class="{ 'opacity-50 pointer-events-none': togglingId === m.id }">
-                      <input type="checkbox" class="w-3.5 h-3.5 rounded accent-[#4C7DF0]" :checked="m.isRoleCrudConfigurationEnabled" @change="toggleFlag(m, 'isRoleCrudConfigurationEnabled')" />
+                      <input type="checkbox" class="w-3.5 h-3.5 rounded accent-[#4C7DF0]" :checked="m.isRoleCrudConfigurationEnabled" @change="openToggleConfirm(m, 'isRoleCrudConfigurationEnabled')" />
                       <span class="text-xs text-[#64748B]">啟用細項設定</span>
                     </label>
                   </div>
@@ -211,11 +231,10 @@ async function resetPassword(membershipId: number) {
                       目前：{{ m.isRoleOptionConfigurationEnabled ? '細項模式' : '簡化模式（授予即完整子功能）' }}
                     </span>
                     <label class="flex items-center gap-1.5 cursor-pointer" :class="{ 'opacity-50 pointer-events-none': togglingId === m.id }">
-                      <input type="checkbox" class="w-3.5 h-3.5 rounded accent-[#4C7DF0]" :checked="m.isRoleOptionConfigurationEnabled" @change="toggleFlag(m, 'isRoleOptionConfigurationEnabled')" />
+                      <input type="checkbox" class="w-3.5 h-3.5 rounded accent-[#4C7DF0]" :checked="m.isRoleOptionConfigurationEnabled" @change="openToggleConfirm(m, 'isRoleOptionConfigurationEnabled')" />
                       <span class="text-xs text-[#64748B]">啟用細項設定</span>
                     </label>
                   </div>
-                  <p v-if="toggleErrorByMerchant[m.id]" class="mt-1 text-xs text-[#FF4757]">{{ toggleErrorByMerchant[m.id] }}</p>
                 </td>
                 <td class="px-4 py-3">
                   <button type="button" class="link-action" @click="openMembers(m)">管理成員</button>
@@ -339,6 +358,45 @@ async function resetPassword(membershipId: number) {
               </form>
             </section>
           </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- 切換 CRUD/子項細項模式確認 -->
+    <div v-if="toggleConfirmOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40" @click.self="toggleConfirmOpen = false">
+      <div class="bg-white rounded-xl shadow-2xl border border-[#E2E8F0] w-full max-w-[480px] overflow-hidden">
+        <div class="px-6 pt-6 pb-4 border-b border-[#E2E8F0]">
+          <h3 class="text-base font-bold text-[#1A202C]">
+            切換「{{ pendingToggle ? TOGGLE_LABELS[pendingToggle.field] : '' }}」模式
+          </h3>
+        </div>
+        <div class="px-6 py-5 flex flex-col gap-3">
+          <div v-if="toggleConfirmError" class="p-2.5 rounded-lg bg-[#FFF5F5] text-[#FF4757] text-xs">{{ toggleConfirmError }}</div>
+          <p class="text-sm text-[#334155]">
+            確定要把「<strong>{{ pendingToggle?.merchant.name }}</strong>」的
+            {{ pendingToggle ? TOGGLE_LABELS[pendingToggle.field] : '' }} 模式切換成
+            <strong>{{ pendingToggle && !pendingToggle.merchant[pendingToggle.field] ? '細項模式' : '簡化模式' }}</strong>
+            嗎？
+          </p>
+          <div v-if="pendingToggle && !pendingToggle.merchant[pendingToggle.field]" class="p-3 rounded-lg bg-[#FFF9E6] text-xs text-[#92400E] leading-relaxed">
+            <strong>切到細項模式會立即影響所有成員實際能用的功能，不是只有畫面上的設定：</strong>
+            用「編輯成員」簡化面板設定過權限的成員（個人專屬角色），資料庫裡實際上只存了
+            最基本的讀取權限，一直是靠簡化模式在登入時自動展開成完整功能。切到細項模式後，
+            這個自動展開會停止，這些成員下次登入會突然只剩讀取，新增/修改/刪除全部消失，
+            且畫面上不會有任何提示。確定要繼續的話，切換後請記得到「角色管理」頁面幫這些
+            成員補上正確的權限。
+          </div>
+          <div v-else class="p-3 rounded-lg bg-[#F0FDFB] text-xs text-[#0F766E] leading-relaxed">
+            切回簡化模式後，只要角色被授予某資源（哪怕只勾讀取），登入時就會自動展開成完整
+            CRUD 與該資源全部子功能——會讓部分成員的實際權限比畫面上勾選的還要多，請確認這是
+            你要的結果。
+          </div>
+          <div class="flex justify-end gap-3 pt-1">
+            <AdminButton variant="tertiary" :disabled="togglingId !== null" type="button" @click="toggleConfirmOpen = false">取消</AdminButton>
+            <AdminButton variant="primary" :disabled="togglingId !== null" type="button" @click="confirmToggle">
+              {{ togglingId !== null ? '處理中…' : '確定切換' }}
+            </AdminButton>
+          </div>
         </div>
       </div>
     </div>
