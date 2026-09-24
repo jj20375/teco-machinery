@@ -1,6 +1,6 @@
 # 東元電機智慧環境監控 — 代理人規則
 
-本檔案是這個 repo 的專案層級規則。修改程式碼前，先確認 [backend/README.md](backend/README.md)（後端現況與已驗證項目）與 [docs/BACKEND_INTEGRATION_PLAN.md](docs/BACKEND_INTEGRATION_PLAN.md)（完整規劃）。
+本檔案是這個 repo 的專案層級規則。修改程式碼前，先確認 [backend/README.md](backend/README.md)（後端現況與已驗證項目，只講「現在長什麼樣子」）、[backend/CHANGELOG.md](backend/CHANGELOG.md)（完整開發歷程，按日期記錄每次功能新增/bug 修復的細節與驗證過程）與 [docs/BACKEND_INTEGRATION_PLAN.md](docs/BACKEND_INTEGRATION_PLAN.md)（完整規劃）。
 
 > 本檔案的部分規則是從 `義享樂漾叫號系統與電視牆` 專案的 `AGENTS.md` / `.agent/rules/`
 > 篩選並改寫而來，只保留跟本專案架構相容的部分——例如原專案是 EF Core + 雙後端遷移，
@@ -33,7 +33,7 @@
      `UtcDateTimeOffsetHandler` 防住既有的直接對應寫法，但新寫的 Repository 程式碼還是不要
      依賴這個全域修法当唯一防線——遇到「先讀 DateTime 再手動指派給 DateTimeOffset 屬性」的
      寫法（例如 `AlarmRepository.ListAsync`），全域 handler 攔不到，一定要手動
-     `.AsUtcOffset()`。詳見 `backend/README.md`「重大 bug：DateTimeOffset 時間全部少 8 小時」。
+     `.AsUtcOffset()`。詳見 `backend/CHANGELOG.md`「重大 bug：DateTimeOffset 時間全部少 8 小時」。
 
 2. **權限範圍一律用已驗證 JWT 算出的 scope，不信任前端傳入的 id。**
    - 後端：`RequestScope` 讀 JWT claims 取得 `UserId`／`MerchantId`／`scopeKind`／permissions；
@@ -102,7 +102,7 @@
 
 - **全部後台頁面跟前台戰情室都已接真實 API，沒有任何頁面還在打 mock service**
   （含兩張每小時趨勢圖、告警門檻設定、三個報表頁）。`admin-mock-service.ts` 已整支刪除。
-- **告警門檻設定（`/api/v1/thresholds/*`）已完整驗證讀寫路徑**（見 `backend/README.md`
+- **告警門檻設定（`/api/v1/thresholds/*`）已完整驗證讀寫路徑**（見 `backend/CHANGELOG.md`
   「告警門檻設定接真實 API」一節）；驗證過程中抓到並修好一個真的 bug：清空數字欄位時
   `v-model.number` 給的是空字串不是 `null`，會讓後端 400——已在 `threshold-service.ts` 加
   `nullifyEmpty()` 修正，日後任何新增的門檻／數值設定表單都要注意這個 Vue 行為。
@@ -110,14 +110,14 @@
   `hvac.floor_plan` 都是後續才加入的，migration 只更新系統範本角色（`merchant-admin`/`editor`/
   `viewer`），場館自己複製出來的自訂角色不會自動取得，需要場館管理員自己到角色管理頁勾選。
 - **場館角色管理（新增/改名/刪除/調整權限）已完整接真實 API 並通過瀏覽器驗證**（2026-09-21，
-  見 `backend/README.md`「場館角色管理 CRUD 接真實 API」一節）。
+  見 `backend/CHANGELOG.md`「場館角色管理 CRUD 接真實 API」一節）。
 - **平台管理層級（`/platform/*`）前端已於 2026-09-24 補上**（場館管理、系統帳號、平台角色管理
-  三個頁面＋登入後的雙軌身分切換畫面），見 `backend/README.md`「平台管理前端＋雙軌身分切換」
+  三個頁面＋登入後的雙軌身分切換畫面），見 `backend/CHANGELOG.md`「平台管理前端＋雙軌身分切換」
   一節。平台角色目前**沒有**改名/刪除功能（後端本來就沒有對應端點，只有場館角色管理才有），
   不要以為是前端漏做。
 - ⚠️ **目前 93 台 FCU 的 `device_fcu.zone_code` 全部是驗收用的模擬對照表，不是真實物理位置**
   （B1 64 台、B2 29 台；B2 另有 2 台因為分區太小放不下而沒有配置，見下一條）
-  （2026-09-21，見 `backend/README.md` 同日期的補充說明）——正式上線前必須由現場人員在
+  （2026-09-21，見 `backend/CHANGELOG.md` 同日期的補充說明）——正式上線前必須由現場人員在
   「空間設備配置」頁面重新拖拉、存檔覆蓋掉，不能讓這批模擬資料留到交機。
 - **在「空間設備配置」頁面用 API 直接塞座標資料時，一定要跑過前端自己的驗證**
   （`floor-plan.ts` 的 `canPlace`/`serializeLayout`）——這是 2026-09-21 修過的真實 bug：
@@ -125,7 +125,7 @@
   太近）的設備違反前端的最小間距規則，使用者之後在該樓層做任何編輯、按「儲存配置」都會
   在送出前的驗證階段整層失敗，且完全沒有網路請求可查、只有一個容易被忽略的 toast，
   外觀上跟「按鈕壞了」一模一樣。塞完資料後務必開這個分頁做一次移動設備再存檔的操作，
-  確認真的能存，不要只看 API 回 200。細節見 `backend/README.md` 對應章節。
+  確認真的能存，不要只看 API 回 200。細節見 `backend/CHANGELOG.md` 對應章節。
 - **設備有「客戶自訂代碼」與「系統編號」兩組識別，兩者並存、不可互相覆蓋**（2026-09-22）：
   客戶自訂的那組存在 `display_name`（FCU 可留空＝未設定，冰水主機是 NOT NULL 不可留空），
   用 `PATCH /api/v1/fcus/{id}`／`PATCH /api/v1/chillers/{id}` 修改；系統這組
@@ -139,7 +139,7 @@
   `FloorPlanCanvas.vue` 的 `deviceLabel()`、`FloorPlan3D.vue` 的 `equipment?.name ?? equipment?.code`）。
   這條規則只套用到「空間設備配置」（`/admin/floor-plan`）；`FloorPlanViewer.vue`
   （監控中心熱區圖、前台戰情室共用）目前仍只顯示系統編號，尚未套用這個規則。
-  細節見 `backend/README.md`「設備自訂代碼／名稱」一節。
+  細節見 `backend/CHANGELOG.md`「設備自訂代碼／名稱」一節。
 - **數值範圍表單（上限/下限）一律用 `yup` + `vee-validate` 做防呆驗證，不要手刻**
   （2026-09-21）：告警門檻設定原本前後端都沒檢查「下限不能大於上限」，DB 裡曾經存進
   `0.6 ~ 0.5` 這種語意錯誤但兩個數字各自合法的資料，畫面上也沒有任何提示。已建立共用的
@@ -147,14 +147,14 @@
   「上限」欄位上的 `max-gte-min` test，兩側都有值才比較），`AdminChillerPage.vue`／
   `AdminFcuPage.vue` 改用 `vee-validate` 的 `useForm`/`defineField`/`handleSubmit`，
   `meta.dirty`/`meta.valid` 取代手寫的 dirty-check。日後任何新的「最低 ~ 最高」數值表單
-  都比照這個模式，不要每頁重新手刻一套比大小的邏輯。細節見 `backend/README.md`
+  都比照這個模式，不要每頁重新手刻一套比大小的邏輯。細節見 `backend/CHANGELOG.md`
   「告警門檻設定補上前端防呆驗證」一節。
 - **`backend/deploy/` 有 4 支 demo 用腳本**：`seed-demo-data.sh`/`clear-demo-data.sh`
   （歷史報表資料）、`simulate-live-data.sh`/`stop-live-simulation.sh`（監控中心／前台
   戰情室的即時卡片）。**手動測試 `/internal/ingest/*` 之前，一定要先 `docker compose
   stop collector`**——這支容器就算連不到現場設備也不會自己停，會一直重試並誠實回報
   「未連線」，跟任何手動塞進去的假「已連線」狀態互相打架，看起來像隨機發生的怪 bug
-  （細節見 `backend/README.md`「花了很多時間才抓到的真相」一節）。
+  （細節見 `backend/CHANGELOG.md`「花了很多時間才抓到的真相」一節）。
 - **前台是不用登入的公開頁面**，打的是 `/api/v1/public/*`（`PublicEndpoints.cs`），不是後台用的
   認證端點——新增涉及即時監控資料的功能時，要意識到有兩組平行端點（認證版 + 公開版），
   公開版沒有 JWT 檢查，只能放不涉及使用者/密碼/操作紀錄等機敏資訊的唯讀資料。

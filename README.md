@@ -2,7 +2,9 @@
 
 本專案為東元電機工業環境監控與 HVAC 暖通空調節能戰情室系統。本檔案只說明前端（空間設備配置、
 CAD 底圖產生流程）；完整代理人規則見 [`CLAUDE.md`](CLAUDE.md)，後端現況與已驗證項目見
-[`backend/README.md`](backend/README.md)，整體規劃見 [`docs/BACKEND_INTEGRATION_PLAN.md`](docs/BACKEND_INTEGRATION_PLAN.md)。
+[`backend/README.md`](backend/README.md)（完整開發歷程見
+[`backend/CHANGELOG.md`](backend/CHANGELOG.md)），整體規劃見
+[`docs/BACKEND_INTEGRATION_PLAN.md`](docs/BACKEND_INTEGRATION_PLAN.md)。
 
 ## 空間設備配置（B1／B2）
 
@@ -21,9 +23,9 @@ CAD 底圖產生流程）；完整代理人規則見 [`CLAUDE.md`](CLAUDE.md)，
 - 配置已改由後端保存（`device_floor_placement` 表，`GET/PUT /api/v1/floor-plan/{floor}/placements`，
   2026-09-16），跨瀏覽器／跨裝置都會看到相同配置，不再只存在單一瀏覽器的 localStorage；儲存採
   整層覆寫＋樂觀鎖（`expectedVersion`），期間有別人存過檔會回 409。細節見
-  [`backend/README.md`](backend/README.md)「平面圖配置改由後端保存」一節。
+  [`backend/CHANGELOG.md`](backend/CHANGELOG.md)「平面圖配置改由後端保存」一節。
 - ⚠️ 目前 95 台 FCU 的分區對照（`zone_code`）全部是驗收用的模擬對照表，不是真實物理位置，
-  正式上線前必須由現場人員在這個頁面重新拖拉、存檔覆蓋掉，細節見 `backend/README.md` 同名章節。
+  正式上線前必須由現場人員在這個頁面重新拖拉、存檔覆蓋掉，細節見 `backend/CHANGELOG.md` 同名章節。
 - 檢查：`node tests/floor-plan.test.mjs`、`npm run typecheck`、`npm run build`。
 
 ## 底圖與分區（CAD 原圖）
@@ -48,6 +50,7 @@ CAD 底圖產生流程）；完整代理人規則見 [`CLAUDE.md`](CLAUDE.md)，
 ## 專案規格文件
 
 - **後端現況與已驗證項目（權威來源）**：[`backend/README.md`](backend/README.md)
+- **後端完整開發歷程（按日期記錄每次功能新增/bug 修復）**：[`backend/CHANGELOG.md`](backend/CHANGELOG.md)
 - **整合規劃全文（權威來源）**：[`docs/BACKEND_INTEGRATION_PLAN.md`](docs/BACKEND_INTEGRATION_PLAN.md)
 - Figma 初期規格書（**多處已過時，僅供追溯原始設計意圖**，內容如與上述兩份文件衝突以上述為準）：
   [`docs/TECO_HVAC_SPECIFICATION.md`](docs/TECO_HVAC_SPECIFICATION.md)
