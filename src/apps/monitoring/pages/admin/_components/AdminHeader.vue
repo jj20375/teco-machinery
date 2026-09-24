@@ -3,10 +3,11 @@
  * @file AdminHeader.vue
  * 後台頂部列 — 嚴格對齊 Figma
  * 左：頁面標題 + pill「後台管理中心」
- * 右：瀏覽前台 / 告警通知 / 管理員 Anna Chen ▾（中南經銷處）+ 頭像
+ * 右：瀏覽前台 / 告警通知 / 管理員 {顯示姓名} ▾（{場館名稱}）+ 頭像
+ * 姓名/場館名稱/頭像字母都讀自 getSessionApi()，不是寫死的 Figma 稿文字。
  */
-import { ref, onMounted, onUnmounted } from 'vue';
-import { clearSessionApi } from '../_services/auth-service';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { clearSessionApi, getSessionApi } from '../_services/auth-service';
 
 defineProps<{ pageTitle: string }>();
 
@@ -15,6 +16,17 @@ const emit = defineEmits<{
 }>();
 
 const menuOpen = ref(false);
+
+// SSR 階段 getSessionApi() 一律回傳 null（見該函式上的註解），這裡沿用 AdminSidebar.vue 同一套
+// 「computed 直接呼叫，hydrate 後在瀏覽器重新執行 setup 自然算出正確值」的作法，不用另外處理。
+const currentUser = computed(() => getSessionApi()?.user ?? null);
+const displayName = computed(() => currentUser.value?.displayName ?? '使用者');
+const scopeLabel = computed(() => {
+  const user = currentUser.value;
+  if (!user) return '';
+  return user.scopeKind === 'platform' || user.isPlatformAdmin ? '平台管理' : (user.merchantName ?? '');
+});
+const avatarInitial = computed(() => displayName.value.trim().charAt(0).toUpperCase() || 'U');
 
 function onDocClick(e: MouseEvent) {
   if (!(e.target as HTMLElement).closest('[data-admin-usermenu]')) menuOpen.value = false;
@@ -62,11 +74,11 @@ function handleLogout() {
           @click="menuOpen = !menuOpen"
         >
           <div class="text-right leading-tight">
-            <div class="text-sm font-bold text-[#1A202C]">管理員 Anna Chen</div>
-            <div class="text-[11px] text-[#94A3B8]">中南經銷處</div>
+            <div class="text-sm font-bold text-[#1A202C]">管理員 {{ displayName }}</div>
+            <div class="text-[11px] text-[#94A3B8]">{{ scopeLabel }}</div>
           </div>
           <div class="w-9 h-9 rounded-full bg-[#E6FBF7] text-[#00A88E] font-bold flex items-center justify-center text-sm">
-            A
+            {{ avatarInitial }}
           </div>
           <svg class="w-3.5 h-3.5 text-[#94A3B8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
