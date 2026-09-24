@@ -917,3 +917,17 @@ Docker 專家審查 `backend/deploy/` 底下的 Dockerfile 與 compose 設定，
     權限時，只能直接改資料庫的 `is_platform_admin` 欄位。
   - 沒有做瀏覽器端的點擊互動驗證（見上方「已用真實流程驗證」的說明），只驗證到 API 行為與
     typecheck/build 通過。
+
+## 開通 `platform_admin` 帳號的 `is_platform_admin` 超級旗標（2026-09-24）
+
+上一節列的缺口——沒有任何帳號能編輯 `platform-admin`/`platform-operator` 這兩個系統範本
+角色自己的權限——經使用者要求，直接在資料庫把測試/開發用帳號 `platform_admin` 的
+`is_platform_admin` 從 `0` 改成 `1`（同時遞增 `AuthVersion`，讓下次登入立刻拿到新身分）。
+純資料異動，沒有改程式碼，也沒有對應的 API/UI（這個開關刻意不開放自助操作，見上方「平台
+管理前端＋雙軌身分切換」一節的說明）。
+
+**已用真實流程驗證**：改資料庫前，用 `platform_admin` 呼叫
+`POST /platform/roles/2/permissions`（`platform-operator` 角色）確認回 403；改完
+`is_platform_admin=1` 後重新登入，JWT 的 `isPlatformAdmin` 正確變成 `true`，同一支 API
+改成回 204。送出的內容跟 `platform-operator` 原本的 `platform.merchants` 權限值完全相同
+（唯讀），純粹測試「擋板有沒有解除」，讀取確認沒有意外改動任何實際權限資料。

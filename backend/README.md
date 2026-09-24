@@ -120,11 +120,12 @@ merchant-admin 上限約束）。
 - 平台角色（`platform-admin`/`platform-operator`）沒有改名/刪除；系統帳號沒有停用/刪除；
   場館沒有停用/刪除（`Merchant.Status` 欄位存在但沒有任何地方會把它改成 `suspended`）。
 - `SetRolePermissions` 對系統範本角色（`is_system=1`）的檢查是 `AppUser.IsPlatformAdmin`
-  這個獨立的超級旗標，不是「有 `system_role_id` 指到 platform-admin 角色」就可以——目前沒有
-  任何帳號的 `is_platform_admin=1`，所以沒有人能透過 API 編輯 `platform-admin`/
-  `platform-operator` 這兩個系統範本角色自己的權限（自訂平台角色不受此限）。需要調整時只能
-  直接改資料庫的 `is_platform_admin` 欄位。詳見 `CHANGELOG.md`「平台管理前端＋雙軌身分切換」
-  一節。
+  這個獨立的超級旗標，不是「有 `system_role_id` 指到 platform-admin 角色」就可以——目前只有
+  `platform_admin`（測試/開發用帳號）這個帳號的 `is_platform_admin=1`（2026-09-24 手動於
+  資料庫開啟），其餘帳號都沒有，一般平台角色若要用 API 編輯 `platform-admin`/
+  `platform-operator` 這兩個系統範本角色自己的權限，一樣會被擋下。需要幫其他帳號開通時
+  直接改資料庫的 `is_platform_admin` 欄位（沒有對應的 API/UI，因為這是刻意的高權限開關，
+  不開放自助操作）。詳見 `CHANGELOG.md`「平台管理前端＋雙軌身分切換」一節。
 
 ## 本機開發
 
