@@ -78,8 +78,10 @@ export interface FcuItem {
   roomTemp: number;
   setTemp: number;
   tempDiff: number;
-  mode: '冷氣' | '暖氣' | '送風';
-  fanSpeed: '強' | '中' | '弱' | '自動';
+  /** 共用 fcuModeLabel()：冷氣／暖氣／送風，離線或未知時為 --。 */
+  mode: string;
+  /** 共用 fcuFanSpeedLabel()：高／中／低／自動，離線或未知時為 --。 */
+  fanSpeed: string;
   status: StatusType;
   isExceeded: boolean;
 }

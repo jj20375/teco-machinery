@@ -102,10 +102,28 @@ export interface AlarmRow {
 
 export type DeviceStatus = 'RUNNING' | 'STOPPED' | 'ABNORMAL' | 'OFFLINE';
 
-/** 冰水主機的異常直接讀 value.isAlarm（後端已經把 14 個硬體旗標 OR 在一起）。 */
-export function deriveChillerStatus(chiller: ChillerRow): DeviceStatus {
+/**
+ * 「告警門檻設定」頁可設定的冰水主機量測指標，ruleCode 的第一段就是這些名稱。
+ * 刻意不含 AccumulatedRunningHours：那是保養提醒，不是異常（「待保養」狀態另案處理）。
+ */
+const CHILLER_THRESHOLD_METRICS: ReadonlySet<string> = new Set([
+  'ChilledWaterOutletTemperature',
+  'ChilledWaterInletTemperature',
+  'ChilledWaterTemperatureDifference',
+]);
+
+/**
+ * 異常有兩個來源：主機自己回報的 14 個硬體警報（value.isAlarm），以及後台設定的門檻被超過
+ * （對照目前有效告警）。原本只看硬體警報，超過門檻時數字變紅、狀態卻還是「運轉中」，
+ * 跟規格書「超標時狀態切換為異常」不符，也跟 FCU 超標就顯示異常的行為不一致。
+ */
+export function deriveChillerStatus(chiller: ChillerRow, activeAlarms: readonly AlarmRow[]): DeviceStatus {
   if (!chiller.dataQuality || !isDataQualityOnline(chiller.dataQuality)) return 'OFFLINE';
   if (chiller.value?.isAlarm) return 'ABNORMAL';
+  const exceeded = activeAlarms.some((a) =>
+    a.deviceType === AlarmDeviceType.Chiller && a.deviceId === chiller.id
+    && CHILLER_THRESHOLD_METRICS.has(a.ruleCode.split('.')[0]));
+  if (exceeded) return 'ABNORMAL';
   return (chiller.value?.loadPercentage ?? 0) > 0 ? 'RUNNING' : 'STOPPED';
 }
 

@@ -283,7 +283,7 @@ export async function getFloorEquipmentApi(floor: FloorId, publicApi = false): P
     // B2 尚無主機可配置。
     ...(floor === 'B1'
       ? chillers.map((c) => {
-          const status = deriveChillerStatus(c);
+          const status = deriveChillerStatus(c, alarms);
           return {
             id: equipmentKey('chiller', c.id),
             code: c.code,

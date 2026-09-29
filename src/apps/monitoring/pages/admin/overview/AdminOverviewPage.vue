@@ -10,12 +10,11 @@ import {
   listChillersApi,
   listFcusApi,
   listAlarmsApi,
-  isDataQualityOnline,
-  FcuSwitchStatus,
-  AlarmDeviceType,
-  type ChillerRow,
-  type FcuRow,
+  deriveChillerStatus,
+  deriveFcuStatus,
+  alarmingFcuIdsOf,
   type AlarmRow,
+  type DeviceStatus,
 } from '../_services/hvac-service';
 import { chillerExceededFlags } from '../_services/threshold-service';
 
@@ -47,22 +46,8 @@ const alarmWarning = computed(() => {
     : '目前有效告警清單載入失敗，異常判斷與告警清單可能不準確。';
 });
 
-type DeviceStatus = 'RUNNING' | 'STOPPED' | 'ABNORMAL' | 'OFFLINE';
-
-/** FCU 沒有像冰水主機 value.isAlarm 那樣現成的旗標，異常與否要對照目前有效告警清單的 deviceId。 */
-function fcuStatus(fcu: FcuRow, alarmingFcuIds: Set<number>): DeviceStatus {
-  if (!fcu.dataQuality || !isDataQualityOnline(fcu.dataQuality)) return 'OFFLINE';
-  if (alarmingFcuIds.has(fcu.id)) return 'ABNORMAL';
-  return fcu.value?.switchStatus === FcuSwitchStatus.On ? 'RUNNING' : 'STOPPED';
-}
-
-/** 冰水主機的異常直接讀 value.isAlarm（後端已經把 14 個硬體旗標 OR 在一起）。 */
-function chillerStatus(chiller: ChillerRow): DeviceStatus {
-  if (!chiller.dataQuality || !isDataQualityOnline(chiller.dataQuality)) return 'OFFLINE';
-  if (chiller.value?.isAlarm) return 'ABNORMAL';
-  return (chiller.value?.loadPercentage ?? 0) > 0 ? 'RUNNING' : 'STOPPED';
-}
-
+// 狀態判斷一律用 hvac-service.ts 的共用函式：這頁原本自己複製了一份，
+// 共用函式修正後（例如冰水主機門檻超標要判為異常）這頁就不會跟著變。
 function summarize(statuses: DeviceStatus[]) {
   const total = statuses.length;
   const running = statuses.filter((s) => s === 'RUNNING').length;
@@ -72,12 +57,11 @@ function summarize(statuses: DeviceStatus[]) {
   return { total, running, stopped, abnormal, offline, runRate: total === 0 ? 0 : Math.round((running / total) * 100) };
 }
 
-const alarmingFcuIds = computed(
-  () => new Set(alarmsQuery.data.value?.filter((a) => a.deviceType === AlarmDeviceType.Fcu).map((a) => a.deviceId) ?? []),
-);
+const alarmingFcuIds = computed(() => alarmingFcuIdsOf(alarmsQuery.data.value ?? []));
 
-const fcuSummary = computed(() => summarize((fcusQuery.data.value ?? []).map((f) => fcuStatus(f, alarmingFcuIds.value))));
-const chillerSummary = computed(() => summarize((chillersQuery.data.value ?? []).map(chillerStatus)));
+const fcuSummary = computed(() => summarize((fcusQuery.data.value ?? []).map((f) => deriveFcuStatus(f, alarmingFcuIds.value))));
+const chillerSummary = computed(() =>
+  summarize((chillersQuery.data.value ?? []).map((c) => deriveChillerStatus(c, alarmsQuery.data.value ?? []))));
 
 /** 每張卡片顯示的冰水主機明細。三個門檻超標旗標改從「目前有效告警」反查（見
  * threshold-service.ts 的 chillerExceededFlags），不是自己拿門檻跟即時值比大小，這樣才會跟
@@ -90,7 +74,7 @@ const chillerCards = computed(() => {
     id: c.id,
     name: c.displayName,
     code: c.code,
-    status: chillerStatus(c),
+    status: deriveChillerStatus(c, alarms),
     loadRate: c.value?.loadPercentage ?? 0,
     supplyTemp: c.value?.chilledWaterOutletTemperature ?? 0,
     returnTemp: c.value?.chilledWaterInletTemperature ?? 0,
@@ -103,7 +87,7 @@ const chillerCards = computed(() => {
 /** 樓層熱感圖卡片：依 FCU 的 floor 欄位分組算運轉率，取代原本寫死的 66.7%/40/60。 */
 function floorSummary(floor: string) {
   const fcus = (fcusQuery.data.value ?? []).filter((f) => f.floor === floor);
-  const running = fcus.filter((f) => fcuStatus(f, alarmingFcuIds.value) === 'RUNNING').length;
+  const running = fcus.filter((f) => deriveFcuStatus(f, alarmingFcuIds.value) === 'RUNNING').length;
   const total = fcus.length;
   return { runRate: total === 0 ? 0 : Math.round((running / total) * 100), running, total };
 }

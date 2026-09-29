@@ -63,7 +63,7 @@ const rows = computed(() => {
       id: c.id,
       code: c.code,
       name: c.displayName,
-      status: deriveChillerStatus(c),
+      status: deriveChillerStatus(c, alarms),
       supplyTemp: online ? (c.value?.chilledWaterOutletTemperature ?? 0) : 0,
       returnTemp: online ? (c.value?.chilledWaterInletTemperature ?? 0) : 0,
       tempDiff: online ? (c.value?.chilledWaterTemperatureDifference ?? 0) : 0,

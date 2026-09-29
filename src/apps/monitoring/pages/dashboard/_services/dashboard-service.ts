@@ -13,7 +13,7 @@ import type { FloorId, ChillerData, FloorHeatmapData, AlarmItem, FcuItem, Hourly
 import {
   listPublicChillersApi as listChillersApi, listPublicFcusApi as listFcusApi, listPublicAlarmsApi as listAlarmsApi,
   getPublicHourlyFcuStatsApi,
-  deriveChillerStatus, deriveFcuStatus, alarmingFcuIdsOf, isDataQualityOnline,
+  deriveChillerStatus, deriveFcuStatus, alarmingFcuIdsOf, isDataQualityOnline, fcuModeLabel, fcuFanSpeedLabel,
   AlarmDeviceType, type AlarmRow,
 } from '../../admin/_services/hvac-service';
 import { chillerExceededFlags } from '../../admin/_services/threshold-service';
@@ -26,7 +26,7 @@ export async function getChillersDataApi(): Promise<ChillerData[]> {
     id: String(c.id),
     name: c.displayName,
     code: c.code,
-    status: deriveChillerStatus(c),
+    status: deriveChillerStatus(c, alarms),
     loadRate: c.value?.loadPercentage ?? 0,
     supplyTemp: isDataQualityOnline(c.dataQuality) ? (c.value?.chilledWaterOutletTemperature ?? 0) : 0,
     returnTemp: isDataQualityOnline(c.dataQuality) ? (c.value?.chilledWaterInletTemperature ?? 0) : 0,
@@ -55,8 +55,9 @@ function toFcuItem(f: Awaited<ReturnType<typeof loadFcusWithStatus>>[number]['f'
     // 供應商 SDK 沒有 FCU 設定溫度這個欄位，一律回 NaN，畫面已改用 -- 顯示（見 FcuMatrixSection.vue）。
     setTemp: NaN,
     tempDiff: NaN,
-    mode: '冷氣',
-    fanSpeed: '自動',
+    // 離線時快照是舊值，不能當成目前狀態顯示；未知（-1）由標籤函式轉成 --。
+    mode: online && f.value ? fcuModeLabel(f.value.mode) : '--',
+    fanSpeed: online && f.value ? fcuFanSpeedLabel(f.value.fanSpeed) : '--',
     status,
     isExceeded: status === 'ABNORMAL',
   };
@@ -99,7 +100,7 @@ export async function getDashboardOverviewApi(): Promise<DashboardOverview> {
   const alarms = await listAlarmsApi('active');
   const alarmingFcus = alarmingFcuIdsOf(alarms);
 
-  const chillerStatuses = chillers.map(deriveChillerStatus);
+  const chillerStatuses = chillers.map((c) => deriveChillerStatus(c, alarms));
   const fcuStatuses = fcus.map((f) => ({ f, status: deriveFcuStatus(f, alarmingFcus) }));
 
   const avgTemp = (floor: FloorId) => {

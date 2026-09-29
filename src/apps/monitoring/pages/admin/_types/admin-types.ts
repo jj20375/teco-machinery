@@ -14,6 +14,8 @@ export interface ChillerReportRow {
   supplyTemp: number;
   returnTemp: number;
   tempDiff: number;
+  /** 該小時平均負載率（rollup_chiller_1h.avg_load_pct）。 */
+  loadRate: number | null;
   cumulativeHours: number | null;
   isSupplyTempExceeded: boolean;
   isReturnTempExceeded: boolean;
