@@ -8,8 +8,9 @@
 
 主要工具是平台管理底下的 **「系統診斷」頁（`/platform/diagnostics`）**。這份手冊說明怎麼搭配指令逐層排查，以及每個症狀代表什麼。
 
-> 所有指令預設在 `backend/deploy/` 目錄下執行。如果是從 Mac 遠端操作現場主機，
-> 在 `docker` 後面加上 `--context teco`（見 `host-setup/03-docker-context-from-mac.md`）。
+> 所有指令預設在現場 VM 上的 `~/teco/backend/deploy/` 目錄執行（先 `ssh teco@<VM IP>`）。
+> 部署方式見 [`正式機首次部署手冊.md`](正式機首次部署手冊.md)；平常從 Mac 查 log／狀態的方式見
+> `backend/deploy/host-setup/03-docker-context-from-mac.md`。
 
 ---
 

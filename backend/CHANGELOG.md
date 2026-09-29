@@ -1115,3 +1115,35 @@ false` 就是簡化模式），問題出在 UI：checkbox 旁邊的文字會隨�
 - `--with-anomalies`：8 小時時間差（紅）、冰水出水 45°C 與累計運轉時數倒退（黃）、DDC1 缺 1 台、
   DDC2 未對照 1 台＋85°C 1 台＋疑似沒回應 1 台（黃）全部正確判定。
 - 未帶 token 呼叫回 401。驗證完已執行 `stop-live-simulation.sh` 還原。
+
+## 修正現場部署流程：docker context 無法首次部署、網站只綁 127.0.0.1（2026-09-29）
+
+準備第一次在現場 Hyper-V VM 建置時，逐項對照 `compose.yaml` 與 `host-setup/` 文件，發現照原本
+文件走一定會失敗（這些腳本先前沒有在真機跑過）：
+
+1. **`03-docker-context-from-mac.md` 教的 `docker --context teco compose ... up` 不能用來部署**：
+   `compose.yaml` 的 bind mount（`./mariadb/init`、`./mariadb/conf.d`、`./Caddyfile`、`../../dist`）
+   透過 docker context 執行時，會被當成 VM 上的路徑去找；VM 上沒有就由 Docker 自動建空資料夾掛進去
+   → 資料庫沒有初始化（空庫）、Caddy 設定檔變成資料夾而起不來、網站沒有內容。
+   改成「rsync 專案到 VM → SSH 進 VM 執行 compose」；docker context 只保留給 `ps`／`logs`／`exec`
+   這類不需要 compose 檔的日常查看。
+2. **網站 port 只綁 `127.0.0.1:8081`**：部署到 VM 後，Windows 主機與現場電腦都連不進來。
+   `web` 改成 `8081:80` 對區網開放（對外唯一入口，`/api`、`/hubs` 由 Caddy 反代）；
+   API（8082）與 MariaDB（3307）維持只綁 127.0.0.1。前台戰情室不用登入，手冊建議用 ufw 限制來源網段。
+3. **`02-ubuntu-docker-setup.sh` 會無條件關閉 SSH 密碼登入**：還沒放公鑰就執行，之後只能從 Hyper-V
+   主控台操作。改成偵測到 `~/.ssh/authorized_keys` 有內容才關閉，否則印出提醒並跳過。
+4. **備份指令的容器名稱寫錯**（`teco-mariadb-1`／`teco-mariadb`，實際是 `teco-iot-area-mariadb-1`），
+   而且用的是 Mac 端的 `$DB_ROOT_PASSWORD`。改成在 VM 上用 cron 執行、密碼直接取容器內的
+   `MARIADB_ROOT_PASSWORD`，附保留 30 天與還原指令。
+
+新增 `docs/正式機首次部署手冊.md`：建 VM → 裝 Docker → Mac 建置前端與匯出資料庫 → 同步到 VM →
+建立 `.env`（新產生的密碼）→ 先起 MariaDB 並匯入 → 起全部服務 → 驗證，以及之後的更新流程
+（含「新 migration 不會自動套用到既有資料庫」提醒）。資料庫建議只搬設定類資料，排除
+`fcu_reading`／`chiller_reading`／`channel_health`／`rollup_*`／`alarm_event`／`refresh_token`
+——開發機上的時序資料絕大部分是斷線時寫入的 0 值列與 demo 假資料，沒有搬移價值。
+
+**驗證**：`docker compose config` 通過；本機用拋棄式 `mariadb:11.8` 容器掛上 `mariadb/init/` 模擬全新
+VM，確認 000～012 初始化腳本全部執行、匯入設定 dump 後帳號 11 筆／FCU 95 台／圖面配置 93 筆／
+告警規則／`platform.diagnostics` 權限都在，時序表為空且分割區完整，`teco_app` 可正常寫入。
+備份指令在本機實際執行成功。Hyper-V 與 VM 本身的步驟仍未在真機驗證。
+

@@ -3,13 +3,14 @@
 #   docker compose up -d --build          # 全部啟動
 #   docker compose up -d --build api      # 只啟動/重建 api（連同它依賴的 mariadb）
 #   docker compose up -d --build web      # 只啟動/重建前台網站
-# 遠端部署（Mac 端建好 docker context 後，不需要 SSH 進去）：
-#   docker --context teco compose -f deploy/compose.yaml up -d --build
+# 現場 VM 部署：專案 rsync 到 VM 後 SSH 進去在這個目錄執行（不能用 docker context 從 Mac
+# 遠端 up——bind mount 會去 VM 上找路徑，掛到空資料夾）。見 docs/正式機首次部署手冊.md。
 #
-# 本機連線位址（只綁 127.0.0.1，不對外網開放）：
-#   前台網站：http://localhost:8081
-#   API 直連：http://localhost:8082（例如 http://localhost:8082/readyz）
-#   MariaDB 沒有對外開 port，只能用 docker compose exec mariadb ... 連
+# 連線位址：
+#   前台網站：http://<主機 IP>:8081（對區網開放——部署到現場 VM 後，Windows 主機與現場電腦
+#             都要能打開網站；前台戰情室不用登入，若區網有不相干的人，用 VM 的 ufw 限制來源網段）
+#   API 直連：http://localhost:8082（只綁 127.0.0.1；外部一律經過網站的 /api/* 反代，不需要直連）
+#   MariaDB：127.0.0.1:3307（只綁 127.0.0.1，給本機 GUI 工具用），或 docker compose exec mariadb ...
 #
 # 環境變數由 .env（同目錄，不進版控）提供機密值：DB_ROOT_PASSWORD、DB_APP_PASSWORD、
 # INTERNAL_TOKEN、JWT_SIGNING_KEY。範例見 .env.example。
@@ -99,7 +100,7 @@ services:
     image: caddy:2
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8081:80"    # 前台網站，本機用 http://localhost:8081；不佔用 80/443，也不對外網開放
+      - "8081:80"    # 前台網站，區網用 http://<主機 IP>:8081；對外唯一入口（/api、/hubs 由 Caddy 反代），不佔用 80/443
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ../../dist:/srv/dist:ro   # 前端 Astro build 輸出在專案根目錄，不是 backend/ 底下

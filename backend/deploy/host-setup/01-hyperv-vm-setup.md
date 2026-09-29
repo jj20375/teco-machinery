@@ -1,5 +1,8 @@
 # 1. Hyper-V VM 建置（Windows 宿主）
 
+> 第一次部署的完整順序（建 VM → 裝 Docker → 同步專案 → 搬資料庫 → 啟動 → 驗證）見
+> [`docs/正式機首次部署手冊.md`](../../../docs/正式機首次部署手冊.md)，這份只負責 VM 本身。
+
 前提：Windows Server 2019/2022/2025，或 Windows 10/11 **Pro/Enterprise**（Home 版無 Hyper-V，
 改走 `../../docs/BACKEND_INTEGRATION_PLAN.md` 附錄的 WSL2 退路）。
 

@@ -181,7 +181,7 @@ EF Core 10 不相容。與其混用 EFCore9 + net10 app（會有一堆隱性版�
 - **平台「系統診斷」頁的合理範圍是暫定值**：`Services/Diagnostics/DataValidationRules.cs` 裡的
   冰水主機／FCU 數值範圍是依一般運轉常識訂的，不是供應商規格，現場接通後要拿真實讀數校正
   （見 `docs/IOT_現場接通驗證手冊.md` 第 4 節）。排程執行紀錄只存在 API 記憶體，重啟即清空。
-- **P6 host-setup 未在真機跑過**：腳本與文件已寫好，但需要你在現場那台 Windows 主機上實際執行
+- **P6 host-setup 未在真機跑過**（首次部署流程見 `docs/正式機首次部署手冊.md`）：腳本與文件已寫好，但需要你在現場那台 Windows 主機上實際執行
   （Hyper-V 需要系統管理員權限與 Pro/Enterprise/Server 版本，我這邊無法代為操作）。
 
 ## 需要向東元 / 供應商確認（會影響上面缺口能否補完）

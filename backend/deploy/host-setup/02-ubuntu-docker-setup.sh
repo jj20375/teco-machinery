@@ -17,8 +17,15 @@ echo "== 安裝 docker compose plugin（get.docker.com 通常已含，這裡確�
 docker compose version || sudo apt-get install -y docker-compose-plugin
 
 echo "== SSH 強化：只允許金鑰登入、關閉 root 登入 =="
-sudo sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
 sudo sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+# 還沒放公鑰就關掉密碼登入，之後只能從 Hyper-V 主控台視窗操作——先檢查再關。
+if [[ -s "$HOME/.ssh/authorized_keys" ]]; then
+  sudo sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+  echo "已關閉 SSH 密碼登入（偵測到 ~/.ssh/authorized_keys）"
+else
+  echo "⚠️  ~/.ssh/authorized_keys 是空的，暫不關閉 SSH 密碼登入。"
+  echo "   先在 Mac 執行 ssh-copy-id $USER@<VM IP>，確認能免密碼登入後再重跑這支腳本。"
+fi
 sudo systemctl restart ssh
 
 echo "== 安裝 fail2ban 防暴力破解 =="

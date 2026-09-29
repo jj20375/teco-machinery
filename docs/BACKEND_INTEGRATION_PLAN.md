@@ -567,12 +567,10 @@ ENTRYPOINT ["dotnet", "Teco.Hvac.Collector.dll"]
 
 ### 8.5 備份
 
-Windows 端排程每日：
-```powershell
-docker exec teco-mariadb mariadb-dump -u root -p$env:DBPW --single-transaction --routines teco_hvac | 
-  Out-File -Encoding utf8 "D:\backup\teco_$(Get-Date -f yyyyMMdd).sql"
-```
-加上 volume 快照（Hyper-V 方案可直接用 VM checkpoint）。
+採用 Hyper-V VM 方案後，備份改在 VM 內用 cron 每日執行 `mariadb-dump`（容器名稱是
+`teco-iot-area-mariadb-1`，由 compose.yaml 的 `name: teco-iot-area` 決定），再定期把備份檔
+複製到 VM 以外的機器，加上 Hyper-V VM checkpoint 做整機備份。實際指令見
+`backend/deploy/host-setup/03-docker-context-from-mac.md` §3.5。
 
 ---
 
