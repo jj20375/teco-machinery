@@ -11,6 +11,9 @@ public sealed class CurrentStateStore
 {
     private readonly Lock _lock = new();
     private IngestPayload? _latest;
+    private IngestPayload? _previous;
+    private DateTimeOffset? _lastIngestAtUtc;
+    private long _ingestCount;
     private readonly Dictionary<Channel, DateTimeOffset> _lastSuccessAtUtc = new();
     private readonly Dictionary<Channel, ConnectionStatusPayload> _connectionStatus = new();
 
@@ -18,7 +21,10 @@ public sealed class CurrentStateStore
     {
         lock (_lock)
         {
+            _previous = _latest;
             _latest = payload;
+            _lastIngestAtUtc = DateTimeOffset.UtcNow;
+            _ingestCount++;
 
             bool gatewaySuccess = payload.Hanbell1.ReadStatus == ReadStatus.Success ||
                                    payload.Hanbell2.ReadStatus == ReadStatus.Success;
@@ -36,6 +42,15 @@ public sealed class CurrentStateStore
     public IngestPayload? GetLatest()
     {
         lock (_lock) { return _latest; }
+    }
+
+    /// <summary>
+    /// 給平台診斷頁用：前一筆快照（比對累計值有沒有倒退、UpdateTime 有沒有停住）、
+    /// API 自己收到最後一筆的時間（不信任 Collector 回報的時間，才抓得到時鐘偏移）與累計筆數。
+    /// </summary>
+    public (IngestPayload? Latest, IngestPayload? Previous, DateTimeOffset? LastIngestAtUtc, long IngestCount) GetIngestState()
+    {
+        lock (_lock) { return (_latest, _previous, _lastIngestAtUtc, _ingestCount); }
     }
 
     public bool TryGetConnectionStatus(Channel channel, out ConnectionStatusPayload status)

@@ -15,13 +15,18 @@ namespace Teco.Hvac.Api.Services;
 /// 跑一次更大範圍的區間（見 backend/README.md 的已知限制）。
 /// </summary>
 public sealed class RollupHostedService(
-    ChillerRepository chillers, FcuRepository fcus, ILogger<RollupHostedService> logger) : BackgroundService
+    ChillerRepository chillers, FcuRepository fcus, ScheduledJobStatusStore jobStatus,
+    ILogger<RollupHostedService> logger) : BackgroundService
 {
+    public const string JobKey = "rollup-hourly";
+
     private static readonly TimeSpan TickInterval = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan RollingWindow = TimeSpan.FromHours(26);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        jobStatus.Register(JobKey, "每小時聚合（rollup_chiller_1h／rollup_fcu_1h）", TickInterval);
+
         // 啟動先跑一次，不用等第一個 15 分鐘的 tick。
         await RunOnceAsync(stoppingToken);
 
@@ -34,6 +39,7 @@ public sealed class RollupHostedService(
 
     private async Task RunOnceAsync(CancellationToken ct)
     {
+        jobStatus.Start(JobKey);
         try
         {
             var nowUtc = DateTime.UtcNow;
@@ -45,12 +51,14 @@ public sealed class RollupHostedService(
             await fcus.UpsertHourlyRollupAsync(fromUtc, toUtcExclusive, ct);
 
             logger.LogInformation("每小時聚合排程完成：{From:O} ~ {To:O}", fromUtc, toUtcExclusive);
+            jobStatus.Succeed(JobKey, $"重新聚合 {fromUtc:yyyy-MM-dd HH:mm} ~ {toUtcExclusive:yyyy-MM-dd HH:mm}（UTC）");
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // 跟 Collector 的規則熱重載一樣的態度：這次失敗不影響下次 tick，沿用滾動視窗
             // 下次自然會重跑，不需要在這裡重試。
             logger.LogWarning(ex, "每小時聚合排程失敗，將於下次排程時間自動重試");
+            jobStatus.Fail(JobKey, ex);
         }
     }
 }

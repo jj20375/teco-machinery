@@ -25,10 +25,19 @@
 # 用法：
 #   cd backend/deploy
 #   ./simulate-live-data.sh
+#   ./simulate-live-data.sh --with-anomalies   # 額外塞入異常數據，驗證平台「系統診斷」頁每條檢查都會亮燈
+#
+# --with-anomalies 會先送一筆正常快照當「上一筆」，再送一筆刻意做壞的快照：
+#   冰水主機 1 冰水出水溫度 45°C（超出範圍）＋累計運轉時數倒退、UpdateTime 往前偏 8 小時（模擬時區 bug）、
+#   DDC1 少回報 1 台（資料庫有登記、現場沒回報）、DDC2 多 1 台沒對照的 FCU（站號 99／位置 99）、
+#   DDC2 1 台溫度 85°C、1 台狀態全 Unknown 且溫度 0（疑似沒回應）。
 # 還原：
 #   ./stop-live-simulation.sh
 set -euo pipefail
 cd "$(dirname "$0")"
+
+WITH_ANOMALIES=false
+[[ "${1:-}" == "--with-anomalies" ]] && WITH_ANOMALIES=true
 export LC_ALL=C LANG=C
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; BOLD='\033[1m'; NC='\033[0m'
@@ -53,8 +62,9 @@ ok "collector 已暫停；跑完 demo 記得用 ./stop-live-simulation.sh 恢復
 CHILLERS_FILE=$(mktemp)
 FCUS_FILE=$(mktemp)
 PAYLOAD_FILE=$(mktemp)
+BASELINE_FILE=$(mktemp)
 ABNORMAL_IDS_FILE=$(mktemp)
-trap 'rm -f "$CHILLERS_FILE" "$FCUS_FILE" "$PAYLOAD_FILE" "$ABNORMAL_IDS_FILE"' EXIT
+trap 'rm -f "$CHILLERS_FILE" "$FCUS_FILE" "$PAYLOAD_FILE" "$BASELINE_FILE" "$ABNORMAL_IDS_FILE"' EXIT
 
 step "讀取目前的設備清單"
 docker compose exec -T mariadb mariadb -u root -p"$DB_ROOT_PASSWORD" -N teco_hvac -e \
@@ -66,12 +76,13 @@ docker compose exec -T mariadb mariadb -u root -p"$DB_ROOT_PASSWORD" -N teco_hva
 [[ -s "$FCUS_FILE" ]] || fail "device_fcu 是空的，還沒跑過種子資料？"
 
 step "組出模擬快照（Python，讀 $CHILLERS_FILE / $FCUS_FILE）"
-python3 - "$CHILLERS_FILE" "$FCUS_FILE" "$PAYLOAD_FILE" "$ABNORMAL_IDS_FILE" <<'PYEOF'
-import sys, json, random
-from datetime import datetime, timezone
+python3 - "$CHILLERS_FILE" "$FCUS_FILE" "$PAYLOAD_FILE" "$ABNORMAL_IDS_FILE" "$BASELINE_FILE" "$WITH_ANOMALIES" <<'PYEOF'
+import sys, json, random, copy
+from datetime import datetime, timezone, timedelta
 
-chillers_path, fcus_path, payload_path, abnormal_ids_path = sys.argv[1:5]
-now = datetime.now(timezone.utc).isoformat()
+chillers_path, fcus_path, payload_path, abnormal_ids_path, baseline_path, with_anomalies = sys.argv[1:7]
+now_dt = datetime.now(timezone.utc)
+now = now_dt.isoformat()
 random.seed(42)  # demo 用，固定種子讓每次跑結果一致，方便對答案
 
 def normal_chiller(modbus_id):
@@ -147,6 +158,28 @@ payload = {
     "ddc2": {"channel": 2, "updateTimeUtc": now, "readStatus": 1, "isConnected": True, "fcuList": ddc_lists[2]},
 }
 
+# 正常快照先存一份當「上一筆」——--with-anomalies 模式要靠它才驗得出累計值倒退。
+with open(baseline_path, "w", encoding="utf-8") as f:
+    json.dump(payload, f, ensure_ascii=False)
+
+if with_anomalies == "true":
+    bad = copy.deepcopy(payload)
+    shifted = (now_dt - timedelta(hours=8)).isoformat()
+    bad["updateTimeUtc"] = shifted
+    bad["hanbell1"]["chilledWaterOutletTemperature"] = 45.0
+    bad["hanbell1"]["accumulatedRunningHours"] -= 500
+    if bad["ddc1"]["fcuList"]:
+        bad["ddc1"]["fcuList"].pop()
+    bad["ddc2"]["fcuList"].append({
+        "channel": 2, "stationId": 99, "position": 99, "id": "FC_UNMAPPED_99", "address": 9999,
+        "switchStatus": 1, "mode": 1, "fanSpeed": 3, "temperature": 24.0,
+    })
+    if len(bad["ddc2"]["fcuList"]) > 7:
+        bad["ddc2"]["fcuList"][5]["temperature"] = 85.0
+        bad["ddc2"]["fcuList"][6].update({"switchStatus": -1, "mode": -1, "fanSpeed": -1, "temperature": 0})
+    payload = bad
+    print("已加入異常數據：溫度超範圍、累計值倒退、UpdateTime 偏移 8 小時、FCU 缺漏／未對照／疑似沒回應")
+
 with open(payload_path, "w", encoding="utf-8") as f:
     json.dump(payload, f, ensure_ascii=False)
 with open(abnormal_ids_path, "w", encoding="utf-8") as f:
@@ -194,6 +227,14 @@ step "送出連線狀態（Gateway/DDC1/DDC2 全部標記為已連線）"
 post_connections
 ok "3 個通道都已標記為連線中"
 
+if [[ "$WITH_ANOMALIES" == "true" ]]; then
+  step "先送一筆正常快照當作「上一筆」"
+  docker compose exec -T api curl -fsS -X POST http://localhost:8080/internal/ingest/data \
+    -H "X-Internal-Token: $INTERNAL_TOKEN" -H "Content-Type: application/json" \
+    --data-binary @- < "$BASELINE_FILE" > /dev/null
+  ok "正常快照已送出"
+fi
+
 step "送出設備快照"
 docker compose exec -T api curl -fsS -X POST http://localhost:8080/internal/ingest/data \
   -H "X-Internal-Token: $INTERNAL_TOKEN" -H "Content-Type: application/json" \
@@ -238,4 +279,8 @@ fi
 
 echo ""
 ok "完成。重新整理監控中心／前台戰情室應該就能看到運轉中/停止/異常混合的畫面。"
+if [[ "$WITH_ANOMALIES" == "true" ]]; then
+  echo "   異常模式：用平台帳號打開 /platform/diagnostics，確認各項檢查有亮黃燈／紅燈。"
+  echo "   注意：collector 被暫停，所以「Collector 程序」那張卡片顯示紅燈是預期的。"
+fi
 echo "   還原：./stop-live-simulation.sh"

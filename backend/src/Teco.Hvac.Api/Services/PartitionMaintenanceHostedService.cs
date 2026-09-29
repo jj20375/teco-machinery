@@ -16,8 +16,11 @@ namespace Teco.Hvac.Api.Services;
 /// 排程邏輯留在 C# 端方便測試跟看 log。
 /// </summary>
 public sealed class PartitionMaintenanceHostedService(
-    PartitionMaintenanceRepository partitions, ILogger<PartitionMaintenanceHostedService> logger) : BackgroundService
+    PartitionMaintenanceRepository partitions, ScheduledJobStatusStore jobStatus,
+    ILogger<PartitionMaintenanceHostedService> logger) : BackgroundService
 {
+    public const string JobKey = "partition-maintenance";
+
     private static readonly TimeSpan TickInterval = TimeSpan.FromHours(24);
     private const int MonthsAheadBuffer = 3;
     private const int ChillerRetentionDays = 180;
@@ -25,6 +28,7 @@ public sealed class PartitionMaintenanceHostedService(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        jobStatus.Register(JobKey, "分割區維護（增補未來月份／清除過期月份）", TickInterval);
         await RunOnceAsync(stoppingToken);
 
         using var timer = new PeriodicTimer(TickInterval);
@@ -36,16 +40,19 @@ public sealed class PartitionMaintenanceHostedService(
 
     private async Task RunOnceAsync(CancellationToken ct)
     {
+        jobStatus.Start(JobKey);
         try
         {
-            await EnsureFuturePartitionsAsync("chiller_reading", ct);
-            await EnsureFuturePartitionsAsync("fcu_reading", ct);
-            await DropOldPartitionsAsync("chiller_reading", ChillerRetentionDays, ct);
-            await DropOldPartitionsAsync("fcu_reading", FcuRetentionDays, ct);
+            var added = await EnsureFuturePartitionsAsync("chiller_reading", ct);
+            added += await EnsureFuturePartitionsAsync("fcu_reading", ct);
+            var dropped = await DropOldPartitionsAsync("chiller_reading", ChillerRetentionDays, ct);
+            dropped += await DropOldPartitionsAsync("fcu_reading", FcuRetentionDays, ct);
+            jobStatus.Succeed(JobKey, $"新增 {added} 個分割區、清除 {dropped} 個過期分割區");
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogWarning(ex, "分割區維護排程失敗，將於下次排程時間自動重試");
+            jobStatus.Fail(JobKey, ex);
         }
     }
 
@@ -72,7 +79,7 @@ public sealed class PartitionMaintenanceHostedService(
         return null;
     }
 
-    private async Task EnsureFuturePartitionsAsync(string table, CancellationToken ct)
+    private async Task<int> EnsureFuturePartitionsAsync(string table, CancellationToken ct)
     {
         var existing = (await partitions.ListPartitionsAsync(ct)).Where(p => p.TableName == table).ToList();
         var namedMonths = existing
@@ -85,18 +92,22 @@ public sealed class PartitionMaintenanceHostedService(
         var latestExisting = namedMonths.Count > 0 ? namedMonths.Max() : thisMonth.AddMonths(-1);
         var target = thisMonth.AddMonths(MonthsAheadBuffer);
 
+        var added = 0;
         for (var cursor = latestExisting.AddMonths(1); cursor <= target; cursor = cursor.AddMonths(1))
         {
             await partitions.AddMonthlyPartitionAsync(table, cursor, ct);
             logger.LogInformation("分割區增補：{Table} 新增 p_{Month:yyyy_MM}", table, cursor);
+            added++;
         }
+        return added;
     }
 
-    private async Task DropOldPartitionsAsync(string table, int retentionDays, CancellationToken ct)
+    private async Task<int> DropOldPartitionsAsync(string table, int retentionDays, CancellationToken ct)
     {
         var cutoff = DateTime.UtcNow.Date.AddDays(-retentionDays);
         var existing = (await partitions.ListPartitionsAsync(ct)).Where(p => p.TableName == table).ToList();
         var remaining = existing.Count;
+        var dropped = 0;
 
         foreach (var p in existing)
         {
@@ -106,9 +117,11 @@ public sealed class PartitionMaintenanceHostedService(
 
             await partitions.DropPartitionAsync(table, p.PartitionName, ct);
             remaining--;
+            dropped++;
             logger.LogInformation(
                 "分割區清除：{Table}.{Partition}（涵蓋到 {End:yyyy-MM-dd} 之前，超過 {RetentionDays} 天保留期）",
                 table, p.PartitionName, end, retentionDays);
         }
+        return dropped;
     }
 }

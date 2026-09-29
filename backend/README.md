@@ -68,6 +68,14 @@ backend/
 - `/api/v1/chillers`、`/api/v1/fcus?floor=B1`（正確回傳 64 筆）都能正確合併 DB 主檔與即時快照
 - Caddy 反向代理：靜態前端（Astro `dist/`）與 `/api/*`、`/hubs/*` 轉發都正常
 
+**平台「系統診斷」**（2026-09-29，`/platform/diagnostics`，細節見 `CHANGELOG.md` 同名章節）：
+- `GET /api/v1/platform/diagnostics`：通道狀態、Collector `/healthz`、數據內容檢查、FCU 台數比對、
+  資料庫落地統計、排程執行狀態、`channel_health` 歷史；`GET /api/v1/platform/diagnostics/raw`：原始快照。
+  需要 platform scope＋`platform.diagnostics:read`（`012_platform_diagnostics_permission.sql`）
+- 已用瀏覽器實測三種情境：暫填 IP 連不到（誠實顯示未連線）、`simulate-live-data.sh`
+  （數據內容全綠）、`simulate-live-data.sh --with-anomalies`（7 種異常全部正確亮燈）
+- 現場接通流程見 [`docs/IOT_現場接通驗證手冊.md`](../docs/IOT_現場接通驗證手冊.md)
+
 **尚未驗證**（需要現場環境或使用者操作）：
 - P0-3：容器實際連到 `192.168.10.198/12/14` 三個現場 IP（我這裡沒有那個網路）
 - P6：在真正的 Hyper-V VM 上執行 `deploy/host-setup/`
@@ -170,6 +178,9 @@ EF Core 10 不相容。與其混用 EFCore9 + net10 app（會有一堆隱性版�
   `npm run build`，見上方「尚未驗證」與 `CHANGELOG.md`「平台管理前端＋雙軌身分切換」一節。
 - **「管理成員」面板新增成員只支援建全新帳號**，不支援選擇「已存在的其他帳號」（後端 API
   有支援帶 `userId`，但沒有「搜尋既有使用者」端點，UI 體驗會很差，先不做）。
+- **平台「系統診斷」頁的合理範圍是暫定值**：`Services/Diagnostics/DataValidationRules.cs` 裡的
+  冰水主機／FCU 數值範圍是依一般運轉常識訂的，不是供應商規格，現場接通後要拿真實讀數校正
+  （見 `docs/IOT_現場接通驗證手冊.md` 第 4 節）。排程執行紀錄只存在 API 記憶體，重啟即清空。
 - **P6 host-setup 未在真機跑過**：腳本與文件已寫好，但需要你在現場那台 Windows 主機上實際執行
   （Hyper-V 需要系統管理員權限與 Pro/Enterprise/Server 版本，我這邊無法代為操作）。
 

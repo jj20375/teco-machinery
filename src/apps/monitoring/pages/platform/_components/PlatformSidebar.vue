@@ -18,6 +18,7 @@ const MENU_ITEMS: MenuItem[] = [
   { title: '場館管理', path: '/platform/merchants' },
   { title: '系統帳號', path: '/platform/system-users' },
   { title: '角色管理', path: '/platform/roles' },
+  { title: '系統診斷', path: '/platform/diagnostics' },
 ];
 
 function isActive(path: string) {

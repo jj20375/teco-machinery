@@ -1069,3 +1069,49 @@ false` 就是簡化模式），問題出在 UI：checkbox 旁邊的文字會隨�
 **同樣沒有機會用瀏覽器實際點過修好後的畫面**（環境限制同上）——這次的 bug 本身就是靠業主
 在瀏覽器操作才發現的活生生案例，證明這個環境限制不是隨口說說，之後有機會應該優先安排一次
 完整的瀏覽器操作驗證，而不是每次都靠事後補測。
+
+## 平台「系統診斷」頁＋現場接通驗證手冊（2026-09-29 新增）
+
+**為什麼要做**：現場設備 IP 目前都是暫填值，要到現場才能測接通。到時需要一個地方一眼確認
+「三條通道有沒有連上、數據內容合不合理、有沒有寫進資料庫、排程有沒有在跑」——原本這些資訊
+散在 collector log、`channel_health`、collector `/healthz`，排程成功與否更是只寫在 log 裡。
+
+**做了什麼**：
+- **Collector 程式完全沒改**。診斷資料全部在 API 端取得：`CurrentStateStore`（最新快照、通道
+  連線狀態與實際 IP:Port）、`device_fcu`／`device_chiller`（台數比對）、compose 內網直接打
+  `http://collector:8080/healthz`（設定 `Diagnostics:CollectorHealthUrl`，逾時 2 秒）。
+- `CurrentStateStore` 多保留「上一筆快照」與 API 自己的收件時間／累計筆數，用來判斷累計值倒退、
+  UpdateTime 停住、推送中斷。
+- 新增 `ScheduledJobStatusStore`：`RollupHostedService`／`PartitionMaintenanceHostedService`
+  每次執行記錄開始／結束／成功與否／摘要（最近 20 次，只存記憶體）。持久證據另外用
+  `rollup_*_1h` 的最新整點，兩者並列顯示。
+- 新增 `Services/Diagnostics/`：`DataValidationRules`（合理範圍，暫定值集中一處）、
+  `DiagnosticsService`（組報告，各段獨立 try/catch，資料庫掛掉也不會讓整頁 500）、
+  `DiagnosticsRepository`（落地統計）；`ChannelHealthRepository.ListRecentAsync`。
+- 端點 `/api/v1/platform/diagnostics`、`/raw`，權限 `platform.diagnostics:read`（僅 platform scope）。
+  migration `012_platform_diagnostics_permission.sql`，**既有資料庫要手動執行**。
+- 前端 `/platform/diagnostics`（`PlatformDiagnosticsPage.vue` + `diagnostics/_components/`），
+  每 5 秒輪詢、可暫停。
+- `simulate-live-data.sh --with-anomalies`：先送正常快照當上一筆，再送刻意做壞的快照，
+  讓診斷頁的每條檢查不用去現場就能驗證會亮燈。
+- `docs/IOT_現場接通驗證手冊.md`：分層排查步驟、症狀對照表、逐欄核對清單、24 小時觀察項目。
+
+**開發時抓到的真實狀況**：
+1. **斷線時 Collector 仍持續寫入 `read_status=Disconnected` 的空資料列**——實測 10 分鐘內
+   `fcu_reading` 多了 950 筆、`chiller_reading` 96 筆，全部是 0 值。落地統計一開始沒過濾
+   `read_status`，結果「連不上設備」被判成「資料庫寫入正常」。已改成只算 `read_status = 1`。
+   Collector 要不要乾脆別寫這些列（一天約 14 萬筆垃圾資料）另外處理，這次沒動。
+2. **時序表主鍵是 `(device_id, ts)`**，直接對整表 `MAX(ts)` 或 `WHERE ts >= …` 用不到索引，
+   會掃整個月份分割區；診斷頁 5 秒輪詢一次，所以查詢一律改成從設備主檔逐台走主鍵
+   （相關子查詢／`STRAIGHT_JOIN`）。
+3. 模擬腳本只打 `/internal/ingest`、不寫資料庫，跑模擬時「資料庫寫入」與「Collector 程序」
+   必定紅燈——這是診斷頁正確反映事實，不是 bug，已在訊息與手冊註明。
+
+**驗證**：`dotnet build`、`npm run typecheck`、`npm run build` 全過；`docker compose up -d --build api`
+後以 `platform_admin` 登入瀏覽器實際操作三種情境：
+- 暫填 IP（真實 collector 在跑）：三條通道正確顯示「連線中／未連線」、Collector degraded、
+  資料庫寫入「無法判斷」、連線變化紀錄每 30 秒一輪的重試循環清楚可見。
+- `simulate-live-data.sh`：數據內容與台數比對全綠（64/64/64、31/31/31）。
+- `--with-anomalies`：8 小時時間差（紅）、冰水出水 45°C 與累計運轉時數倒退（黃）、DDC1 缺 1 台、
+  DDC2 未對照 1 台＋85°C 1 台＋疑似沒回應 1 台（黃）全部正確判定。
+- 未帶 token 呼叫回 401。驗證完已執行 `stop-live-simulation.sh` 還原。

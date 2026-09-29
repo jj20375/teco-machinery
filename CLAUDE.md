@@ -158,6 +158,13 @@
 - **前台是不用登入的公開頁面**，打的是 `/api/v1/public/*`（`PublicEndpoints.cs`），不是後台用的
   認證端點——新增涉及即時監控資料的功能時，要意識到有兩組平行端點（認證版 + 公開版），
   公開版沒有 JWT 檢查，只能放不涉及使用者/密碼/操作紀錄等機敏資訊的唯讀資料。
+- **平台「系統診斷」頁（`/platform/diagnostics`）是現場 IoT 接通驗證的主要工具**（2026-09-29），
+  只開放給 platform scope＋`platform.diagnostics:read`，不要搬到場館後台或 `/api/v1/public/*`
+  （含通道 IP、原始讀值等維運資訊）。數據合理範圍集中寫死在
+  `backend/src/Teco.Hvac.Api/Services/Diagnostics/DataValidationRules.cs`，**是暫定值**，
+  現場拿到真實讀數後要校正；新增判斷規則一律加在後端，前端只負責顯示。
+  時序表的統計查詢要記得只算 `read_status = 1`——斷線時 Collector 仍會寫入 0 值的 Disconnected 列。
+  操作流程見 `docs/IOT_現場接通驗證手冊.md`。
 - P6（Hyper-V VM 現場部署）的腳本寫好了但沒有在真正的現場主機上跑過，因為沒有那台主機的存取權限。
 - **角色清單查詢一律要排除 `member-%` 個人專屬角色**（`WHERE code NOT LIKE 'member-%'`）：
   「編輯成員」六個核取方塊面板會自動幫每個成員建立一個 `Code = "member-{membershipId}"`、
