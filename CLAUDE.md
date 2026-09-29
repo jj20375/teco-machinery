@@ -163,7 +163,8 @@
   （含通道 IP、原始讀值等維運資訊）。數據合理範圍集中寫死在
   `backend/src/Teco.Hvac.Api/Services/Diagnostics/DataValidationRules.cs`，**是暫定值**，
   現場拿到真實讀數後要校正；新增判斷規則一律加在後端，前端只負責顯示。
-  時序表的統計查詢要記得只算 `read_status = 1`——斷線時 Collector 仍會寫入 0 值的 Disconnected 列。
+  時序表的統計查詢要記得只算 `read_status = 1`——2026-09-29 起 Collector 讀取不成功時已不寫入，
+  但更早的舊資料裡仍有 0 值的 Disconnected 列。
   操作流程見 `docs/IOT_現場接通驗證手冊.md`。
 - P6（Hyper-V VM 現場部署）的腳本寫好了但沒有在真正的現場主機上跑過，因為沒有那台主機的存取權限。
 - **角色清單查詢一律要排除 `member-%` 個人專屬角色**（`WHERE code NOT LIKE 'member-%'`）：

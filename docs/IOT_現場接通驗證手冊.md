@@ -168,7 +168,7 @@ docker compose exec collector curl -s http://localhost:8080/healthz
 
 診斷頁的「資料庫落地」區塊就是用下面這些查詢算出來的。需要直接確認時可以自己跑。注意欄位名稱：時序表的時間欄位是 `ts`，聚合表是 `bucket`，全部都是 UTC。
 
-最近讀取成功的資料（`read_status = 1` 才算成功；斷線時 collector 仍會寫入 `read_status = 3` 的空資料，要排除）：
+最近讀取成功的資料（`read_status = 1` 才算成功。2026-09-29 起 Collector 讀取不成功時不再寫入，但更早的舊資料裡還有 `read_status = 3` 的空資料，所以仍要排除）：
 
 ```bash
 source .env && docker compose exec -T mariadb mariadb -u root -p"$DB_ROOT_PASSWORD" teco_hvac -e "SELECT 'chiller' t, MAX(ts), COUNT(*) FROM chiller_reading WHERE ts >= UTC_TIMESTAMP() - INTERVAL 10 MINUTE AND read_status = 1 UNION ALL SELECT 'fcu', MAX(ts), COUNT(*) FROM fcu_reading WHERE ts >= UTC_TIMESTAMP() - INTERVAL 10 MINUTE AND read_status = 1;"
