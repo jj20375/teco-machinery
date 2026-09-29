@@ -81,9 +81,9 @@ public sealed class ChillerRepository(TecoDbConnectionFactory factory)
     /// rollup_chiller_1h（INSERT...SELECT...GROUP BY 一次做完，不逐筆搬到 C# 端算——
     /// 資料量可能上萬筆，SQL 端聚合快得多）。
     ///
-    /// 只吃 read_status = Success 的列：斷線/讀取失敗時 Collector 還是會寫一筆
-    /// chiller_reading（見 TimeSeriesWriter），但欄位值是 SDK 當下回傳的殘值，不是 NULL，
-    /// 拿來算平均會讓整小時的統計失真，比顯示「這小時沒資料」更誤導人。
+    /// 只吃 read_status = Success 的列：2026-09-29 以前 Collector 在斷線/讀取失敗時也會寫一筆
+    /// （欄位值是 SDK 殘值，不是 NULL），現在已改成不寫，但舊資料還留在表裡，過濾不能拿掉——
+    /// 拿殘值算平均會讓整小時的統計失真，比顯示「這小時沒資料」更誤導人。
     ///
     /// bucket 全程是 UTC 整點，沒有跨時區換算問題，直接在 SQL 端用 DATE_FORMAT 截斷即可，
     /// 不用比照本地日曆日聚合那樣搬到 C# 用 TimeZoneInfo 做。

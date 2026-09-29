@@ -10,8 +10,9 @@ namespace Teco.Hvac.Infrastructure.Repositories;
 /// 會掃過整個月份分割區（FCU 一個月上百萬筆），診斷頁又是 5 秒輪詢一次，所以一律改成
 /// 「從設備主檔逐台走主鍵」的寫法（相關子查詢／STRAIGHT_JOIN 強制以設備表驅動）。
 ///
-/// 只算 read_status = 1（Success）的列：Collector 在通道斷線時仍會照節流週期寫入
-/// read_status = Disconnected 的列，不過濾的話「連不上設備」也會被誤判成「資料庫寫入正常」。
+/// 只算 read_status = 1（Success）的列：2026-09-29 以前 Collector 在通道斷線時仍會照節流週期寫入
+/// read_status = Disconnected 的列（現已改成不寫，但舊資料還在），不過濾的話「連不上設備」也會被
+/// 誤判成「資料庫寫入正常」。
 /// </summary>
 public sealed class DiagnosticsRepository(TecoDbConnectionFactory factory)
 {

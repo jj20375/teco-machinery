@@ -270,6 +270,10 @@ public sealed class CollectorHostedService : BackgroundService
             _logger.LogWarning("找不到 ModbusId={ModbusId} 對應的 device_chiller，略過落地", snapshot.ModbusId);
             return;
         }
+        // 讀取不成功時快照裡是 SDK 保留的舊值或初始 0，不是這個時間點的量測值，寫進去只會讓時序表
+        // 混入每天十幾萬筆假資料。斷線期間的紀錄已經在 channel_health。要放在節流判斷之前，
+        // 否則恢復連線後第一筆成功讀值會被「剛寫過」的節流擋掉。
+        if (snapshot.ReadStatus != Contracts.ReadStatus.Success) return;
         if (!_throttle.ShouldWriteChiller(snapshot.ModbusId, nowUtc)) return;
 
         await _timeSeriesWriter.WriteChillerReadingsAsync(
@@ -278,6 +282,10 @@ public sealed class CollectorHostedService : BackgroundService
 
     private async Task WriteFcuListIfDueAsync(Contracts.DdcSnapshot ddc, DateTimeOffset nowUtc, CancellationToken ct)
     {
+        // 理由同 WriteChillerIfDueAsync。DDC 是整批輪詢：Failed 時清單混著新值、舊值與初始值，
+        // 又沒有逐台成功旗標（說明書表 11），分不出哪幾台可信，所以整批不寫。
+        if (ddc.ReadStatus != Contracts.ReadStatus.Success) return;
+
         List<(int DeviceId, DateTimeOffset TsUtc, Contracts.FcuSnapshot Snapshot, Contracts.ReadStatus ReadStatus)>? rows = null;
 
         foreach (var fcu in ddc.FcuList)
