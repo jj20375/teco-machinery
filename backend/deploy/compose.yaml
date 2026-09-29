@@ -18,17 +18,30 @@
 # 明確指定專案名稱，容器/網路/volume 才會叫 teco-iot-area-*，不會被資料夾名稱（deploy）帶偏。
 name: teco-iot-area
 
+# Docker 預設的 json-file log 沒有大小上限，Collector 連不到設備時會持續重試並記錄，
+# 放著不管會把 VM 的磁碟吃滿。Docker 只能限制大小、不能限制天數：每個服務最多
+# 5 個 × 20MB＝100MB，四個服務合計約 400MB，超過自動刪掉最舊的。
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
 services:
   mariadb:
     image: mariadb:11.8
     restart: unless-stopped
+    logging: *default-logging
     environment:
       MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?請在 .env 設定 DB_ROOT_PASSWORD}
       MARIADB_APP_PASSWORD: ${DB_APP_PASSWORD:?請在 .env 設定 DB_APP_PASSWORD}
       MARIADB_DATABASE: teco_hvac
       TZ: Asia/Taipei
     volumes:
-      - mariadb-data:/var/lib/mysql
+      # 沒設 DB_DATA_DIR（開發機）：用具名 volume mariadb-data。
+      # 現場 VM 設成獨立資料碟上的路徑（例如 /srv/teco-data/mariadb），VM 系統碟壞掉或被砍時
+      # 資料碟還能掛到新 VM 上。見 docs/正式機首次部署手冊.md 附錄 C。
+      - ${DB_DATA_DIR:-mariadb-data}:/var/lib/mysql
       - ./mariadb/init:/docker-entrypoint-initdb.d:ro
       - ./mariadb/conf.d:/etc/mysql/conf.d:ro
     healthcheck:
@@ -45,6 +58,7 @@ services:
       context: ..
       dockerfile: deploy/collector.Dockerfile
     restart: unless-stopped
+    logging: *default-logging
     environment:
       TZ: Asia/Taipei
       ASPNETCORE_ENVIRONMENT: Production
@@ -75,6 +89,7 @@ services:
       context: ..
       dockerfile: deploy/api.Dockerfile
     restart: unless-stopped
+    logging: *default-logging
     environment:
       TZ: Asia/Taipei
       ASPNETCORE_ENVIRONMENT: Production
@@ -99,6 +114,7 @@ services:
   web:
     image: caddy:2
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "8081:80"    # 前台網站，區網用 http://<主機 IP>:8081；對外唯一入口（/api、/hubs 由 Caddy 反代），不佔用 80/443
     volumes:

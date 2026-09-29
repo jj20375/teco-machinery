@@ -1147,3 +1147,27 @@ VM，確認 000～012 初始化腳本全部執行、匯入設定 dump 後帳號 
 告警規則／`platform.diagnostics` 權限都在，時序表為空且分割區完整，`teco_app` 可正常寫入。
 備份指令在本機實際執行成功。Hyper-V 與 VM 本身的步驟仍未在真機驗證。
 
+## 資料庫可放在獨立資料碟、Docker log 加上限、備份拉出 VM（2026-09-29）
+
+現場主機只有 C 槽，需求是「VM 或容器被砍，資料庫還在」以及「log 不要吃滿硬碟」。
+
+- **Docker log 原本沒有任何上限**（json-file 預設不限大小），Collector 連不到設備時會一直重試並記錄。
+  `compose.yaml` 加上共用的 `x-logging`：每個服務最多 5 個檔 × 20MB，四個服務合計約 400MB。
+  Docker 只能限大小不能限天數。只對新建立的容器生效，既有容器要 `--force-recreate`。
+- **資料庫位置可設定**：`- ${DB_DATA_DIR:-mariadb-data}:/var/lib/mysql`。沒設（開發機）維持原本的具名
+  volume，Mac 上既有資料不受影響；現場 VM 設成獨立 `.vhdx` 資料碟上的路徑。Hyper-V 刪除 VM 預設不刪
+  虛擬硬碟檔，資料放在獨立資料碟上就能掛到新 VM 救回。bind mount 也不會被 `docker compose down -v` 刪掉。
+- 資料碟的空掛載點用 `chattr +i` 設成不可寫：資料碟沒掛上時，Docker 無法在系統碟上自動建出一個空資料庫，
+  容器會直接啟動失敗，而不是「看起來正常、其實資料全空」。
+- 新增 `host-setup/04-windows-pull-backup.ps1`：Windows 每天經 Tailscale 把 VM 的備份拉到 `C:\TecoBackup`，
+  保留 60 天。兩個寫的時候就發現的坑：`scp` 不加 `-p` 會把檔案時間改成複製當下，保留天數清理永遠刪不到；
+  Windows 內建 PowerShell 5.1 會把沒有 BOM 的 `.ps1` 當系統編碼讀，中文變亂碼，所以存成 UTF-8 with BOM。
+- 部署手冊新增附錄 C（資料碟建立、掛載、VM 壞掉時接到新 VM）與附錄 D（三層備份、還原、各項空間上限）。
+  特別註明：只有 C 槽代表 VM、資料碟、Windows 上的備份都在同一顆硬碟，**硬碟壞掉只能靠複製到這台主機
+  以外的備份**；Hyper-V checkpoint 不是備份。
+
+**驗證**：`docker compose config` 在「沒設 `DB_DATA_DIR`」時解析成具名 volume、「設成路徑」時解析成 bind mount；
+用拋棄式 `mariadb:11.8` 容器把資料放在主機資料夾，確認能正常初始化，**刪掉容器後用同一個資料夾重建，
+寫入的資料還在**；Mac 開發環境重建容器後仍接在原本的 volume（帳號 11 筆都在），log 上限 `max-size:20m`、
+`max-file:5` 已套用。**`04-windows-pull-backup.ps1` 與附錄 C 的 Hyper-V／磁碟步驟尚未在真機執行過。**
+

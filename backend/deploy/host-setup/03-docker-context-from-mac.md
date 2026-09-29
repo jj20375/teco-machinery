@@ -110,7 +110,12 @@ crontab -e
 scp 'teco-vm-tailscale:~/backup/*.sql.gz' ./teco-backup/
 ```
 
-再搭配 Hyper-V VM checkpoint 做整機層級的備份（`Checkpoint-VM -Name teco-hvac-linux`）。
+備份的完整三層做法（VM 內 → 每天拉到 Windows → 複製到這台主機以外）與 log 空間上限，見
+[`docs/正式機首次部署手冊.md`](../../../docs/正式機首次部署手冊.md) 附錄 D。Windows 端的拉取腳本是
+`04-windows-pull-backup.ps1`。
+
+Hyper-V 的檢查點（`Checkpoint-VM`）**不能取代備份**：它跟 VM 存在同一顆硬碟上，而且對執行中的資料庫
+不保證資料一致。只適合在「改系統設定前」暫時留一個還原點。
 
 還原方式：
 
