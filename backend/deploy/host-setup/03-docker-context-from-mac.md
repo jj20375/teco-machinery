@@ -9,14 +9,18 @@
 如果公鑰還沒放好，之後就只能從 Hyper-V 主控台視窗操作（腳本會偵測到沒有公鑰而跳過關閉密碼登入，
 但仍建議照順序做）。
 
+連線方式（Tailscale、`~/.ssh/config` 別名 `teco-vm-tailscale`、專用金鑰）的完整做法見
+[`docs/正式機首次部署手冊.md`](../../../docs/正式機首次部署手冊.md) 附錄 A。以下的指令都用那份文件設定的別名，
+不要寫死 VM 的區網 IP（Default Switch 的 NAT 位址重開機可能改變）。
+
 ```bash
-ssh-copy-id teco@192.168.10.200
+ssh-copy-id -i ~/.ssh/id_ed25519_teco.pub teco-vm-tailscale
 ```
 
 確認可以無密碼登入：
 
 ```bash
-ssh teco@192.168.10.200
+ssh teco-vm-tailscale
 ```
 
 ## 3.2 部署／更新程式：一律 SSH 進 VM 執行
@@ -38,12 +42,12 @@ npm run build
 rsync -av --delete \
   --exclude node_modules --exclude 'bin/' --exclude 'obj/' --exclude .git \
   --exclude 'backend/deploy/.env' --exclude 'docs/工作站主機資料.md' \
-  ./ teco@192.168.10.200:~/teco/
+  ./ teco-vm-tailscale:~/teco/
 ```
 
 ```bash
 # VM：重建並啟動有變更的服務
-ssh teco@192.168.10.200
+ssh teco-vm-tailscale
 cd ~/teco/backend/deploy
 docker compose up -d --build
 ```
@@ -56,7 +60,7 @@ docker compose up -d --build
 查狀態、看 log、進容器這類操作不需要 bind mount，用 docker context 從 Mac 直接下指令沒問題：
 
 ```bash
-docker context create teco --docker "host=ssh://teco@192.168.10.200"
+docker context create teco --docker "host=ssh://teco-vm-tailscale"
 ```
 
 ```bash
@@ -77,7 +81,7 @@ docker --context teco exec -it teco-iot-area-api-1 /bin/sh
 ## 3.4 需要真的 SSH 進去時
 
 ```bash
-ssh teco@192.168.10.200
+ssh teco-vm-tailscale
 ```
 
 用於：部署（見 3.2）、看 VM 本身的系統日誌（`journalctl`）、磁碟空間（`df -h`）、
@@ -103,7 +107,7 @@ crontab -e
 
 ```bash
 # Mac 或 Windows（OpenSSH）
-scp 'teco@192.168.10.200:~/backup/*.sql.gz' ./teco-backup/
+scp 'teco-vm-tailscale:~/backup/*.sql.gz' ./teco-backup/
 ```
 
 再搭配 Hyper-V VM checkpoint 做整機層級的備份（`Checkpoint-VM -Name teco-hvac-linux`）。

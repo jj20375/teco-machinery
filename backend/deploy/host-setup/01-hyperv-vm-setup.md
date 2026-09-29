@@ -14,6 +14,11 @@ Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All
 Restart-Computer
 ```
 
+> 實際部署時，VM 可以**先掛在 Hyper-V 內建的 Default Switch（NAT）**，先完成部署與驗證，
+> 等要接設備時再改成這裡的 External 交換器。Default Switch 的網段重開機可能改變，**不要在它上面設固定 IP**。
+> 改交換器與固定 IP 的完整步驟（含只有一張網卡時的遠端斷線風險、退回方式）見
+> [`docs/正式機首次部署手冊.md`](../../../docs/正式機首次部署手冊.md) 附錄 B。
+
 ## 1.2 建立 External Virtual Switch（接現場設備網段）
 
 現場電腦有雙網段：主 IP `192.168.50.199`、進階 IP `192.168.10.199`（三個 Modbus 通道都在
