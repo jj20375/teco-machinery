@@ -78,8 +78,8 @@ public sealed class FcuRepository(TecoDbConnectionFactory factory)
 
     /// <summary>
     /// interval="raw" 直接查 fcu_reading；interval="1h" 查 rollup_fcu_1h（比照
-    /// ChillerRepository.GetHistoryAsync 的寫法）。rollup 沒有 mode/fan_speed 的聚合欄位
-    /// （報表用不到、聚合也沒有明確意義），這兩個欄位在 1h 模式下固定回 null。
+    /// ChillerRepository.GetHistoryAsync 的寫法）。1h 模式的 mode/fan_speed 是該小時出現最多次的值
+    /// （見 UpsertHourlyRollupAsync）；013 migration 之前的舊彙總列這兩欄是 null。
     /// </summary>
     public async Task<IReadOnlyList<FcuReadingRow>> GetHistoryAsync(
         int deviceId, DateTime fromUtc, DateTime toUtc, string interval = "raw", CancellationToken ct = default)
@@ -89,7 +89,7 @@ public sealed class FcuRepository(TecoDbConnectionFactory factory)
         if (interval == "1h")
         {
             var rollupRows = await conn.QueryAsync<FcuReadingRow>(
-                "SELECT bucket AS Ts, NULL AS SwitchStatus, NULL AS Mode, NULL AS FanSpeed, " +
+                "SELECT bucket AS Ts, NULL AS SwitchStatus, mode AS Mode, fan_speed AS FanSpeed, " +
                 "avg_temp AS Temperature, 1 AS ReadStatus, on_minutes AS OnMinutes " +
                 "FROM rollup_fcu_1h WHERE device_id = @deviceId AND bucket BETWEEN @fromUtc AND @toUtc ORDER BY bucket",
                 new { deviceId, fromUtc, toUtc });
@@ -108,24 +108,49 @@ public sealed class FcuRepository(TecoDbConnectionFactory factory)
     /// 把 [fromUtc, toUtcExclusive) 這段時間內的原始讀值，依 UTC 整點分桶聚合寫進
     /// rollup_fcu_1h，理由跟作法比照 ChillerRepository.UpsertHourlyRollupAsync
     /// （只吃 read_status=Success、bucket 是 UTC 整點不用時區換算）。
+    /// 模式／風速取該小時出現最多次的值（同票取較晚出現的），排除 Unknown(-1)——
+    /// 平均值對列舉沒有意義，「最後一筆」又會被整點前剛好切換的那一下帶偏。
     /// </summary>
     public async Task UpsertHourlyRollupAsync(DateTime fromUtc, DateTime toUtcExclusive, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
         await conn.ExecuteAsync(
             """
-            INSERT INTO rollup_fcu_1h (device_id, bucket, avg_temp, min_temp, max_temp, on_minutes)
-            SELECT
-                device_id,
-                DATE_FORMAT(ts, '%Y-%m-%d %H:00:00') AS bucket,
-                AVG(temperature), MIN(temperature), MAX(temperature),
-                COUNT(DISTINCT CASE WHEN switch_status = 1 THEN DATE_FORMAT(ts, '%Y-%m-%d %H:%i') END)
-            FROM fcu_reading
-            WHERE read_status = 1 AND ts >= @fromUtc AND ts < @toUtcExclusive
-            GROUP BY device_id, DATE_FORMAT(ts, '%Y-%m-%d %H:00:00')
+            INSERT INTO rollup_fcu_1h (device_id, bucket, avg_temp, min_temp, max_temp, on_minutes, mode, fan_speed)
+            SELECT a.device_id, a.bucket, a.avg_temp, a.min_temp, a.max_temp, a.on_minutes, m.val, f.val
+            FROM (
+                SELECT
+                    device_id,
+                    DATE_FORMAT(ts, '%Y-%m-%d %H:00:00') AS bucket,
+                    AVG(temperature) AS avg_temp, MIN(temperature) AS min_temp, MAX(temperature) AS max_temp,
+                    COUNT(DISTINCT CASE WHEN switch_status = 1 THEN DATE_FORMAT(ts, '%Y-%m-%d %H:%i') END) AS on_minutes
+                FROM fcu_reading
+                WHERE read_status = 1 AND ts >= @fromUtc AND ts < @toUtcExclusive
+                GROUP BY device_id, DATE_FORMAT(ts, '%Y-%m-%d %H:00:00')
+            ) a
+            LEFT JOIN (
+                SELECT device_id, bucket, val FROM (
+                    SELECT device_id, DATE_FORMAT(ts, '%Y-%m-%d %H:00:00') AS bucket, mode AS val,
+                           ROW_NUMBER() OVER (PARTITION BY device_id, DATE_FORMAT(ts, '%Y-%m-%d %H:00:00')
+                                              ORDER BY COUNT(*) DESC, MAX(ts) DESC) AS rn
+                    FROM fcu_reading
+                    WHERE read_status = 1 AND mode <> -1 AND ts >= @fromUtc AND ts < @toUtcExclusive
+                    GROUP BY device_id, DATE_FORMAT(ts, '%Y-%m-%d %H:00:00'), mode
+                ) ranked WHERE rn = 1
+            ) m ON m.device_id = a.device_id AND m.bucket = a.bucket
+            LEFT JOIN (
+                SELECT device_id, bucket, val FROM (
+                    SELECT device_id, DATE_FORMAT(ts, '%Y-%m-%d %H:00:00') AS bucket, fan_speed AS val,
+                           ROW_NUMBER() OVER (PARTITION BY device_id, DATE_FORMAT(ts, '%Y-%m-%d %H:00:00')
+                                              ORDER BY COUNT(*) DESC, MAX(ts) DESC) AS rn
+                    FROM fcu_reading
+                    WHERE read_status = 1 AND fan_speed <> -1 AND ts >= @fromUtc AND ts < @toUtcExclusive
+                    GROUP BY device_id, DATE_FORMAT(ts, '%Y-%m-%d %H:00:00'), fan_speed
+                ) ranked WHERE rn = 1
+            ) f ON f.device_id = a.device_id AND f.bucket = a.bucket
             ON DUPLICATE KEY UPDATE
                 avg_temp = VALUES(avg_temp), min_temp = VALUES(min_temp), max_temp = VALUES(max_temp),
-                on_minutes = VALUES(on_minutes)
+                on_minutes = VALUES(on_minutes), mode = VALUES(mode), fan_speed = VALUES(fan_speed)
             """,
             new { fromUtc, toUtcExclusive }, commandTimeout: 60);
     }

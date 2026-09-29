@@ -96,7 +96,10 @@ public sealed class ChillerRepository(TecoDbConnectionFactory factory)
             INSERT INTO rollup_chiller_1h
                 (device_id, bucket, avg_load_pct, min_chilled_out, max_chilled_out,
                  min_chilled_in, max_chilled_in, avg_chilled_delta, avg_power_kw, kwh_delta,
-                 running_hours, run_minutes)
+                 running_hours, run_minutes,
+                 avg_chilled_out, avg_chilled_in, avg_cooling_out, avg_cooling_in,
+                 avg_current, avg_voltage, avg_high_pressure, avg_low_pressure,
+                 avg_rpm, avg_approach, start_count, alarm_bits)
             SELECT
                 device_id,
                 DATE_FORMAT(ts, '%Y-%m-%d %H:00:00') AS bucket,
@@ -107,7 +110,14 @@ public sealed class ChillerRepository(TecoDbConnectionFactory factory)
                 AVG(input_power_kw),
                 MAX(accumulated_kwh) - MIN(accumulated_kwh),
                 MAX(running_hours),
-                COUNT(DISTINCT CASE WHEN load_percentage > 0 THEN DATE_FORMAT(ts, '%Y-%m-%d %H:%i') END)
+                COUNT(DISTINCT CASE WHEN load_percentage > 0 THEN DATE_FORMAT(ts, '%Y-%m-%d %H:%i') END),
+                AVG(chilled_water_out), AVG(chilled_water_in),
+                AVG(cooling_water_out), AVG(cooling_water_in),
+                AVG(input_current), AVG(input_voltage),
+                AVG(high_pressure), AVG(low_pressure),
+                AVG(actual_rpm), AVG(approach_temp),
+                MAX(start_count),
+                BIT_OR(alarm_bits)
             FROM chiller_reading
             WHERE read_status = 1 AND ts >= @fromUtc AND ts < @toUtcExclusive
             GROUP BY device_id, DATE_FORMAT(ts, '%Y-%m-%d %H:00:00')
@@ -117,7 +127,13 @@ public sealed class ChillerRepository(TecoDbConnectionFactory factory)
                 min_chilled_in = VALUES(min_chilled_in), max_chilled_in = VALUES(max_chilled_in),
                 avg_chilled_delta = VALUES(avg_chilled_delta),
                 avg_power_kw = VALUES(avg_power_kw), kwh_delta = VALUES(kwh_delta),
-                running_hours = VALUES(running_hours), run_minutes = VALUES(run_minutes)
+                running_hours = VALUES(running_hours), run_minutes = VALUES(run_minutes),
+                avg_chilled_out = VALUES(avg_chilled_out), avg_chilled_in = VALUES(avg_chilled_in),
+                avg_cooling_out = VALUES(avg_cooling_out), avg_cooling_in = VALUES(avg_cooling_in),
+                avg_current = VALUES(avg_current), avg_voltage = VALUES(avg_voltage),
+                avg_high_pressure = VALUES(avg_high_pressure), avg_low_pressure = VALUES(avg_low_pressure),
+                avg_rpm = VALUES(avg_rpm), avg_approach = VALUES(avg_approach),
+                start_count = VALUES(start_count), alarm_bits = VALUES(alarm_bits)
             """,
             new { fromUtc, toUtcExclusive }, commandTimeout: 60);
     }

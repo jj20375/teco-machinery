@@ -181,6 +181,19 @@ CREATE TABLE IF NOT EXISTS rollup_chiller_1h (
     kwh_delta       DECIMAL(10,1) NULL,
     running_hours   INT NULL,
     run_minutes     SMALLINT NULL,
+    -- 以下由 013 補上：原始讀值過期後（冰水主機 180 天）仍要查得到這些欄位的歷史
+    avg_chilled_out  DECIMAL(5,1) NULL,
+    avg_chilled_in   DECIMAL(5,1) NULL,
+    avg_cooling_out  DECIMAL(5,1) NULL,
+    avg_cooling_in   DECIMAL(5,1) NULL,
+    avg_current      DECIMAL(6,1) NULL,
+    avg_voltage      DECIMAL(6,1) NULL,
+    avg_high_pressure DECIMAL(6,2) NULL COMMENT '單位未定義，待供應商確認',
+    avg_low_pressure DECIMAL(6,2) NULL COMMENT '單位未定義，待供應商確認',
+    avg_rpm          INT NULL,
+    avg_approach     DECIMAL(5,1) NULL,
+    start_count      INT NULL COMMENT '該小時最後一筆累積啟動次數',
+    alarm_bits       INT UNSIGNED NULL COMMENT '該小時任一時間成立過的警報旗標（BIT_OR）',
     PRIMARY KEY (device_id, bucket)
 ) ENGINE=InnoDB;
 
@@ -191,6 +204,9 @@ CREATE TABLE IF NOT EXISTS rollup_fcu_1h (
     min_temp        DECIMAL(4,1) NULL,
     max_temp        DECIMAL(4,1) NULL,
     on_minutes      SMALLINT NULL,
+    -- 以下由 013 補上：該小時出現最多次的運轉模式／風速（排除 Unknown=-1），全部 Unknown 時為 NULL
+    mode            TINYINT NULL COMMENT '1=Cooling,2=Heating,3=Ventilation',
+    fan_speed       TINYINT NULL COMMENT '0=High,1=Medium,2=Low,3=Auto',
     PRIMARY KEY (device_id, bucket)
 ) ENGINE=InnoDB;
 
