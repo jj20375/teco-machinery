@@ -50,15 +50,23 @@ async function load() {
   } catch { error.value = '設備資料讀取失敗。'; }
   finally { loading.value = false; }
 }
+// 設備狀態（運轉、異常、離線）每 5 秒靜默更新：不設 loading、不清選取，避免地圖閃爍。
+// 失敗就保留上一次的資料。沒有這個更新的話，開著不關的畫面上狀態顏色會一直停在載入當下。
+async function refreshEquipment() {
+  try { equipment.value = await getFloorEquipmentApi(props.floor, props.embedded); } catch { /* 沿用舊資料 */ }
+}
+let equipmentTimer: number | null = null;
 // SAVE_EVENT 只在同一個分頁內有效（後台存檔後讓同頁的唯讀檢視立即更新）。
 // 換成後端保存之後，跨分頁/跨裝置的同步靠重新載入頁面或下次進頁時重讀，不再監聽 storage 事件。
 onMounted(() => {
   window.addEventListener(SAVE_EVENT, refreshLayout);
   load();
+  equipmentTimer = window.setInterval(refreshEquipment, 5000);
 });
 watch(() => props.floor, load);
 onUnmounted(() => {
   window.removeEventListener(SAVE_EVENT, refreshLayout);
+  if (equipmentTimer) clearInterval(equipmentTimer);
 });
 </script>
 

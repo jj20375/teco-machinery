@@ -103,16 +103,45 @@ function handleOpenAlarmModal() {
   isAlarmModalOpen.value = true;
 }
 
-// 即時數值微幅跳動
-let liveTicker: number | null = null;
-function startLiveSimulation() {
-  liveTicker = window.setInterval(() => {
-    chillers.value.forEach((c) => {
-      const delta = (Math.random() - 0.5) * 0.2;
-      c.supplyTemp = Number((c.supplyTemp + delta).toFixed(1));
-      c.tempDiff = Number((c.returnTemp - c.supplyTemp).toFixed(1));
-    });
-  }, 5000);
+// 定期向後端重新取資料。原本這裡是對「真實讀值」加隨機 ±0.1°C 的假抖動，資料只在開啟頁面時載入
+// 一次——大廳螢幕開著不關就會一直顯示過期的數字，還看起來像在即時更新。
+// 即時資料（冰水主機、FCU、告警、熱區圖）每 5 秒一次，跟 Collector 推送頻率一致；
+// 每小時趨勢圖變動慢、查詢也較重，每 60 秒一次就夠。
+const LIVE_REFRESH_MS = 5000;
+const TREND_REFRESH_EVERY = 12;
+let refreshTimer: number | null = null;
+let refreshTick = 0;
+let refreshing = false;
+async function refreshData() {
+  if (refreshing) return; // 上一輪還沒回來就不疊加，避免網路慢時請求越積越多
+  refreshing = true;
+  refreshTick += 1;
+  try {
+    const withTrends = refreshTick % TREND_REFRESH_EVERY === 0;
+    const [overviewData, chillersData, heatmap, alarmList, fcuMatrix, usageData, tempData] = await Promise.all([
+      getDashboardOverviewApi(),
+      getChillersDataApi(),
+      getFloorHeatmapApi(currentFloor.value),
+      listRealtimeAlarmsApi(),
+      getFcuStatusMatrixApi(),
+      withTrends ? getHourlyFcuUsageTrendApi() : Promise.resolve(null),
+      withTrends ? getHourlyTempTrendApi() : Promise.resolve(null),
+    ]);
+    overview.value = overviewData;
+    chillers.value = chillersData;
+    heatmapData.value = heatmap;
+    alarms.value = alarmList;
+    fcuByFloor.value = fcuMatrix;
+    if (usageData) usageTrend.value = usageData;
+    if (tempData) tempTrend.value = tempData;
+  } catch {
+    // 這一輪失敗就沿用上一次的資料，下一輪再試；大廳螢幕不需要跳錯誤。
+  } finally {
+    refreshing = false;
+  }
+}
+function startDataRefresh() {
+  refreshTimer = window.setInterval(refreshData, LIVE_REFRESH_MS);
 }
 
 onMounted(async () => {
@@ -120,12 +149,12 @@ onMounted(async () => {
   window.addEventListener('resize', updateScale);
   await loadDashboardData();
   startRotationTimer();
-  startLiveSimulation();
+  startDataRefresh();
 });
 onUnmounted(() => {
   window.removeEventListener('resize', updateScale);
   if (rotationInterval) clearInterval(rotationInterval);
-  if (liveTicker) clearInterval(liveTicker);
+  if (refreshTimer) clearInterval(refreshTimer);
 });
 </script>
 
