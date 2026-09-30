@@ -17,11 +17,12 @@ export interface ChillerData {
   name: string;
   code: string;
   status: StatusType;
-  loadRate: number;
-  supplyTemp: number;
-  returnTemp: number;
-  tempDiff: number;
-  cumulativeHours: number;
+  /** 設備離線或讀取失敗時以下五項為 null（畫面顯示 --），不要用 0 冒充。 */
+  loadRate: number | null;
+  supplyTemp: number | null;
+  returnTemp: number | null;
+  tempDiff: number | null;
+  cumulativeHours: number | null;
   isSupplyTempExceeded: boolean;
   isReturnTempExceeded: boolean;
   isTempDiffExceeded: boolean;

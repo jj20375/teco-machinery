@@ -4,7 +4,8 @@
 列出需要修正、需要決策、以及供應商根本沒提供的項目。整理日期：2026-09-29。
 
 > **處理進度（2026-09-29）**：✅ 已修正並驗證：2.1、2.2、2.5、2.8、3.1、3.3。
-> 修正時另外發現 2.10（報表匯出 Excel 是假的）與 3.4（FCU 沒回應時溫度 0 被算進平均），尚未處理。
+> 修正時另外發現並已處理：2.11（設備離線時畫面顯示 0.0 °C）、2.12（**前台戰情室資料只載入一次，並對真實讀值加隨機假抖動**）。
+> 尚未處理：2.10（報表匯出 Excel 是假的）、3.4（FCU 沒回應時溫度 0 被算進平均）。
 
 > 對照依據：
 > - 供應商說明書 `docs/Teco_Golf_DataCollector/Teco_Golf_DataCollector_使用說明書.docx`（下稱「說明書」，以表號標示）
@@ -19,7 +20,7 @@
 | 類別 | 數量 | 說明 |
 |---|---|---|
 | ✅ 已正確對應 | — | 供應商所有欄位**都已各自存進資料庫**，沒有漏收 |
-| 🔧 需修正（資料有、系統沒接好） | 10 項（已修 4 項） | 見第 2 節，建議在部署到現場前處理 |
+| 🔧 需修正（資料有、系統沒接好） | 12 項（已修 6 項） | 見第 2 節，建議在部署到現場前處理 |
 | 💾 資料保存需補強（為了日後能多顯示） | 4 項（已修 2 項） | 見第 3 節 |
 | ⛔ 供應商沒提供（需東元／業主決策） | 6 項 | 見第 4 節，程式無法解決 |
 | 📍 需到現場確認 | 4 項 | 見第 5 節 |
@@ -71,6 +72,8 @@
 | ✅ 2.8 | 前台戰情室 FCU 的模式、風速寫死成「冷氣」「自動」 | 目前畫面**沒顯示**這兩個值，所以沒有假資料出現，但日後有人拿來用就會顯示錯誤資料 | [dashboard-service.ts:58](../src/apps/monitoring/pages/dashboard/_services/dashboard-service.ts:58) | 改成真實值（`fcuModeLabel`／`fcuFanSpeedLabel`），離線時顯示 `--` | — |
 | 2.9 | 冰水主機「安裝位置」寫死為「機房」 | 資料庫沒有這個欄位，只是固定文字 | [AdminChillerPage.vue:221](../src/apps/monitoring/pages/admin/chiller/AdminChillerPage.vue:221)、[AdminChillerReportPage.vue:289](../src/apps/monitoring/pages/admin/reports/AdminChillerReportPage.vue:289) | 若兩台都在機房可維持；若要可編輯，`device_chiller` 加欄位 | 是否需要可編輯 |
 | 2.10 | **三個報表頁的「匯出 Excel」是假的**（修正 2.5 時發現） | 按下去只跳出「已匯出」提示，**沒有產生任何檔案**，使用者會以為匯出成功 | [AdminChillerReportPage.vue](../src/apps/monitoring/pages/admin/reports/AdminChillerReportPage.vue)、`AdminFcuReportPage.vue`、`AdminAlarmReportPage.vue` 的 `exportExcel()` | 實作真的匯出（前端產生 .xlsx，或後端提供匯出端點）；在做好之前至少不要謊稱成功 | 匯出格式與欄位 |
+| ✅ 2.11 | **設備離線時畫面顯示 `0.0 °C`、`0 小時`、`0%`**（做簡報截圖時發現） | 看起來像量到 0 度，現場分不出是真的 0 還是沒讀到；監控中心總覽頁連離線判斷都沒有 | 監控中心總覽、冰水主機管理、前台戰情室 | 離線時值改為 null，畫面顯示 `--`（共用 `formatMeasure()`），超標紅字一併不顯示 | — |
+| ✅ 2.12 | **前台戰情室資料只在開啟頁面時載入一次，還對真實讀值加隨機 ±0.1°C 假抖動** | 大廳螢幕開著不關就一直顯示過期數字，卻因為假抖動看起來像即時更新；出水溫度與溫差不是設備的真實數字 | [DashboardApp.vue](../src/apps/monitoring/pages/dashboard/_components/DashboardApp.vue) 的 `startLiveSimulation`；樓層地圖 `FloorPlanViewer.vue` 也只載入一次 | 拿掉假抖動，改成每 5 秒重新取即時資料（趨勢圖每 60 秒），地圖每 5 秒靜默更新設備狀態；失敗時沿用上次資料 | — |
 
 ---
 

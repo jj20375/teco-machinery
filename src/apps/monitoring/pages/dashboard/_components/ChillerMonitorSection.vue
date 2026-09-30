@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import * as echarts from 'echarts';
 import DeviceThumbnail from './DeviceThumbnail.vue';
 import type { ChillerData, HourlyUsageTrend, HourlyTempTrend } from '../_types/dashboard-types';
+import { formatMeasure } from '../../admin/_services/hvac-service';
 
 const props = defineProps<{
   chillers: ChillerData[];
@@ -118,13 +119,13 @@ onUnmounted(() => { window.removeEventListener('resize', handleResize); barChart
           <svg class="w-full h-full -rotate-90" viewBox="0 0 36 36">
             <path class="text-[#30363D]" stroke-width="3.5" stroke="currentColor" fill="none"
               d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-            <path stroke-dasharray="100, 100" :stroke-dashoffset="100 - chiller.loadRate" stroke-linecap="round"
-              stroke-width="3.5" :stroke="loadColor(chiller.loadRate)" fill="none"
+            <path stroke-dasharray="100, 100" :stroke-dashoffset="100 - (chiller.loadRate ?? 0)" stroke-linecap="round"
+              stroke-width="3.5" :stroke="loadColor(chiller.loadRate ?? 0)" fill="none"
               d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
               class="transition-all duration-700" />
           </svg>
           <div class="absolute inset-0 flex flex-col items-center justify-center">
-            <span class="text-base font-extrabold font-tabular text-[#F0F6FC]">{{ chiller.loadRate }}%</span>
+            <span class="text-base font-extrabold font-tabular text-[#F0F6FC]">{{ chiller.loadRate === null ? '--' : `${chiller.loadRate}%` }}</span>
             <span class="text-[10px] text-[#8B949E]">負載</span>
           </div>
         </div>
@@ -142,14 +143,14 @@ onUnmounted(() => { window.removeEventListener('resize', handleResize); barChart
             <b
               class="font-tabular font-bold"
               :class="chiller[m.flag] ? 'text-[#FF4D4F]' : 'text-[#F0F6FC]'"
-            >{{ chiller[m.key].toFixed(m.digits) }}</b>
+            >{{ formatMeasure(chiller[m.key], m.digits) }}</b>
             <span class="text-[11px] text-[#8B949E] ml-1">{{ m.unit }}</span>
           </span>
         </div>
         <div class="flex items-center justify-between py-1 border-t border-[#21262D]">
           <span class="text-[#C9D1D9] w-[4.5em] text-justify" style="text-align-last: justify;">累積運轉</span>
           <span>
-            <b class="font-tabular font-bold text-[#F0F6FC]">{{ chiller.cumulativeHours.toLocaleString() }}</b>
+            <b class="font-tabular font-bold text-[#F0F6FC]">{{ chiller.cumulativeHours === null ? '--' : chiller.cumulativeHours.toLocaleString() }}</b>
             <span class="text-[11px] text-[#8B949E] ml-1">小時</span>
           </span>
         </div>

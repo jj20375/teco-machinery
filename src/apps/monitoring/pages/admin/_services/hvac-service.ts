@@ -39,6 +39,14 @@ export interface DataQuality {
   staleSeconds: number | null;
 }
 
+/**
+ * 量測值顯示：沒有值（設備離線、讀取失敗）時顯示 `--`，不要顯示 0——「0.0 °C」看起來像量到 0 度，
+ * 現場人員會分不出是真的 0 還是沒讀到。
+ */
+export function formatMeasure(value: number | null | undefined, digits = 1): string {
+  return value === null || value === undefined || !Number.isFinite(value) ? '--' : value.toFixed(digits);
+}
+
 /** 判斷這筆 dataQuality 底下的 value 是否為可信資料——離線或讀取失敗時 value 裡的數字都不能信。 */
 export function isDataQualityOnline(q: DataQuality): boolean {
   return q.isConnected && q.readStatus === ReadStatus.Success;

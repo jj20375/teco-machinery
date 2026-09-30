@@ -64,10 +64,11 @@ const rows = computed(() => {
       code: c.code,
       name: c.displayName,
       status: deriveChillerStatus(c, alarms),
-      supplyTemp: online ? (c.value?.chilledWaterOutletTemperature ?? 0) : 0,
-      returnTemp: online ? (c.value?.chilledWaterInletTemperature ?? 0) : 0,
-      tempDiff: online ? (c.value?.chilledWaterTemperatureDifference ?? 0) : 0,
-      cumulativeHours: c.value?.accumulatedRunningHours ?? 0,
+      // 離線時舊快照的數字不可信，用 null 讓畫面顯示 --，不要顯示 0.0 °C。
+      supplyTemp: online ? (c.value?.chilledWaterOutletTemperature ?? null) : null,
+      returnTemp: online ? (c.value?.chilledWaterInletTemperature ?? null) : null,
+      tempDiff: online ? (c.value?.chilledWaterTemperatureDifference ?? null) : null,
+      cumulativeHours: online ? (c.value?.accumulatedRunningHours ?? null) : null,
       ...exceeded,
     };
   });
@@ -219,10 +220,10 @@ const save = handleSubmit(async (values) => {
                 <td class="px-4 py-3 font-medium">{{ c.name }}</td>
                 <td class="px-4 py-3 font-tabular text-[#64748B]">{{ c.code }}</td>
                 <td class="px-4 py-3 text-[#64748B]">機房</td>
-                <td class="px-4 py-3 font-tabular" :class="c.isSupplyTempExceeded ? 'text-[#FF4757] font-bold' : ''">{{ c.supplyTemp.toFixed(1) }} °C</td>
-                <td class="px-4 py-3 font-tabular" :class="c.isReturnTempExceeded ? 'text-[#FF4757] font-bold' : ''">{{ c.returnTemp.toFixed(1) }} °C</td>
-                <td class="px-4 py-3 font-tabular" :class="c.isTempDiffExceeded ? 'text-[#FF4757] font-bold' : ''">{{ c.tempDiff.toFixed(1) }} °C</td>
-                <td class="px-4 py-3 font-tabular text-[#64748B]">{{ c.cumulativeHours.toLocaleString() }} hrs</td>
+                <td class="px-4 py-3 font-tabular" :class="c.isSupplyTempExceeded ? 'text-[#FF4757] font-bold' : ''">{{ c.supplyTemp === null ? '--' : `${c.supplyTemp.toFixed(1)} °C` }}</td>
+                <td class="px-4 py-3 font-tabular" :class="c.isReturnTempExceeded ? 'text-[#FF4757] font-bold' : ''">{{ c.returnTemp === null ? '--' : `${c.returnTemp.toFixed(1)} °C` }}</td>
+                <td class="px-4 py-3 font-tabular" :class="c.isTempDiffExceeded ? 'text-[#FF4757] font-bold' : ''">{{ c.tempDiff === null ? '--' : `${c.tempDiff.toFixed(1)} °C` }}</td>
+                <td class="px-4 py-3 font-tabular text-[#64748B]">{{ c.cumulativeHours === null ? '--' : `${c.cumulativeHours.toLocaleString()} hrs` }}</td>
                 <td class="px-4 py-3"><AdminStatusBadge :status="c.status" /></td>
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-3">

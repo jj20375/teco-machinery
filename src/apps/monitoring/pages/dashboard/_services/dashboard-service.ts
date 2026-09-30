@@ -22,20 +22,24 @@ import { chillerExceededFlags } from '../../admin/_services/threshold-service';
  * 跟後台監控中心總覽頁用同一套邏輯，門檻資料現在是真的了（告警門檻設定頁），不用再全部回 false。 */
 export async function getChillersDataApi(): Promise<ChillerData[]> {
   const [chillers, alarms] = await Promise.all([listChillersApi(), listAlarmsApi('active')]);
-  return chillers.map((c) => ({
-    id: String(c.id),
-    name: c.displayName,
-    code: c.code,
-    status: deriveChillerStatus(c, alarms),
-    loadRate: c.value?.loadPercentage ?? 0,
-    supplyTemp: isDataQualityOnline(c.dataQuality) ? (c.value?.chilledWaterOutletTemperature ?? 0) : 0,
-    returnTemp: isDataQualityOnline(c.dataQuality) ? (c.value?.chilledWaterInletTemperature ?? 0) : 0,
-    tempDiff: isDataQualityOnline(c.dataQuality) ? (c.value?.chilledWaterTemperatureDifference ?? 0) : 0,
-    cumulativeHours: c.value?.accumulatedRunningHours ?? 0,
-    ...(isDataQualityOnline(c.dataQuality)
-      ? chillerExceededFlags(c.id, alarms)
-      : { isSupplyTempExceeded: false, isReturnTempExceeded: false, isTempDiffExceeded: false }),
-  }));
+  return chillers.map((c) => {
+    const online = isDataQualityOnline(c.dataQuality);
+    return {
+      id: String(c.id),
+      name: c.displayName,
+      code: c.code,
+      status: deriveChillerStatus(c, alarms),
+      // 離線時舊快照的數字不可信，回 null 讓畫面顯示 --，不要用 0 冒充。
+      loadRate: online ? (c.value?.loadPercentage ?? null) : null,
+      supplyTemp: online ? (c.value?.chilledWaterOutletTemperature ?? null) : null,
+      returnTemp: online ? (c.value?.chilledWaterInletTemperature ?? null) : null,
+      tempDiff: online ? (c.value?.chilledWaterTemperatureDifference ?? null) : null,
+      cumulativeHours: online ? (c.value?.accumulatedRunningHours ?? null) : null,
+      ...(online
+        ? chillerExceededFlags(c.id, alarms)
+        : { isSupplyTempExceeded: false, isReturnTempExceeded: false, isTempDiffExceeded: false }),
+    };
+  });
 }
 
 async function loadFcusWithStatus(floor?: FloorId) {

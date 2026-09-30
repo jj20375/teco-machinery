@@ -12,6 +12,7 @@ import {
   listAlarmsApi,
   deriveChillerStatus,
   deriveFcuStatus,
+  isDataQualityOnline,
   alarmingFcuIdsOf,
   type AlarmRow,
   type DeviceStatus,
@@ -70,18 +71,24 @@ const chillerSummary = computed(() =>
  */
 const chillerCards = computed(() => {
   const alarms = alarmsQuery.data.value ?? [];
-  return (chillersQuery.data.value ?? []).map((c) => ({
-    id: c.id,
-    name: c.displayName,
-    code: c.code,
-    status: deriveChillerStatus(c, alarms),
-    loadRate: c.value?.loadPercentage ?? 0,
-    supplyTemp: c.value?.chilledWaterOutletTemperature ?? 0,
-    returnTemp: c.value?.chilledWaterInletTemperature ?? 0,
-    tempDiff: c.value?.chilledWaterTemperatureDifference ?? 0,
-    cumulativeHours: c.value?.accumulatedRunningHours ?? 0,
-    ...chillerExceededFlags(c.id, alarms),
-  }));
+  return (chillersQuery.data.value ?? []).map((c) => {
+    const online = isDataQualityOnline(c.dataQuality);
+    return {
+      id: c.id,
+      name: c.displayName,
+      code: c.code,
+      status: deriveChillerStatus(c, alarms),
+      // 離線時舊快照的數字不可信，用 null 讓畫面顯示 --，不要顯示 0.0 °C；超標紅字也一併不顯示。
+      loadRate: online ? (c.value?.loadPercentage ?? null) : null,
+      supplyTemp: online ? (c.value?.chilledWaterOutletTemperature ?? null) : null,
+      returnTemp: online ? (c.value?.chilledWaterInletTemperature ?? null) : null,
+      tempDiff: online ? (c.value?.chilledWaterTemperatureDifference ?? null) : null,
+      cumulativeHours: online ? (c.value?.accumulatedRunningHours ?? null) : null,
+      ...(online
+        ? chillerExceededFlags(c.id, alarms)
+        : { isSupplyTempExceeded: false, isReturnTempExceeded: false, isTempDiffExceeded: false }),
+    };
+  });
 });
 
 /** 樓層熱感圖卡片：依 FCU 的 floor 欄位分組算運轉率，取代原本寫死的 66.7%/40/60。 */
@@ -189,17 +196,17 @@ const statusRefOpen = ref(false);
             <div class="flex gap-4 mt-3">
               <div
                 class="w-24 flex-shrink-0 rounded-lg flex flex-col items-center justify-center py-3"
-                :class="c.loadRate > 60 ? 'bg-[#FFF7ED] text-[#FB923C]' : 'bg-[#E6FBF7] text-[#10B981]'"
+                :class="(c.loadRate ?? 0) > 60 ? 'bg-[#FFF7ED] text-[#FB923C]' : 'bg-[#E6FBF7] text-[#10B981]'"
               >
-                <span class="text-xl font-extrabold font-tabular">{{ c.loadRate }}%</span>
+                <span class="text-xl font-extrabold font-tabular">{{ c.loadRate === null ? '--' : `${c.loadRate}%` }}</span>
                 <span class="text-[10px]">運轉負載</span>
               </div>
 
               <div class="flex-1 divide-y divide-[#F1F5F9] text-sm">
-                <div class="flex justify-between py-1.5"><span class="text-[#64748B]">出水溫度</span><span class="font-tabular" :class="c.isSupplyTempExceeded ? 'text-[#FF4757] font-bold' : 'text-[#334155]'">{{ c.supplyTemp.toFixed(1) }} °C</span></div>
-                <div class="flex justify-between py-1.5"><span class="text-[#64748B]">回水溫度</span><span class="font-tabular" :class="c.isReturnTempExceeded ? 'text-[#FF4757] font-bold' : 'text-[#334155]'">{{ c.returnTemp.toFixed(1) }} °C</span></div>
-                <div class="flex justify-between py-1.5"><span class="text-[#64748B]">溫度差</span><span class="font-tabular" :class="c.isTempDiffExceeded ? 'text-[#FF4757] font-bold' : 'text-[#334155]'">{{ c.tempDiff.toFixed(1) }} °C</span></div>
-                <div class="flex justify-between py-1.5"><span class="text-[#64748B]">累積運轉</span><span class="font-tabular text-[#334155]">{{ c.cumulativeHours.toLocaleString() }} 小時</span></div>
+                <div class="flex justify-between py-1.5"><span class="text-[#64748B]">出水溫度</span><span class="font-tabular" :class="c.isSupplyTempExceeded ? 'text-[#FF4757] font-bold' : 'text-[#334155]'">{{ c.supplyTemp === null ? '--' : `${c.supplyTemp.toFixed(1)} °C` }}</span></div>
+                <div class="flex justify-between py-1.5"><span class="text-[#64748B]">回水溫度</span><span class="font-tabular" :class="c.isReturnTempExceeded ? 'text-[#FF4757] font-bold' : 'text-[#334155]'">{{ c.returnTemp === null ? '--' : `${c.returnTemp.toFixed(1)} °C` }}</span></div>
+                <div class="flex justify-between py-1.5"><span class="text-[#64748B]">溫度差</span><span class="font-tabular" :class="c.isTempDiffExceeded ? 'text-[#FF4757] font-bold' : 'text-[#334155]'">{{ c.tempDiff === null ? '--' : `${c.tempDiff.toFixed(1)} °C` }}</span></div>
+                <div class="flex justify-between py-1.5"><span class="text-[#64748B]">累積運轉</span><span class="font-tabular text-[#334155]">{{ c.cumulativeHours === null ? '--' : `${c.cumulativeHours.toLocaleString()} 小時` }}</span></div>
               </div>
             </div>
           </div>
