@@ -105,6 +105,9 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/readyz"]
       interval: 15s
+      # 原始讀值保留天數，留空用預設（FCU 90、冰水主機 180）；低於 30 會被 API 拒絕並退回預設值
+      Retention__FcuDays: ${RETENTION_FCU_DAYS:-}
+      Retention__ChillerDays: ${RETENTION_CHILLER_DAYS:-}
       timeout: 5s
       retries: 5
     ports:

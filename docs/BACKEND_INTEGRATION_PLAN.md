@@ -383,6 +383,10 @@ operation_log(id, user_id, action, target_type, target_id,
 
 用 MariaDB Event Scheduler 或 collector 的每日排程執行 `ALTER TABLE ... DROP PARTITION`。
 
+實作在 API 的 `PartitionMaintenanceHostedService`（每 24 小時一次）。保留天數可用 `.env` 的
+`RETENTION_FCU_DAYS`（預設 90）、`RETENTION_CHILLER_DAYS`（預設 180）調整；下限 30 天，低於下限或不是整數
+會退回預設值並在 log 寫警告（縮短天數不可逆，避免打錯字誤刪歷史資料）。
+
 ---
 
 ## 7. API 設計（ASP.NET Core 10）

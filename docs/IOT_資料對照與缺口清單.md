@@ -82,7 +82,7 @@
 | # | 問題 | 影響 | 修法 | 決策 |
 |---|---|---|---|---|
 | ✅ 3.1 | **每小時彙總只存了部分欄位** | 原始讀值過期（FCU 90 天、冰水主機 180 天）後，沒被彙總的欄位**就查不到歷史**。目前沒彙總的：冰水主機的冷卻水溫度、電流、電壓、高低壓、轉速、啟動次數、趨近溫度、警報；FCU 的模式、風速 | migration 為兩張彙總表加欄位＋修改彙總 SQL。建議補：模式／風速（最常出現）、冷卻水出入水平均、電流／電壓平均、啟動次數（該小時最後一筆）、趨近溫度平均、警報旗標（該小時任一時間成立的 OR）、出回水平均（2.7） | 要補哪些欄位 |
-| 3.2 | **原始讀值的保留期限** | 超過期限只剩彙總表 | [PartitionMaintenanceHostedService.cs:26](../backend/src/Teco.Hvac.Api/Services/PartitionMaintenanceHostedService.cs:26) 的保留天數。依開發機資料量估算：冰水主機約每天 2MB（保留 3 年約 2GB）、FCU 約每天 7MB（保留 1 年約 2.7GB）。**主機只有 C 槽**，要一起考慮 | 保留多久 |
+| 3.2 | **原始讀值的保留期限** | 超過期限只剩彙總表 | [PartitionMaintenanceHostedService.cs:26](../backend/src/Teco.Hvac.Api/Services/PartitionMaintenanceHostedService.cs:26) 的保留天數。依開發機資料量估算：冰水主機約每天 2MB（保留 3 年約 2GB）、FCU 約每天 7MB（保留 1 年約 2.7GB）。**主機只有 C 槽**，要一起考慮。天數已可用 `.env` 的 `RETENTION_FCU_DAYS`／`RETENTION_CHILLER_DAYS` 調整（2026-09-30），不用改程式 | 保留多久 |
 | ✅ 3.3 | **設備斷線時仍持續寫入 0 值資料** | 斷線時每天約 14 萬筆 `read_status=3` 的空資料，占空間、也讓原始資料難以使用（彙總與診斷頁已過濾，不影響正確性） | [CollectorHostedService.cs:241](../backend/src/Teco.Hvac.Collector/CollectorHostedService.cs:241) 起的寫入：讀取不成功時不寫入（斷線紀錄已在 `channel_health`） | — |
 | 3.4 | **FCU 沒回應時的溫度 0 被算進每小時平均**（修正 3.1 時發現） | DDC 讀取成功、但某台 FCU 開關／模式／風速全部未知且溫度 0（通常代表該台沒回應）時，0°C 會被算進平均溫度，把整小時的平均拉低（測試中 25°C 左右被拉成 20.2） | 彙總 SQL 的溫度欄排除這種列，前台即時均溫一併處理 | 這個「沒回應」的判斷規劃文件寫明要**現場驗證後才採用**（`BACKEND_INTEGRATION_PLAN.md` §2.2），到現場確認後再改 |
 
