@@ -1,27 +1,28 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, onMounted, onUnmounted } from 'vue';
 import { useQuery } from '@tanstack/vue-query';
 import AdminLayout from '../_components/AdminLayout.vue';
 import AdminStatusBadge from '../_components/AdminStatusBadge.vue';
 import AdminHeatmapCard from '../_components/AdminHeatmapCard.vue';
-import AdminStatusReferenceModal from '../_components/AdminStatusReferenceModal.vue';
 import { ApiError } from '../_services/auth-service';
 import {
   listChillersApi,
   listFcusApi,
-  listAlarmsApi,
   deriveChillerStatus,
   deriveFcuStatus,
   isDataQualityOnline,
   alarmingFcuIdsOf,
+  alarmBadgeStatus,
+  formatAlarmTime,
   type AlarmRow,
   type DeviceStatus,
 } from '../_services/hvac-service';
 import { chillerExceededFlags } from '../_services/threshold-service';
+import { ACTIVE_ALARMS_QUERY, openAllAlarms } from '../_services/alarm-notice';
 
 const chillersQuery = useQuery({ queryKey: ['overview-chillers'], queryFn: listChillersApi, refetchInterval: 10_000 });
 const fcusQuery = useQuery({ queryKey: ['overview-fcus'], queryFn: () => listFcusApi(), refetchInterval: 10_000 });
-const alarmsQuery = useQuery({ queryKey: ['overview-alarms'], queryFn: () => listAlarmsApi('active'), refetchInterval: 10_000 });
+const alarmsQuery = useQuery(ACTIVE_ALARMS_QUERY);
 
 const loading = computed(() => chillersQuery.isPending.value || fcusQuery.isPending.value || alarmsQuery.isPending.value);
 
@@ -101,16 +102,27 @@ function floorSummary(floor: string) {
 const b1 = computed(() => floorSummary('B1'));
 const b2 = computed(() => floorSummary('B2'));
 
-const alarmRows = computed<AlarmRow[]>(() => (alarmsQuery.data.value ?? []).slice(0, 5));
+// 設計稿：超過兩筆告警要輪播。比照前台戰情室 FloorHeatmapSection.vue，一次兩列、每 4 秒往下捲一筆；
+// 完整清單在「全部告警」彈窗。
+const ALARM_VISIBLE_ROWS = 2;
+const alarmIdx = ref(0);
+let alarmTimer: number | null = null;
 const alarmCount = computed(() => alarmsQuery.data.value?.length ?? 0);
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleString('zh-TW', { hour12: false });
-}
+const alarmRows = computed<AlarmRow[]>(() => {
+  const all = alarmsQuery.data.value ?? [];
+  if (all.length <= ALARM_VISIBLE_ROWS) return all;
+  return Array.from({ length: ALARM_VISIBLE_ROWS }, (_, k) => all[(alarmIdx.value + k) % all.length]);
+});
+onMounted(() => {
+  alarmTimer = window.setInterval(() => {
+    if (alarmCount.value > ALARM_VISIBLE_ROWS) alarmIdx.value = (alarmIdx.value + 1) % alarmCount.value;
+  }, 4000);
+});
+onUnmounted(() => { if (alarmTimer) clearInterval(alarmTimer); });
 
 function dashArray(pct: number) {
   return `${pct} ${100 - pct}`;
 }
-const statusRefOpen = ref(false);
 </script>
 
 <template>
@@ -223,16 +235,10 @@ const statusRefOpen = ref(false);
             <span class="text-sm font-bold text-[#1A202C]">即時告警</span>
             <span class="text-xs text-[#FF4757] font-semibold">{{ alarmCount }} 筆告警中</span>
           </div>
-          <div class="flex items-center gap-4">
-            <button type="button" class="text-xs text-[#23A3EE] hover:underline flex items-center gap-1" @click="statusRefOpen = true">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-              狀態對照表
-            </button>
-            <a href="/admin/reports/alarms" class="text-xs text-[#64748B] hover:text-[#00D1B2] flex items-center gap-1">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-              查看全部告警
-            </a>
-          </div>
+          <button type="button" class="text-xs text-[#64748B] hover:text-[#00D1B2] flex items-center gap-1" @click="openAllAlarms">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+            查看全部告警
+          </button>
         </div>
         <table class="w-full text-left text-[13px] text-[#334155]">
           <thead class="bg-[#F8FAFC] text-[#64748B] border-b border-[#E2E8F0]">
@@ -246,11 +252,11 @@ const statusRefOpen = ref(false);
           </thead>
           <tbody>
             <tr v-for="a in alarmRows" :key="a.id" class="border-b border-[#F1F5F9]">
-              <td class="px-4 py-3 font-tabular text-[#64748B] whitespace-nowrap">{{ formatTime(a.startedAt) }}</td>
+              <td class="px-4 py-3 font-tabular text-[#64748B] whitespace-nowrap">{{ formatAlarmTime(a.startedAt) }}</td>
               <td class="px-4 py-3 font-medium">{{ a.deviceName }}</td>
               <td class="px-4 py-3 font-tabular text-[#64748B]">{{ a.deviceCode }}</td>
               <td class="px-4 py-3 text-[#64748B]">{{ a.location }}</td>
-              <td class="px-4 py-3"><AdminStatusBadge status="ABNORMAL" :reason="a.ruleLabel" /></td>
+              <td class="px-4 py-3"><AdminStatusBadge :status="alarmBadgeStatus(a)" :reason="a.ruleLabel" /></td>
             </tr>
             <tr v-if="alarmRows.length === 0">
               <td colspan="5" class="px-4 py-6 text-center text-[#94A3B8]">目前沒有任何告警中的設備</td>
@@ -265,7 +271,5 @@ const statusRefOpen = ref(false);
         <AdminHeatmapCard floor="B2" :run-rate="b2.runRate" :running-count="b2.running" :total-count="b2.total" />
       </div>
     </div>
-
-    <AdminStatusReferenceModal :open="statusRefOpen" @close="statusRefOpen = false" />
   </AdminLayout>
 </template>

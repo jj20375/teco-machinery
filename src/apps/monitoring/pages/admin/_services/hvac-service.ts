@@ -116,6 +116,18 @@ export interface AlarmRow {
   ruleLabel: string;
 }
 
+/** 累積運轉時數達門檻的告警（AlarmEndpoints.cs 的 ruleCode 是屬性名稱）要顯示成「待保養」，不是「異常」。 */
+export function alarmBadgeStatus(alarm: Pick<AlarmRow, 'ruleCode'>): 'ABNORMAL' | 'MAINTENANCE' {
+  return alarm.ruleCode === 'AccumulatedRunningHours' ? 'MAINTENANCE' : 'ABNORMAL';
+}
+
+/** 告警時間，對齊設計稿格式「2026/08/18 10:23」。 */
+export function formatAlarmTime(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 /** 供應商編號加上 DDC，例如「DDC1 · FC_MC1_01」——編號本身在兩台 DDC 之間會重複（說明書 6.1）。 */
 export function fcuVendorLabel(fcu: Pick<FcuRow, 'channel' | 'vendorCode'>): string {
   return `DDC${fcu.channel} · ${fcu.vendorCode}`;

@@ -3,13 +3,18 @@
  * @file AdminHeader.vue
  * 後台頂部列 — 嚴格對齊 Figma
  * 左：頁面標題 + pill「後台管理中心」
- * 右：瀏覽前台 / 告警通知 / 管理員 {顯示姓名} ▾（{場館名稱}）+ 頭像
+ * 右：瀏覽前台 / 告警通知（新告警亮紅點，點擊開「全部告警」）/ 管理員 {顯示姓名} ▾（{場館名稱}）+ 頭像
  * 姓名/場館名稱/頭像字母都讀自 getSessionApi()，不是寫死的 Figma 稿文字。
  */
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { useQuery } from '@tanstack/vue-query';
 import {
-  clearSessionApi, getSessionApi, listScopesApi, selectScopeApi, defaultHomePathApi, type ScopeOption,
+  ApiError, clearSessionApi, getSessionApi, listScopesApi, selectScopeApi, defaultHomePathApi, type ScopeOption,
 } from '../_services/auth-service';
+import {
+  ACTIVE_ALARMS_QUERY, allAlarmsOpen, seenAlarmIds, loadSeenAlarmIds, markAlarmsSeen, openAllAlarms,
+} from '../_services/alarm-notice';
+import AdminAllAlarmsModal from './AdminAllAlarmsModal.vue';
 
 withDefaults(defineProps<{ pageTitle: string; badgeLabel?: string }>(), { badgeLabel: '後台管理中心' });
 
@@ -55,6 +60,23 @@ const scopeLabel = computed(() => {
 });
 const avatarInitial = computed(() => displayName.value.trim().charAt(0).toUpperCase() || 'U');
 
+// hvac.alarms 是獨立權限，沒有的帳號（403）就不亮紅點，彈窗裡顯示原因，不擋整個頂部列。
+const alarmsQuery = useQuery({ ...ACTIVE_ALARMS_QUERY, retry: false });
+const activeAlarms = computed(() => alarmsQuery.data.value ?? []);
+const alarmsError = computed(() => {
+  const err = alarmsQuery.error.value;
+  if (!err) return '';
+  return err instanceof ApiError && err.status === 403
+    ? '目前登入的帳號沒有「告警」查看權限。'
+    : '告警清單載入失敗，請稍後再試。';
+});
+onMounted(loadSeenAlarmIds);
+const hasUnseenAlarm = computed(() => activeAlarms.value.some((a) => !seenAlarmIds.value.has(a.id)));
+// 彈窗開著時新進來的告警也算已經看過，關掉後不會馬上又亮紅點。
+watch([allAlarmsOpen, activeAlarms], () => {
+  if (allAlarmsOpen.value) markAlarmsSeen(activeAlarms.value.map((a) => a.id));
+});
+
 function onDocClick(e: MouseEvent) {
   if (!(e.target as HTMLElement).closest('[data-admin-usermenu]')) menuOpen.value = false;
 }
@@ -86,12 +108,19 @@ function handleLogout() {
         <span>瀏覽前台</span>
       </a>
 
-      <a href="/admin/reports/alarms" class="flex items-center gap-1.5 hover:text-[#00D1B2] transition-colors">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-        </svg>
+      <button type="button" class="flex items-center gap-1.5 hover:text-[#00D1B2] transition-colors" @click="openAllAlarms">
+        <span class="relative">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+          <span
+            v-if="hasUnseenAlarm"
+            class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#FF4757] ring-2 ring-white"
+            aria-label="有新的告警"
+          />
+        </span>
         <span>告警通知</span>
-      </a>
+      </button>
 
       <!-- 使用者選單 -->
       <div class="relative" data-admin-usermenu>
@@ -150,6 +179,8 @@ function handleLogout() {
         </div>
       </div>
     </div>
+
+    <AdminAllAlarmsModal :open="allAlarmsOpen" :alarms="activeAlarms" :error="alarmsError" @close="allAlarmsOpen = false" />
 
     <!-- 切換身分 -->
     <div v-if="switchScopeOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40" @click.self="switchScopeOpen = false">
