@@ -21,7 +21,8 @@ public sealed record IngestStatus(
     DateTimeOffset? LastIngestAtUtc,
     double? SecondsSinceLastIngest,
     long IngestCountSinceApiStart,
-    DateTimeOffset? DeviceUpdateTimeUtc,
+    /// <summary>供應商程式建立事件的時間（Collector 主機時鐘），不是設備量測時間（說明書 4.2）。</summary>
+    DateTimeOffset? EventTimeUtc,
     DateTimeOffset? CollectorReceivedAtUtc);
 
 public sealed record ChannelStatus(

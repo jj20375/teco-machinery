@@ -24,8 +24,10 @@ public static class DataValidationRules
     public const double IngestStaleSeconds = 30;
 
     /// <summary>
-    /// 設備時間（UpdateTime）與 Collector 收到時間相差超過這個秒數就警告。專門抓時區換算錯誤——
+    /// 事件時間（UpdateTime）與 Collector 收到時間相差超過這個秒數就警告。專門抓時區換算錯誤——
     /// 本專案真的發生過整整差 8 小時的 bug（見 CLAUDE.md 原則 1），差距超過 1 小時直接標 error。
+    /// UpdateTime 是供應商程式建立事件時的主機 DateTime.Now，不是設備量測時間（說明書 4.2），
+    /// 所以這項檢查看不到現場設備自己的時鐘。
     /// </summary>
     public const double ClockSkewWarnSeconds = 30;
     public const double ClockSkewErrorSeconds = 3600;

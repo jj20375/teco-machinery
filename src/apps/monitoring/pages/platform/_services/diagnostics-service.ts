@@ -22,7 +22,8 @@ export interface IngestStatus {
   lastIngestAtUtc: string | null;
   secondsSinceLastIngest: number | null;
   ingestCountSinceApiStart: number;
-  deviceUpdateTimeUtc: string | null;
+  /** 供應商程式建立事件的時間（Collector 主機時鐘），不是設備量測時間。 */
+  eventTimeUtc: string | null;
   collectorReceivedAtUtc: string | null;
 }
 

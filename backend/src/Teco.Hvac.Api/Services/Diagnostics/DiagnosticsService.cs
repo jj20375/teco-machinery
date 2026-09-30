@@ -137,17 +137,19 @@ public sealed class DiagnosticsService(
 
         var skew = Math.Abs((latest.ReceivedAtUtc - latest.UpdateTimeUtc).TotalSeconds);
         var skewLevel = skew > ClockSkewErrorSeconds ? LevelError : skew > ClockSkewWarnSeconds ? LevelWarn : LevelOk;
-        checks.Add(new("clock-skew", "時間", "設備時間與收到時間差", skewLevel,
+        // UpdateTime 是供應商程式在 Collector 主機上建立事件時的 DateTime.Now（說明書 4.2：「不是設備量測時間」），
+        // 跟 ReceivedAt 出自同一台主機，所以這項只能抓時區換算錯誤，抓不到現場設備的時鐘問題。
+        checks.Add(new("clock-skew", "時間", "事件時間與收到時間差", skewLevel,
             skewLevel == LevelOk
                 ? $"相差 {skew:0.#} 秒，正常。"
-                : $"相差 {skew / 3600:0.##} 小時（{skew:0} 秒）。整數小時的差距幾乎都是時區換算錯誤（例如 8 小時＝UTC/台北混用），要檢查 Collector 主機時區。"));
+                : $"相差 {skew / 3600:0.##} 小時（{skew:0} 秒）。兩個時間都來自 Collector 主機，整數小時的差距幾乎都是時區換算錯誤（例如 8 小時＝UTC/台北混用），要檢查 Collector 主機與容器的時區設定；跟現場設備的時鐘無關。"));
 
         if (previous is not null)
         {
             var frozen = previous.UpdateTimeUtc == latest.UpdateTimeUtc;
-            checks.Add(new("update-time-advancing", "時間", "設備時間持續前進", frozen ? LevelWarn : LevelOk,
+            checks.Add(new("update-time-advancing", "時間", "事件時間持續前進", frozen ? LevelWarn : LevelOk,
                 frozen
-                    ? "連續兩筆資料的 UpdateTime 完全相同，Collector 可能在重送舊資料。"
+                    ? "連續兩筆的事件時間（供應商程式建立事件的時間）完全相同，代表收到重複的同一筆事件，Collector 可能在重送舊資料。"
                     : $"上一筆 {previous.UpdateTimeUtc:HH:mm:ss} → 這一筆 {latest.UpdateTimeUtc:HH:mm:ss}（UTC）。"));
         }
     }
