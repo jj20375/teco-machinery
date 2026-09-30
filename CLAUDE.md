@@ -137,6 +137,8 @@
   沒設定才退回顯示系統編號**——這條跟清單面板的「不退回」規則刻意不同：圖面 marker
   空間有限、又要讓人一眼認出現場裝置，所以允許 fallback（見
   `FloorPlanCanvas.vue` 的 `deviceLabel()`、`FloorPlan3D.vue` 的 `equipment?.name ?? equipment?.code`）。
+  另外還有第三組「**供應商編號**」（例如 `FC_MC1_01`，說明書表 19 的命名規則），現場技術人員與供應商溝通時用的是這組；
+  它在 DDC1、DDC2 之間會重複，**一律搭配 DDC 顯示**（`fcuVendorLabel()` →「DDC1 · FC_MC1_01」），不可單獨拿來當識別。
   這條規則只套用到「空間設備配置」（`/admin/floor-plan`）；`FloorPlanViewer.vue`
   （監控中心熱區圖、前台戰情室共用）目前仍只顯示系統編號，尚未套用這個規則。
   細節見 `backend/CHANGELOG.md`「設備自訂代碼／名稱」一節。

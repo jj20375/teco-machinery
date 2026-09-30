@@ -12,7 +12,7 @@ import EmptyState from '../_components/EmptyState.vue';
 import { ApiError } from '../_services/auth-service';
 import {
   listFcusApi, listAlarmsApi, deriveFcuStatus, alarmingFcuIdsOf, isDataQualityOnline,
-  fcuModeLabel, fcuFanSpeedLabel, updateFcuDisplayNameApi,
+  fcuModeLabel, fcuFanSpeedLabel, fcuVendorLabel, updateFcuDisplayNameApi,
 } from '../_services/hvac-service';
 import { getFcuThresholdApi, saveFcuThresholdApi, type FcuThresholdConfig } from '../_services/threshold-service';
 import { fcuThresholdSchema } from '../_services/threshold-validation';
@@ -59,6 +59,8 @@ const rows = computed(() => {
       // 系統編號——兩欄長得一模一樣的話，使用者根本看不出來哪一欄是自己可以改的。
       customCode: f.displayName,
       code: f.zoneCode ?? `${f.floor}-${f.id}`,
+      // 現場技術人員與供應商講的是這組名稱（例如 FC_MC3_12），到現場逐台核對時用得到。
+      vendorLabel: fcuVendorLabel(f),
       location: f.floor,
       roomTemp: online ? f.value?.temperature ?? null : null,
       mode: online && f.value ? fcuModeLabel(f.value.mode) : '--',
@@ -77,10 +79,10 @@ const paged = computed(() => rows.value.slice((page.value - 1) * pageSize.value,
 const editOpen = ref(false);
 const editSaving = ref(false);
 const editError = ref('');
-const editTarget = ref<{ id: number; code: string; customCode: string | null } | null>(null);
+const editTarget = ref<{ id: number; code: string; vendorLabel: string; customCode: string | null } | null>(null);
 const editValue = ref('');
 
-function openEdit(row: { id: number; code: string; customCode: string | null }) {
+function openEdit(row: { id: number; code: string; vendorLabel: string; customCode: string | null }) {
   editTarget.value = row;
   editValue.value = row.customCode ?? '';
   editError.value = '';
@@ -179,6 +181,7 @@ const save = handleSubmit(async (values) => {
               <tr>
                 <th class="px-4 py-3 font-semibold">自訂代碼</th>
                 <th class="px-4 py-3 font-semibold">系統編號</th>
+                <th class="px-4 py-3 font-semibold whitespace-nowrap">供應商編號</th>
                 <th class="px-4 py-3 font-semibold">安裝位置</th>
                 <th class="px-4 py-3 font-semibold">室內溫度</th>
                 <th class="px-4 py-3 font-semibold">風速</th>
@@ -194,6 +197,7 @@ const save = handleSubmit(async (values) => {
                   <span v-else class="text-[#94A3B8] font-normal">未設定</span>
                 </td>
                 <td class="px-4 py-3 font-tabular text-[#64748B]">{{ d.code }}</td>
+                <td class="px-4 py-3 font-tabular text-[#64748B] whitespace-nowrap">{{ d.vendorLabel }}</td>
                 <td class="px-4 py-3 text-[#64748B]">{{ d.location }}</td>
                 <td class="px-4 py-3 font-tabular" :class="{ 'text-[#FF4757] font-bold': d.isExceeded }">
                   {{ d.roomTemp !== null ? `${d.roomTemp.toFixed(1)} °C` : '--' }}
@@ -252,7 +256,7 @@ const save = handleSubmit(async (values) => {
       <div class="bg-white rounded-xl shadow-2xl border border-[#E2E8F0] w-full max-w-[420px] overflow-hidden">
         <div class="px-6 pt-6 pb-4 border-b border-[#E2E8F0]">
           <h3 class="text-base font-bold text-[#1A202C]">編輯自訂代碼</h3>
-          <p class="text-xs text-[#94A3B8] mt-1">系統編號 <span class="font-tabular text-[#64748B]">{{ editTarget?.code }}</span>（由現場接線決定，不可修改）</p>
+          <p class="text-xs text-[#94A3B8] mt-1">系統編號 <span class="font-tabular text-[#64748B]">{{ editTarget?.code }}</span>、供應商編號 <span class="font-tabular text-[#64748B]">{{ editTarget?.vendorLabel }}</span>（由現場接線決定，不可修改）</p>
         </div>
         <form class="px-6 py-5 flex flex-col gap-4" @submit.prevent="submitEdit">
           <div v-if="editError" class="p-2.5 rounded-lg bg-[#FFF5F5] text-[#FF4757] text-xs">{{ editError }}</div>

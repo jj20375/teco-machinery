@@ -78,6 +78,13 @@ public static class FcuEndpoints
 
     public sealed record UpdateFcuDisplayNameRequest(string? DisplayName);
 
+    /// <summary>
+    /// 供應商程式裡的 FCU 編號（例如 FC_MC1_01），現場技術人員與供應商溝通時用的是這組名稱。
+    /// 有連線時直接用供應商回報的 ID；沒連線時依說明書表 19 的命名規則「FC_MC{站號}_{兩位位置}」推算。
+    /// 注意：這個編號在 DDC1、DDC2 之間會重複（說明書 6.1），畫面上一定要搭配 DDC 一起顯示。
+    /// </summary>
+    internal static string VendorCodeOf(byte stationId, int position) => $"FC_MC{stationId}_{position:00}";
+
     /// <summary>清單建置邏輯抽成共用方法，理由見 ChillerEndpoints.BuildListAsync 上的註解。</summary>
     internal static async Task<object> BuildListAsync(string? floor, FcuRepository repo, CurrentStateStore store, CancellationToken ct)
     {
@@ -105,6 +112,8 @@ public static class FcuEndpoints
                 d.Channel,
                 d.StationId,
                 d.Position,
+                d.Address,
+                vendorCode = live?.Id ?? VendorCodeOf(d.StationId, d.Position),
                 d.Floor,
                 d.ZoneCode,
                 d.DisplayName,

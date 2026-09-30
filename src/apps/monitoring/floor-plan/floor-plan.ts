@@ -1,7 +1,7 @@
 import {
   listChillersApi, listFcusApi, listAlarmsApi,
   listPublicChillersApi, listPublicFcusApi, listPublicAlarmsApi,
-  deriveChillerStatus, deriveFcuStatus, alarmingFcuIdsOf, isDataQualityOnline,
+  deriveChillerStatus, deriveFcuStatus, alarmingFcuIdsOf, isDataQualityOnline, fcuVendorLabel,
 } from '../pages/admin/_services/hvac-service';
 import { PlacementDeviceType, type FloorPlacementDto } from '../pages/admin/_services/floor-plan-service';
 import type { FloorId } from '../pages/dashboard/_types/dashboard-types';
@@ -19,6 +19,8 @@ export interface Equipment {
   kind: EquipmentKind;
   status: string;
   temperature?: number;
+  /** FCU 才有：供應商編號（含 DDC），現場技術人員與供應商溝通時用的名稱。 */
+  vendorLabel?: string;
 }
 export interface Placement {
   deviceId: string;
@@ -299,6 +301,7 @@ export async function getFloorEquipmentApi(floor: FloorId, publicApi = false): P
       id: equipmentKey('fcu', f.id),
       code: f.zoneCode ?? `${f.floor}-${f.id}`,
       name: f.displayName,
+      vendorLabel: fcuVendorLabel(f),
       kind: 'fcu' as const,
       status: deriveFcuStatus(f, alarmingFcus),
       temperature: isDataQualityOnline(f.dataQuality) ? f.value?.temperature : undefined,

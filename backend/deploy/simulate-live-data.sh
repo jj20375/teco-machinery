@@ -143,7 +143,7 @@ for channel, rows in by_channel.items():
             abnormal_ids.append(r["id"])
         snapshot = {
             "channel": r["channel"], "stationId": r["stationId"], "position": r["position"],
-            "id": f"FC_MC{r['channel']}_{r['stationId']}_{r['position']:02d}", "address": r["address"],
+            "id": f"FC_MC{r['stationId']}_{r['position']:02d}", "address": r["address"],  # 說明書表 19 的命名規則
             "switchStatus": 0 if is_stopped else 1,
             "mode": 1, "fanSpeed": 3,
             "temperature": round(28.5 + random.uniform(-0.3, 0.3), 1) if is_abnormal

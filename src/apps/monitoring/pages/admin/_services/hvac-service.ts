@@ -83,6 +83,14 @@ export interface FcuSnapshotValue {
 
 export interface FcuRow {
   id: number;
+  /** 1＝DDC1（B1F）、2＝DDC2（B2F）。 */
+  channel: number;
+  stationId: number;
+  position: number;
+  /** 4X Holding Register 文件位址（說明書表 18），例如 40051。 */
+  address: number;
+  /** 供應商程式裡的 FCU 編號，例如 FC_MC1_01。DDC1、DDC2 之間會重複，顯示時用 fcuVendorLabel()。 */
+  vendorCode: string;
   floor: string;
   zoneCode: string | null;
   displayName: string | null;
@@ -106,6 +114,11 @@ export interface AlarmRow {
   deviceCode: string;
   location: string;
   ruleLabel: string;
+}
+
+/** 供應商編號加上 DDC，例如「DDC1 · FC_MC1_01」——編號本身在兩台 DDC 之間會重複（說明書 6.1）。 */
+export function fcuVendorLabel(fcu: Pick<FcuRow, 'channel' | 'vendorCode'>): string {
+  return `DDC${fcu.channel} · ${fcu.vendorCode}`;
 }
 
 export type DeviceStatus = 'RUNNING' | 'STOPPED' | 'ABNORMAL' | 'OFFLINE';
