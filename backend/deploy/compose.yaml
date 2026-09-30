@@ -31,6 +31,8 @@ services:
   mariadb:
     image: mariadb:11.8
     restart: unless-stopped
+    # 記憶體上限：單一服務出問題最多只會自己被重啟，不會拖垮整台 VM（VM 約 10 GB；資料庫實際用量遠低於此）
+    mem_limit: 1g
     logging: *default-logging
     environment:
       MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?請在 .env 設定 DB_ROOT_PASSWORD}
@@ -58,6 +60,8 @@ services:
       context: ..
       dockerfile: deploy/collector.Dockerfile
     restart: unless-stopped
+    # 記憶體上限，理由同 mariadb
+    mem_limit: 512m
     logging: *default-logging
     environment:
       TZ: Asia/Taipei
@@ -89,6 +93,8 @@ services:
       context: ..
       dockerfile: deploy/api.Dockerfile
     restart: unless-stopped
+    # 記憶體上限，理由同 mariadb
+    mem_limit: 1g
     logging: *default-logging
     environment:
       TZ: Asia/Taipei
@@ -99,15 +105,15 @@ services:
       Jwt__Audience: teco-hvac-clients
       Jwt__SigningKey: ${JWT_SIGNING_KEY:?請在 .env 設定 JWT_SIGNING_KEY（至少 32 字元）}
       Cors__AllowedOrigins__0: ${FRONTEND_ORIGIN:-http://localhost:4321}
+      # 原始讀值保留天數，留空用預設（FCU 90、冰水主機 180）；低於 30 會被 API 拒絕並退回預設值
+      Retention__FcuDays: ${RETENTION_FCU_DAYS:-}
+      Retention__ChillerDays: ${RETENTION_CHILLER_DAYS:-}
     depends_on:
       mariadb:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/readyz"]
       interval: 15s
-      # 原始讀值保留天數，留空用預設（FCU 90、冰水主機 180）；低於 30 會被 API 拒絕並退回預設值
-      Retention__FcuDays: ${RETENTION_FCU_DAYS:-}
-      Retention__ChillerDays: ${RETENTION_CHILLER_DAYS:-}
       timeout: 5s
       retries: 5
     ports:
@@ -117,6 +123,8 @@ services:
   web:
     image: caddy:2
     restart: unless-stopped
+    # 記憶體上限，理由同 mariadb（Caddy 只做反向代理與靜態檔）
+    mem_limit: 128m
     logging: *default-logging
     ports:
       - "8081:80"    # 前台網站，區網用 http://<主機 IP>:8081；對外唯一入口（/api、/hubs 由 Caddy 反代），不佔用 80/443
