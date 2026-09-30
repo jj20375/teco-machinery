@@ -14,8 +14,11 @@ namespace Teco.Hvac.Api.Endpoints;
 ///
 /// 權限走 hvac.thresholds，跟 hvac.chillers／hvac.fcus 分開——能看即時數據不代表能改告警門檻。
 ///
-/// 冰水主機的 flowMin/flowMax（水流量門檻）沒有做：供應商 SDK 完全沒有水流量這個量測值
-/// （跟先前拿掉的「水流量」欄位是同一個已知硬體限制）。FCU 端點叫 room-temp 不是 temp-diff：
+/// 冰水主機的 flowMin/flowMax（水流量門檻）照設計稿可以設定、可以存，但目前不會觸發告警：供應商 SDK
+/// 沒有水流量量測值，AlarmEngine 對「快照裡沒有對應欄位」的規則會直接跳過（見其 resolveMetricValue
+/// 回傳 null 的處理）。存進 alarm_rule 不需要新欄位（metric 是字串），之後供應商提供數值時，只要
+/// 在 ChillerSnapshot 加欄位並讓 AlarmEngine 的 resolver 回傳它，既有規則就自動生效。
+/// FCU 端點叫 room-temp 不是 temp-diff：
 /// 溫差＝室溫－設定溫度，但 Collector 沒有 FCU 設定溫度，這點在最早的規劃就決定用「絕對室溫
 /// 上下限」（docs/BACKEND_INTEGRATION_PLAN.md §2.1），畫面文字要對應改成「室溫上下限」。
 /// </summary>
@@ -25,6 +28,8 @@ public static class ThresholdEndpoints
     private const string ReturnTemp = nameof(ChillerSnapshot.ChilledWaterInletTemperature);
     private const string TempDiff = nameof(ChillerSnapshot.ChilledWaterTemperatureDifference);
     private const string RunningHours = nameof(ChillerSnapshot.AccumulatedRunningHours);
+    /// <summary>ChillerSnapshot 目前沒有這個屬性，所以不能用 nameof；名稱先訂好，等有資料來源時對應同名屬性。</summary>
+    public const string ChilledWaterFlowRate = "ChilledWaterFlowRate";
     private const string RoomTemp = nameof(FcuSnapshot.Temperature);
 
     public static void MapThresholdEndpoints(this WebApplication app)
@@ -63,6 +68,8 @@ public static class ThresholdEndpoints
             await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, ReturnTemp, AlarmMetricOperator.GreaterThan, request.ReturnTempMax, ct);
             await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, TempDiff, AlarmMetricOperator.LessThan, request.TempDiffMin, ct);
             await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, TempDiff, AlarmMetricOperator.GreaterThan, request.TempDiffMax, ct);
+            await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, ChilledWaterFlowRate, AlarmMetricOperator.LessThan, request.FlowMin, ct);
+            await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, ChilledWaterFlowRate, AlarmMetricOperator.GreaterThan, request.FlowMax, ct);
             // 保養時數只需要上限（累積運轉時數「超過」多少要保養），沒有下限的語意。
             await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, RunningHours, AlarmMetricOperator.GreaterThan,
                 request.MaintenanceHoursLimit, ct, severity: AlarmSeverity.Info);
@@ -132,6 +139,8 @@ public static class ThresholdEndpoints
             returnTempMax = Find(ReturnTemp, AlarmMetricOperator.GreaterThan),
             tempDiffMin = Find(TempDiff, AlarmMetricOperator.LessThan),
             tempDiffMax = Find(TempDiff, AlarmMetricOperator.GreaterThan),
+            flowMin = Find(ChilledWaterFlowRate, AlarmMetricOperator.LessThan),
+            flowMax = Find(ChilledWaterFlowRate, AlarmMetricOperator.GreaterThan),
             maintenanceHoursLimit = Find(RunningHours, AlarmMetricOperator.GreaterThan),
         };
     }
@@ -144,7 +153,7 @@ public static class ThresholdEndpoints
 
     public sealed record ChillerThresholdRequest(
         double? SupplyTempMin, double? SupplyTempMax, double? ReturnTempMin, double? ReturnTempMax,
-        double? TempDiffMin, double? TempDiffMax, double? MaintenanceHoursLimit);
+        double? TempDiffMin, double? TempDiffMax, double? FlowMin, double? FlowMax, double? MaintenanceHoursLimit);
 
     public sealed record FcuThresholdRequest(double? RoomTempMin, double? RoomTempMax);
 }

@@ -41,6 +41,8 @@ export const chillerThresholdSchema = yup.object({
   returnTempMax: maxNotLessThanMin('returnTempMin', '回水溫度'),
   tempDiffMin: nullableNumber,
   tempDiffMax: maxNotLessThanMin('tempDiffMin', '溫度差'),
+  flowMin: nullableNumber.min(0, '水流量不能是負數'),
+  flowMax: maxNotLessThanMin('flowMin', '水流量'),
   maintenanceHoursLimit: nullableNumber.min(0, '運轉保護值不能是負數'),
 });
 

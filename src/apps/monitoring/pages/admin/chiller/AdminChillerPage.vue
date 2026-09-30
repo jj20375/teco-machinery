@@ -135,6 +135,7 @@ const EMPTY_BOUNDS: Omit<ChillerThresholdConfig, 'chillerCode'> = {
   supplyTempMin: null, supplyTempMax: null,
   returnTempMin: null, returnTempMax: null,
   tempDiffMin: null, tempDiffMax: null,
+  flowMin: null, flowMax: null,
   maintenanceHoursLimit: null,
 };
 
@@ -151,6 +152,8 @@ const [returnTempMin, returnTempMinAttrs] = defineField('returnTempMin');
 const [returnTempMax, returnTempMaxAttrs] = defineField('returnTempMax');
 const [tempDiffMin, tempDiffMinAttrs] = defineField('tempDiffMin');
 const [tempDiffMax, tempDiffMaxAttrs] = defineField('tempDiffMax');
+const [flowMin, flowMinAttrs] = defineField('flowMin');
+const [flowMax, flowMaxAttrs] = defineField('flowMax');
 const [maintenanceHoursLimit, maintenanceHoursLimitAttrs] = defineField('maintenanceHoursLimit');
 
 async function openPanel(row: { code: string; name: string }) {
@@ -210,10 +213,10 @@ const save = handleSubmit(async (values) => {
                 <th class="px-4 py-3 font-semibold">出水溫度</th>
                 <th class="px-4 py-3 font-semibold">回水溫度</th>
                 <th class="px-4 py-3 font-semibold">溫度差 ΔT (°C)</th>
+                <th class="px-4 py-3 font-semibold">水流量</th>
                 <th class="px-4 py-3 font-semibold">累積運轉</th>
                 <th class="px-4 py-3 font-semibold">運轉狀態</th>
                 <th class="px-4 py-3 font-semibold">操作</th>
-                <th class="px-4 py-3 font-semibold">水流量</th>
               </tr>
             </thead>
             <tbody>
@@ -224,10 +227,10 @@ const save = handleSubmit(async (values) => {
                 <td class="px-4 py-3 font-tabular" :class="c.isSupplyTempExceeded ? 'text-[#FF4757] font-bold' : ''">{{ c.supplyTemp === null ? '--' : `${c.supplyTemp.toFixed(1)} °C` }}</td>
                 <td class="px-4 py-3 font-tabular" :class="c.isReturnTempExceeded ? 'text-[#FF4757] font-bold' : ''">{{ c.returnTemp === null ? '--' : `${c.returnTemp.toFixed(1)} °C` }}</td>
                 <td class="px-4 py-3 font-tabular" :class="c.isTempDiffExceeded ? 'text-[#FF4757] font-bold' : ''">{{ c.tempDiff === null ? '--' : `${c.tempDiff.toFixed(1)} °C` }}</td>
+                <td class="px-4 py-3 font-tabular" title="供應商尚未提供水流量量測值">--</td>
                 <td class="px-4 py-3 font-tabular text-[#64748B]">{{ c.cumulativeHours === null ? '--' : `${c.cumulativeHours.toLocaleString()} hrs` }}</td>
                 <td class="px-4 py-3"><AdminStatusBadge :status="c.status" /></td>
                 <td class="px-4 py-3">
-                <td class="px-4 py-3 font-tabular" title="供應商尚未提供水流量量測值">--</td>
                   <div class="flex items-center gap-3">
                     <button type="button" class="link-action" @click="openEdit(c)">編輯名稱</button>
                     <button type="button" class="link-action" @click="openPanel(c)">告警門檻</button>
@@ -286,6 +289,23 @@ const save = handleSubmit(async (values) => {
             <input v-model="tempDiffMax" v-bind="tempDiffMaxAttrs" type="number" step="0.1" placeholder="最高溫度差" class="flex-1 min-w-0 px-3 py-2 text-sm border rounded-lg focus:outline-none placeholder-[#94A3B8]" :class="errors.tempDiffMax ? 'border-[#FF4757] text-[#FF4757] focus:border-[#FF4757]' : 'border-[#CBD5E1] text-black focus:border-[#00D1B2]'" />
           </div>
           <p v-if="errors.tempDiffMax" class="text-xs text-[#FF4757] mt-1">{{ errors.tempDiffMax }}</p>
+        </section>
+
+        <!-- 設計稿有這組欄位。可以設定、可以存，但供應商 SDK 沒有水流量量測值，AlarmEngine 沒有數值可比對，
+             目前不會觸發告警，畫面上明講，避免使用者以為已經在監控。 -->
+        <section>
+          <h4 class="text-sm font-bold text-[#1A202C]">水流量 (m³/h)</h4>
+          <p class="text-xs text-[#94A3B8] mt-0.5 mb-2">當水流量不在設定範圍時將觸發水流量異常告警</p>
+          <div class="flex items-center gap-2">
+            <input v-model="flowMin" v-bind="flowMinAttrs" type="number" step="0.1" min="0" placeholder="最低流量" class="flex-1 min-w-0 px-3 py-2 text-sm text-black border rounded-lg focus:outline-none placeholder-[#94A3B8]" :class="errors.flowMin ? 'border-[#FF4757] focus:border-[#FF4757]' : 'border-[#CBD5E1] focus:border-[#00D1B2]'" />
+            <span class="text-[#94A3B8]">~</span>
+            <input v-model="flowMax" v-bind="flowMaxAttrs" type="number" step="0.1" min="0" placeholder="最高流量" class="flex-1 min-w-0 px-3 py-2 text-sm border rounded-lg focus:outline-none placeholder-[#94A3B8]" :class="errors.flowMax ? 'border-[#FF4757] text-[#FF4757] focus:border-[#FF4757]' : 'border-[#CBD5E1] text-black focus:border-[#00D1B2]'" />
+          </div>
+          <p v-if="errors.flowMin" class="text-xs text-[#FF4757] mt-1">{{ errors.flowMin }}</p>
+          <p v-if="errors.flowMax" class="text-xs text-[#FF4757] mt-1">{{ errors.flowMax }}</p>
+          <p class="text-xs text-[#B45309] mt-1.5">
+            可先設定並儲存，但供應商尚未提供水流量量測值，目前不會依此觸發告警；取得量測值後自動生效。流量異常暫時只由主機自身的警報旗標告知。
+          </p>
         </section>
 
         <section>
