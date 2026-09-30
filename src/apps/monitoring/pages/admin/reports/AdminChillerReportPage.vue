@@ -316,6 +316,7 @@ function exportExcel() {
                   <th class="px-4 py-3 font-semibold">出水溫度</th>
                   <th class="px-4 py-3 font-semibold">回水溫度</th>
                   <th class="px-4 py-3 font-semibold">溫度差 ΔT (°C)</th>
+                  <th class="px-4 py-3 font-semibold">水流量</th>
                   <th class="px-4 py-3 font-semibold">負載率</th>
                   <th class="px-4 py-3 font-semibold">累積運轉時數</th>
                   <th class="px-4 py-3 font-semibold whitespace-nowrap">日期時間</th>
@@ -327,6 +328,7 @@ function exportExcel() {
                   <td class="px-4 py-3 font-tabular" :class="{ 'text-[#FF4757] font-bold': r.isSupplyTempExceeded }">{{ r.supplyTemp.toFixed(1) }} °C</td>
                   <td class="px-4 py-3 font-tabular" :class="{ 'text-[#FF4757] font-bold': r.isReturnTempExceeded }">{{ r.returnTemp.toFixed(1) }} °C</td>
                   <td class="px-4 py-3 font-tabular" :class="{ 'text-[#FF4757] font-bold': r.isTempDiffExceeded }">{{ r.tempDiff.toFixed(1) }} °C</td>
+                  <td class="px-4 py-3 font-tabular" title="供應商尚未提供水流量量測值">--</td>
                   <td class="px-4 py-3 font-tabular">{{ r.loadRate !== null ? `${Math.round(r.loadRate)} %` : '--' }}</td>
                   <td class="px-4 py-3 font-tabular text-[#64748B]">{{ r.cumulativeHours !== null ? `${r.cumulativeHours.toLocaleString()} hrs` : '--' }}</td>
                   <td class="px-4 py-3 font-tabular text-[#64748B] whitespace-nowrap">{{ r.timestamp }}</td>

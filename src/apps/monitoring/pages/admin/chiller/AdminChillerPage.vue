@@ -213,6 +213,7 @@ const save = handleSubmit(async (values) => {
                 <th class="px-4 py-3 font-semibold">累積運轉</th>
                 <th class="px-4 py-3 font-semibold">運轉狀態</th>
                 <th class="px-4 py-3 font-semibold">操作</th>
+                <th class="px-4 py-3 font-semibold">水流量</th>
               </tr>
             </thead>
             <tbody>
@@ -226,6 +227,7 @@ const save = handleSubmit(async (values) => {
                 <td class="px-4 py-3 font-tabular text-[#64748B]">{{ c.cumulativeHours === null ? '--' : `${c.cumulativeHours.toLocaleString()} hrs` }}</td>
                 <td class="px-4 py-3"><AdminStatusBadge :status="c.status" /></td>
                 <td class="px-4 py-3">
+                <td class="px-4 py-3 font-tabular" title="供應商尚未提供水流量量測值">--</td>
                   <div class="flex items-center gap-3">
                     <button type="button" class="link-action" @click="openEdit(c)">編輯名稱</button>
                     <button type="button" class="link-action" @click="openPanel(c)">告警門檻</button>

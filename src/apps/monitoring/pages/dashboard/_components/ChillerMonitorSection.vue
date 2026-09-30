@@ -23,8 +23,6 @@ function loadColor(rate: number): string {
   return '#FF4D4F';
 }
 
-// 水流量拿掉了：供應商 SDK 完全沒有這個量測值（跟 FCU 設定溫度是同一類已知硬體限制），
-// Figma 設計稿上的數字是虛構的，寧可不顯示也不要編假數字。
 const METRICS = [
   { key: 'supplyTemp', label: '出水溫度', unit: '°C', digits: 1, flag: 'isSupplyTempExceeded' },
   { key: 'returnTemp', label: '回水溫度', unit: '°C', digits: 1, flag: 'isReturnTempExceeded' },
@@ -146,6 +144,12 @@ onUnmounted(() => { window.removeEventListener('resize', handleResize); barChart
             >{{ formatMeasure(chiller[m.key], m.digits) }}</b>
             <span class="text-[11px] text-[#8B949E] ml-1">{{ m.unit }}</span>
           </span>
+        </div>
+        <!-- 設計稿要求的欄位，但供應商 SDK 沒有流量量測值（只有流量異常警報旗標），先保留欄位顯示 --，
+             不編數字；單位（LPM 或 m³/h）也等拿到資料再定。 -->
+        <div class="flex items-center justify-between py-1 border-t border-[#21262D]" title="供應商尚未提供水流量量測值">
+          <span class="text-[#C9D1D9] w-[4.5em] text-justify" style="text-align-last: justify;">水流量</span>
+          <b class="font-tabular font-bold text-[#F0F6FC]">--</b>
         </div>
         <div class="flex items-center justify-between py-1 border-t border-[#21262D]">
           <span class="text-[#C9D1D9] w-[4.5em] text-justify" style="text-align-last: justify;">累積運轉</span>

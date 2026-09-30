@@ -7,7 +7,7 @@ import type { StatusType } from '@/ui/components/UiBadge.vue';
 import type { FloorId } from '../../dashboard/_types/dashboard-types';
 
 /** 冰水主機運轉日/週報表資料列 */
-/** 沒有水流量欄位——供應商 SDK 完全沒有這個量測值，跟其他頁面拿掉「水流量」是同一個已知硬體限制。 */
+/** 沒有水流量欄位——供應商 SDK 沒有這個量測值，報表表格的「水流量」欄固定顯示 --。 */
 export interface ChillerReportRow {
   timestamp: string;
   status: StatusType;
@@ -24,8 +24,8 @@ export interface ChillerReportRow {
 
 /** FCU 運轉日/週報表資料列 */
 /**
- * 沒有 setTemp/tempDiff——供應商 SDK 沒有 FCU 設定溫度，做不出「溫差」，跟告警門檻設定頁
- * 一樣改用「室內溫度上下限」的絕對溫度模型（見 threshold-service.ts 的說明）。
+ * 沒有 setTemp/tempDiff——供應商 SDK 沒有 FCU 設定溫度，做不出「溫差」，報表表格照設計稿保留
+ * 這兩欄但固定顯示 --；告警改用「室內溫度上下限」的絕對溫度模型（見 threshold-service.ts 的說明）。
  * mode/fanSpeed 在每小時聚合（rollup_fcu_1h）下沒有明確的聚合意義，固定是 null，
  * 顯示 `--`，不是漏資料。
  */

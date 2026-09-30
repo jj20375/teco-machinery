@@ -184,6 +184,8 @@ const save = handleSubmit(async (values) => {
                 <th class="px-4 py-3 font-semibold whitespace-nowrap">供應商編號</th>
                 <th class="px-4 py-3 font-semibold">安裝位置</th>
                 <th class="px-4 py-3 font-semibold">室內溫度</th>
+                <th class="px-4 py-3 font-semibold whitespace-nowrap">溫度差 ΔT (°C)</th>
+                <th class="px-4 py-3 font-semibold">設定溫度</th>
                 <th class="px-4 py-3 font-semibold">風速</th>
                 <th class="px-4 py-3 font-semibold">運轉模式</th>
                 <th class="px-4 py-3 font-semibold">狀態</th>
@@ -202,6 +204,9 @@ const save = handleSubmit(async (values) => {
                 <td class="px-4 py-3 font-tabular" :class="{ 'text-[#FF4757] font-bold': d.isExceeded }">
                   {{ d.roomTemp !== null ? `${d.roomTemp.toFixed(1)} °C` : '--' }}
                 </td>
+                <!-- 設計稿有這兩欄，但供應商 SDK 沒有 FCU 設定溫度，溫度差（室溫－設定溫度）也算不出來，先保留欄位顯示 --。 -->
+                <td class="px-4 py-3 font-tabular" title="供應商尚未提供 FCU 設定溫度，無法計算">--</td>
+                <td class="px-4 py-3 font-tabular" title="供應商尚未提供 FCU 設定溫度">--</td>
                 <td class="px-4 py-3">{{ d.fanSpeed }}</td>
                 <td class="px-4 py-3">{{ d.mode }}</td>
                 <td class="px-4 py-3"><AdminStatusBadge :status="d.status" /></td>

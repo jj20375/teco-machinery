@@ -8,8 +8,8 @@ import type { StatusType } from '@/ui/components/UiBadge.vue';
 export type FloorId = 'B1' | 'B2';
 
 /**
- * 冰水主機資料模型。沒有 flowRate（水流量）——供應商 SDK 完全沒有這個量測值，
- * Figma 設計稿上的數字是虛構的；四個 isXxxExceeded 門檻旗標目前也還沒有場館可設定的告警門檻
+ * 冰水主機資料模型。沒有 flowRate（水流量）——供應商 SDK 沒有這個量測值，卡片上的「水流量」列
+ * 固定顯示 --（照設計稿保留欄位，不編數字）；四個 isXxxExceeded 門檻旗標目前也還沒有場館可設定的告警門檻
  * （alarm_rule 只有 FCU 溫度規則），沒有真門檻可比對就一律回 false，不假裝有超標。
  */
 export interface ChillerData {
