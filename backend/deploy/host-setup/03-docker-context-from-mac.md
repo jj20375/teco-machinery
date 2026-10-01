@@ -89,6 +89,9 @@ Hyper-V 開機自啟是否生效（重開機後 `docker compose ps` 應該全部
 
 ## 3.5 備份
 
+> ⚠️ **請改用 `06-vm-db-backup.sh`**（見 `docs/正式機首次部署手冊.md` 附錄 D.1）。下面的 cron 一行寫法在備份失敗時
+> 會產生近乎空的檔案並照常清掉舊備份，只保留當作歷史說明。
+
 在 VM 上用 cron 每天備份。密碼直接用容器內的 `MARIADB_ROOT_PASSWORD` 環境變數，
 不用寫在 crontab 或指令列上：
 
