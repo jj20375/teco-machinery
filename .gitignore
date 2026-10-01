@@ -19,3 +19,8 @@ backend/deploy/.env
 backend/deploy/.demo-data-range
 
 .env.*
+# Word 開啟文件時產生的暫存鎖定檔
+~$*
+
+# 含明文登入密碼的本機筆記，不進版控
+docs/工作站主機資料.md
