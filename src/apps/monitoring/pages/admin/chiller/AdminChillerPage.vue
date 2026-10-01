@@ -8,10 +8,11 @@ import AdminButton from '../_components/AdminButton.vue';
 import AdminStatusBadge from '../_components/AdminStatusBadge.vue';
 import AdminPagination from '../_components/AdminPagination.vue';
 import AdminRightPanel from '../_components/AdminRightPanel.vue';
+import ChillerMaintenanceModal from './_components/ChillerMaintenanceModal.vue';
 import { ApiError } from '../_services/auth-service';
 import {
-  listChillersApi, listAlarmsApi, deriveChillerStatus, isDataQualityOnline,
-  updateChillerDisplayNameApi,
+  listChillersApi, listAlarmsApi, deriveChillerStatus, isDataQualityOnline, isMaintenanceAlarm,
+  updateChillerDisplayNameApi, AlarmDeviceType,
 } from '../_services/hvac-service';
 import {
   getChillerThresholdApi, saveChillerThresholdApi, chillerExceededFlags,
@@ -69,10 +70,22 @@ const rows = computed(() => {
       returnTemp: online ? (c.value?.chilledWaterInletTemperature ?? null) : null,
       tempDiff: online ? (c.value?.chilledWaterTemperatureDifference ?? null) : null,
       cumulativeHours: online ? (c.value?.accumulatedRunningHours ?? null) : null,
+      // 離線時狀態徽章顯示「離線」蓋過「待保養」，保養按鈕另外標示，才不會漏看。
+      maintenanceDue: alarms.some((a) => a.deviceType === AlarmDeviceType.Chiller && a.deviceId === c.id && isMaintenanceAlarm(a)),
       ...exceeded,
     };
   });
 });
+
+const maintenanceOpen = ref(false);
+const maintenanceTarget = ref<{ id: number; code: string; name: string } | null>(null);
+function openMaintenance(row: { id: number; code: string; name: string }) {
+  maintenanceTarget.value = row;
+  maintenanceOpen.value = true;
+}
+async function onMaintenanceReset() {
+  await queryClient.invalidateQueries({ queryKey: ['chiller-page-alarms'] });
+}
 
 const page = ref(1);
 const pageSize = ref(20);
@@ -234,6 +247,9 @@ const save = handleSubmit(async (values) => {
                   <div class="flex items-center gap-3">
                     <button type="button" class="link-action" @click="openEdit(c)">編輯名稱</button>
                     <button type="button" class="link-action" @click="openPanel(c)">告警門檻</button>
+                    <button type="button" class="link-action" :class="c.maintenanceDue ? '!text-[#9A7B1F] font-bold' : ''" @click="openMaintenance(c)">
+                      {{ c.maintenanceDue ? '待保養' : '保養' }}
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -309,9 +325,11 @@ const save = handleSubmit(async (values) => {
         </section>
 
         <section>
-          <h4 class="text-sm font-bold text-[#1A202C]">運轉保護值 (小時)</h4>
-          <p class="text-xs text-[#94A3B8] mt-0.5 mb-2">累積運轉時數達到此值，系統會記一筆保養提醒告警；留空代表不設定</p>
-          <input v-model="maintenanceHoursLimit" v-bind="maintenanceHoursLimitAttrs" type="number" step="100" placeholder="不設定" class="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none placeholder-[#94A3B8]" :class="errors.maintenanceHoursLimit ? 'border-[#FF4757] text-[#FF4757] focus:border-[#FF4757]' : 'border-[#CBD5E1] text-black focus:border-[#00D1B2]'" />
+          <h4 class="text-sm font-bold text-[#1A202C]">保養間隔 (小時)</h4>
+          <p class="text-xs text-[#94A3B8] mt-0.5 mb-2">
+            每運轉多少小時保養一次。距上次保養達到此時數會通知一次並顯示「待保養」，直到在「保養」按下保養完成才解除並重新計算；留空代表不提醒
+          </p>
+          <input v-model="maintenanceHoursLimit" v-bind="maintenanceHoursLimitAttrs" type="number" step="100" min="1" placeholder="不設定" class="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none placeholder-[#94A3B8]" :class="errors.maintenanceHoursLimit ? 'border-[#FF4757] text-[#FF4757] focus:border-[#FF4757]' : 'border-[#CBD5E1] text-black focus:border-[#00D1B2]'" />
           <p v-if="errors.maintenanceHoursLimit" class="text-xs text-[#FF4757] mt-1">{{ errors.maintenanceHoursLimit }}</p>
         </section>
 
@@ -320,6 +338,8 @@ const save = handleSubmit(async (values) => {
         </p>
       </div>
     </AdminRightPanel>
+
+    <ChillerMaintenanceModal :open="maintenanceOpen" :chiller="maintenanceTarget" @close="maintenanceOpen = false" @reset="onMaintenanceReset" />
 
     <!-- 自訂名稱 -->
     <div v-if="editOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40" @click.self="editOpen = false">

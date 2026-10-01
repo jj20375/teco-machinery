@@ -43,7 +43,8 @@ export const chillerThresholdSchema = yup.object({
   tempDiffMax: maxNotLessThanMin('tempDiffMin', '溫度差'),
   flowMin: nullableNumber.min(0, '水流量不能是負數'),
   flowMax: maxNotLessThanMin('flowMin', '水流量'),
-  maintenanceHoursLimit: nullableNumber.min(0, '運轉保護值不能是負數'),
+  // 後端 ThresholdEndpoints 也會擋，這裡先擋是為了錯誤訊息能出現在欄位下方。
+  maintenanceHoursLimit: nullableNumber.integer('保養間隔要是整數小時').min(1, '保養間隔要大於 0 小時'),
 });
 
 export const fcuThresholdSchema = yup.object({

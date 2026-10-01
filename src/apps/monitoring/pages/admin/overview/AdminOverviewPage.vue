@@ -9,6 +9,7 @@ import {
   listChillersApi,
   listFcusApi,
   deriveChillerStatus,
+  chillerOperatingStatus,
   deriveFcuStatus,
   isDataQualityOnline,
   alarmingFcuIdsOf,
@@ -63,7 +64,7 @@ const alarmingFcuIds = computed(() => alarmingFcuIdsOf(alarmsQuery.data.value ??
 
 const fcuSummary = computed(() => summarize((fcusQuery.data.value ?? []).map((f) => deriveFcuStatus(f, alarmingFcuIds.value))));
 const chillerSummary = computed(() =>
-  summarize((chillersQuery.data.value ?? []).map((c) => deriveChillerStatus(c, alarmsQuery.data.value ?? []))));
+  summarize((chillersQuery.data.value ?? []).map((c) => chillerOperatingStatus(c, alarmsQuery.data.value ?? []))));
 
 /** 每張卡片顯示的冰水主機明細。三個門檻超標旗標改從「目前有效告警」反查（見
  * threshold-service.ts 的 chillerExceededFlags），不是自己拿門檻跟即時值比大小，這樣才會跟

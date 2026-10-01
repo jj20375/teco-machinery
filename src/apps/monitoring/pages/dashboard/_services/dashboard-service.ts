@@ -13,7 +13,7 @@ import type { FloorId, ChillerData, FloorHeatmapData, AlarmItem, FcuItem, Hourly
 import {
   listPublicChillersApi as listChillersApi, listPublicFcusApi as listFcusApi, listPublicAlarmsApi as listAlarmsApi,
   getPublicHourlyFcuStatsApi,
-  deriveChillerStatus, deriveFcuStatus, alarmingFcuIdsOf, isDataQualityOnline, fcuModeLabel, fcuFanSpeedLabel,
+  deriveChillerStatus, chillerOperatingStatus, deriveFcuStatus, alarmingFcuIdsOf, isDataQualityOnline, fcuModeLabel, fcuFanSpeedLabel,
   AlarmDeviceType, type AlarmRow,
 } from '../../admin/_services/hvac-service';
 import { chillerExceededFlags } from '../../admin/_services/threshold-service';
@@ -104,7 +104,7 @@ export async function getDashboardOverviewApi(): Promise<DashboardOverview> {
   const alarms = await listAlarmsApi('active');
   const alarmingFcus = alarmingFcuIdsOf(alarms);
 
-  const chillerStatuses = chillers.map((c) => deriveChillerStatus(c, alarms));
+  const chillerStatuses = chillers.map((c) => chillerOperatingStatus(c, alarms));
   const fcuStatuses = fcus.map((f) => ({ f, status: deriveFcuStatus(f, alarmingFcus) }));
 
   const avgTemp = (floor: FloorId) => {

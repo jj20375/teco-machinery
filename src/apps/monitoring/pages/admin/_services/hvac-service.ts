@@ -116,9 +116,19 @@ export interface AlarmRow {
   ruleLabel: string;
 }
 
-/** 累積運轉時數達門檻的告警（AlarmEndpoints.cs 的 ruleCode 是屬性名稱）要顯示成「待保養」，不是「異常」。 */
+/**
+ * 保養提醒告警的 ruleCode（後端 ChillerMaintenanceRepository.MaintenanceRuleCode）。
+ * 2026-10-01 以前的舊格式帶門檻後綴（AccumulatedRunningHours.0.5000），歷史報表裡仍查得到，一併認得。
+ */
+const MAINTENANCE_RULE_CODE = 'AccumulatedRunningHours';
+
+export function isMaintenanceAlarm(alarm: Pick<AlarmRow, 'ruleCode'>): boolean {
+  return alarm.ruleCode === MAINTENANCE_RULE_CODE || alarm.ruleCode.startsWith(`${MAINTENANCE_RULE_CODE}.`);
+}
+
+/** 保養提醒要顯示成「待保養」，不是「異常」。 */
 export function alarmBadgeStatus(alarm: Pick<AlarmRow, 'ruleCode'>): 'ABNORMAL' | 'MAINTENANCE' {
-  return alarm.ruleCode === 'AccumulatedRunningHours' ? 'MAINTENANCE' : 'ABNORMAL';
+  return isMaintenanceAlarm(alarm) ? 'MAINTENANCE' : 'ABNORMAL';
 }
 
 /** 告警時間，對齊設計稿格式「2026/08/18 10:23」。 */
@@ -133,11 +143,12 @@ export function fcuVendorLabel(fcu: Pick<FcuRow, 'channel' | 'vendorCode'>): str
   return `DDC${fcu.channel} · ${fcu.vendorCode}`;
 }
 
-export type DeviceStatus = 'RUNNING' | 'STOPPED' | 'ABNORMAL' | 'OFFLINE';
+/** MAINTENANCE（待保養）只會出現在冰水主機，FCU 沒有運轉時數（2026-09-30 依設計稿確認）。 */
+export type DeviceStatus = 'RUNNING' | 'STOPPED' | 'ABNORMAL' | 'OFFLINE' | 'MAINTENANCE';
 
 /**
  * 「告警門檻設定」頁可設定的冰水主機量測指標，ruleCode 的第一段就是這些名稱。
- * 刻意不含 AccumulatedRunningHours：那是保養提醒，不是異常（「待保養」狀態另案處理）。
+ * 刻意不含 AccumulatedRunningHours：那是保養提醒，不是異常，判成「待保養」。
  */
 const CHILLER_THRESHOLD_METRICS: ReadonlySet<string> = new Set([
   'ChilledWaterOutletTemperature',
@@ -149,14 +160,26 @@ const CHILLER_THRESHOLD_METRICS: ReadonlySet<string> = new Set([
  * 異常有兩個來源：主機自己回報的 14 個硬體警報（value.isAlarm），以及後台設定的門檻被超過
  * （對照目前有效告警）。原本只看硬體警報，超過門檻時數字變紅、狀態卻還是「運轉中」，
  * 跟規格書「超標時狀態切換為異常」不符，也跟 FCU 超標就顯示異常的行為不一致。
+ *
+ * 優先順序：離線 > 異常 > 待保養 > 運轉／停止（docs/IOT_資料對照與缺口清單.md 2.3）。
+ * 待保養排在異常後面，是因為異常要立刻處理，保養可以排時間。
  */
 export function deriveChillerStatus(chiller: ChillerRow, activeAlarms: readonly AlarmRow[]): DeviceStatus {
   if (!chiller.dataQuality || !isDataQualityOnline(chiller.dataQuality)) return 'OFFLINE';
   if (chiller.value?.isAlarm) return 'ABNORMAL';
-  const exceeded = activeAlarms.some((a) =>
-    a.deviceType === AlarmDeviceType.Chiller && a.deviceId === chiller.id
-    && CHILLER_THRESHOLD_METRICS.has(a.ruleCode.split('.')[0]));
-  if (exceeded) return 'ABNORMAL';
+  const own = activeAlarms.filter((a) => a.deviceType === AlarmDeviceType.Chiller && a.deviceId === chiller.id);
+  if (own.some((a) => CHILLER_THRESHOLD_METRICS.has(a.ruleCode.split('.')[0]))) return 'ABNORMAL';
+  if (own.some(isMaintenanceAlarm)) return 'MAINTENANCE';
+  return (chiller.value?.loadPercentage ?? 0) > 0 ? 'RUNNING' : 'STOPPED';
+}
+
+/**
+ * 給「運轉中幾台」這類統計用：待保養只是提醒，主機可能還在運轉，要依負載歸回運轉／停止，
+ * 不然會被算進「停止」。顯示徽章時仍用 deriveChillerStatus 的「待保養」。
+ */
+export function chillerOperatingStatus(chiller: ChillerRow, activeAlarms: readonly AlarmRow[]): DeviceStatus {
+  const status = deriveChillerStatus(chiller, activeAlarms);
+  if (status !== 'MAINTENANCE') return status;
   return (chiller.value?.loadPercentage ?? 0) > 0 ? 'RUNNING' : 'STOPPED';
 }
 
@@ -197,6 +220,43 @@ export function updateChillerDisplayNameApi(id: number, displayName: string): Pr
   return authorizedJsonApi(`/api/v1/chillers/${id}`, {
     method: 'PATCH',
     body: JSON.stringify({ displayName }),
+  });
+}
+
+export interface ChillerMaintenanceLog {
+  id: number;
+  performedAt: string;
+  performedByName: string | null;
+  hoursAtReset: number;
+  hoursSincePrevious: number | null;
+  memo: string | null;
+}
+
+/**
+ * 保養提醒（「機車換機油」模式）：hoursSinceService＝目前累積時數－上次保養時的累積時數。
+ * baselineHours 為 null 代表還沒開始計算（剛設定保養間隔、主機尚未回報過時數）。
+ */
+export interface ChillerMaintenanceStatus {
+  chillerId: number;
+  intervalHours: number | null;
+  baselineHours: number | null;
+  baselineAt: string | null;
+  currentHours: number | null;
+  hoursSinceService: number | null;
+  remainingHours: number | null;
+  isDue: boolean;
+  history: ChillerMaintenanceLog[];
+}
+
+export function getChillerMaintenanceApi(chillerId: number): Promise<ChillerMaintenanceStatus> {
+  return authorizedJsonApi(`/api/v1/chillers/${chillerId}/maintenance`);
+}
+
+/** 「保養完成」：熄掉保養提醒，並以當下的累積時數重新起算。需要 hvac.thresholds:update。 */
+export function resetChillerMaintenanceApi(chillerId: number, memo?: string): Promise<{ hoursAtReset: number; hoursSincePrevious: number | null }> {
+  return authorizedJsonApi(`/api/v1/chillers/${chillerId}/maintenance/reset`, {
+    method: 'POST',
+    body: JSON.stringify({ memo: memo?.trim() || null }),
   });
 }
 
