@@ -17,3 +17,5 @@ backend/**/.vs/
 # 部署機密與本機產生的暫存狀態（見 backend/.gitignore 的說明，這裡是同一組規則的根目錄版本）
 backend/deploy/.env
 backend/deploy/.demo-data-range
+
+.env.*
