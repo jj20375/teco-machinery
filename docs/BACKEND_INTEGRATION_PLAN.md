@@ -84,7 +84,19 @@ DDC1 `IsReadSuccess=false` 時，B1F 的 64 台只能整層標記為「資料不
 
 ### 2.3 「待保養」只適用冰水主機
 
-只有冰水主機有 `AccumulatedRunningHours` / `AccumulatedStartCount`，用後台「運轉保護值」門檻判定待保養。
+只有冰水主機有 `AccumulatedRunningHours` / `AccumulatedStartCount`。
+
+**判定方式：保養間隔＋基準點（「機車換機油」模式，2026-10-01 改版）**。主機回報的累積運轉時數是出廠至今的總時數，
+只增不減，不能直接拿來跟門檻比（舊做法 `總時數 > 5000` 會一設定就觸發、永遠消不掉）。改為：
+- 後台「告警門檻」的「保養間隔」＝每運轉多少小時保養一次（仍存在 `alarm_rule`，metric `AccumulatedRunningHours`）。
+- `device_chiller.maintenance_baseline_hours` 記住上次保養時的總時數；距上次保養＝目前總時數－基準點。
+  第一次設定間隔時，以**當下時數起算**（不會一上線就因為上萬小時而通知）。
+- 距上次保養 ≥ 間隔時，Collector 開一筆告警（rule_code 固定 `AccumulatedRunningHours`），**只通知一次**：
+  沒保養的話時數繼續累積、燈一直亮著，但不會重複通知，也不會自動熄燈。
+- 只有按下「保養完成・重置」（`POST /api/v1/chillers/{id}/maintenance/reset`，權限 `hvac.thresholds:update`）
+  才會熄燈，並以當下時數為新基準點重新計算；每次保養記一筆 `chiller_maintenance_log`。
+- 狀態優先順序：離線 > 異常 > 待保養 > 運轉／停止。通知管道只有站內（鈴鐺紅點、告警清單、狀態徽章），沒有 Email／LINE。
+
 FCU 沒有累積運轉時數，但**依設計稿不需要**：Figma「即時告警狀態對照表」的「待保養」只勾冰水主機、FCU 為「—」，
 FCU 門檻設定也只有溫度差（2026-09-30 與使用者確認，以設計稿為準；規格書 FCU 單機卡片狀態列出「待保養」是通用寫法，不採用）。
 

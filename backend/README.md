@@ -84,6 +84,14 @@ backend/
 - 重讀供應商說明書全文逐欄對照：說明書的欄位全部都有接進來。`GET /api/v1/fcus` 新增 `vendorCode`（供應商 FCU 編號，
   例如 `FC_MC1_01`，DDC 之間會重複）與 `address`（暫存器文件位址），FCU 管理頁與空間設備配置顯示成「DDC1 · FC_MC1_01」
 
+**冰水主機保養提醒**（2026-10-01，「機車換機油」模式，判定規則見 `docs/BACKEND_INTEGRATION_PLAN.md` §2.3，細節見 `CHANGELOG.md` 同名章節）：
+- migration `014_chiller_maintenance.sql`：`device_chiller.maintenance_baseline_hours/_at`＋`chiller_maintenance_log`（既有資料庫要手動套用）
+- `GET /api/v1/chillers/{id}/maintenance`（`hvac.chillers:read`）、`POST /api/v1/chillers/{id}/maintenance/reset`（`hvac.thresholds:update`）
+- 已實測：起算、未達不通知、達標只開一筆、拖到兩倍間隔仍只有一筆、無權限 403、重置後熄燈並重新起算、再達標會再通知；
+  後台冰水主機頁用瀏覽器實際按過「保養完成」
+- Collector 端是用臨時程式直接呼叫 `AlarmEngine` 驗證的（本機沒有現場設備，Collector 不會有讀取成功的資料），
+  **尚未在現場真實資料上跑過**
+
 **尚未驗證**（需要現場環境或使用者操作）：
 - P0-3：容器實際連到 `192.168.10.198/12/14` 三個現場 IP（我這裡沒有那個網路）
 - P6：在真正的 Hyper-V VM 上執行 `deploy/host-setup/`

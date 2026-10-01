@@ -1414,3 +1414,44 @@ VM 內 Docker 的網路用的是 `172.18～172.20`。如果哪天 Default Switch
 `192.168.84.0/24` 的回程路由，回應從 eth0 出去而不是 eth1。當時使用者只需要 71 網段的 Mac 能連，所以沒有追加路由。
 另外測得：辦公室防火牆**不放行 84 → 71 方向**（從 `192.168.84.27` 連 `192.168.71.150` 的 22 與 8081 都逾時，封包到不了主機），
 這要網管加政策。教訓：附錄 E 的位址與網段每個環境都不同，**操作手冊只寫變數與查法，具體位址只放在這類帶日期的紀錄裡**。
+
+## 冰水主機保養提醒改成「機車換機油」模式（2026-10-01）
+
+**原本的問題**：保養提醒是把主機回報的 `AccumulatedRunningHours`（出廠至今的總時數，只增不減）直接跟
+「運轉保護值」比大小，走通用門檻邏輯。三個問題：(1) 主機已經跑了上萬小時，設 5000 一存檔就觸發，
+而且永遠消不掉；(2) 沒有「上次保養」的概念，也沒有重置按鈕；(3) 通用門檻低於門檻會自動關告警，
+不符合「沒保養就一直亮燈」的語意。另外前端 `alarmBadgeStatus` 比對的是 `=== 'AccumulatedRunningHours'`，
+但舊 rule_code 帶後綴（`AccumulatedRunningHours.0.5000`），所以「待保養」徽章其實從來沒出現過。
+
+**改法**（跟使用者確認：只做站內通知、以上線當下時數起算、重置權限沿用 `hvac.thresholds:update`）：
+- migration `014`：`device_chiller` 加 `maintenance_baseline_hours`／`maintenance_baseline_at`；新表
+  `chiller_maintenance_log`；舊格式的保養告警直接結案（新版不再評估、也不會關閉那種格式）。
+- Collector `AlarmEngine.EvaluateMaintenanceAsync`：把保養從通用門檻抽出來。基準點為 NULL 時以當下時數起算；
+  距上次保養 ≥ 間隔時開一筆告警（rule_code 固定 `AccumulatedRunningHours`，改間隔不會讓亮著的燈重開一次）；
+  永不自動關閉。基準點每次從 DB 讀、不快取，重置後下一輪立即生效。計數器倒退（換控制板）時改以目前時數重新起算。
+- 開告警用一條 `INSERT…SELECT … WHERE 基準點仍等於剛才讀到的值 AND NOT EXISTS 有效保養告警`：分成先查再寫的話，
+  Collector 讀完基準點剛好有人按重置，會在重置後馬上又開一筆。
+- API：`GET /api/v1/chillers/{id}/maintenance`、`POST …/maintenance/reset`。重置在同一個交易內寫履歷、
+  更新基準點、關閉告警（`ack_by`／`ack_at`／`memo` 記錄是誰確認的），再寫操作紀錄。主機離線時退回最後一筆
+  讀取成功的 `chiller_reading.running_hours`，兩者都沒有回 409。
+- `ThresholdEndpoints`：保養間隔要是正整數；第一次設定就以當下時數起算（不等 Collector 一分鐘後重新載入規則）；
+  清空間隔時一併熄掉亮著的燈。
+- 前端：`deriveChillerStatus` 回傳 `MAINTENANCE`（離線 > 異常 > 待保養 > 運轉／停止）；統計「運轉中幾台」改用
+  `chillerOperatingStatus`，待保養但還在跑的主機不會被算成停止；冰水主機管理頁新增「保養」操作與
+  `chiller/_components/ChillerMaintenanceModal.vue`（距上次保養、進度條、保養完成・重置、保養紀錄）；
+  門檻面板「運轉保護值」改名「保養間隔」並說明行為。
+
+**驗證**：
+- `dotnet build`、`npm run typecheck`、`npm run build` 通過；`docker compose up -d --build api collector` 後全部 healthy。
+- 本機沒有現場設備，Collector 不會有讀取成功的資料，所以用 scratchpad 的臨時 console 程式直接呼叫真正的
+  `AlarmEngine.EvaluateChillerAsync`（連本機 MariaDB）搭配 `simulate-live-data.sh` 的 ingest 路徑跑完整情境：
+  間隔 5000、起算 12480 → 16000 不通知 → 17480 開 1 筆 → 20000／22480／22480 仍只有 1 筆 → 告警清單顯示
+  「已達保養時數，請安排保養」→ `merchant_editor` 打 reset 得 403 → 管理員 reset 成功（距上次 10000h、告警關閉、
+  基準點 22480）→ 同時數再評估不重開 → 27480 再開新的一筆。負數間隔被 400 擋下。
+- 瀏覽器：後台冰水主機頁 CH-1 顯示「待保養」（CH-2 硬體警報仍顯示「異常」，優先順序正確），保養視窗顯示
+  6,000 h／超過 1,000 h，按「保養完成」後歸零、出現保養紀錄、狀態回到「運轉中」。
+- 測試用的臨時帳號、規則、告警與履歷都已刪除，collector 已用 `stop-live-simulation.sh` 恢復。
+- 注意：Console 的「Hydration completed but contains mismatches」在沒改到的 FCU 管理頁也有，是既有問題，跟這次無關。
+
+**沒做的**：Email／LINE 推播（使用者確認只要站內通知）；`FloorPlanViewer`／前台戰情室會透過共用的
+`deriveChillerStatus` 自動顯示「待保養」，但沒有另外用瀏覽器逐頁點過。

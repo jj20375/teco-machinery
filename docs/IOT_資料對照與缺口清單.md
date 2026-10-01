@@ -64,7 +64,7 @@
 |---|---|---|---|---|---|
 | ✅ 2.1 | **FCU 報表的「風速」「運轉模式」永遠顯示 `--`** | 報表查每小時彙總表，但彙總表沒存模式與風速（原始資料有，彙總時丟掉） | [FcuRepository.cs:92](../backend/src/Teco.Hvac.Infrastructure/Repositories/FcuRepository.cs:92)、[FcuRepository.cs:117](../backend/src/Teco.Hvac.Infrastructure/Repositories/FcuRepository.cs:117) | 彙總表加「該小時最常出現的模式、風速」欄位（migration）＋ 彙總 SQL ＋ 查詢改讀新欄位。併入 3.1 一起做 | 取「最常出現」或「最後一筆」 |
 | ✅ 2.2 | **冰水主機超過門檻時，狀態仍顯示「運轉中」** | 規格書要求超標時狀態切換為「異常」；目前只有數字變紅。FCU 超標會正確變異常，兩者不一致 | [hvac-service.ts:106](../src/apps/monitoring/pages/admin/_services/hvac-service.ts:106) | `deriveChillerStatus` 除了硬體警報，也要看該主機是否有有效的門檻告警（`alarm_event`） | — |
-| 2.3 | **冰水主機永遠不會出現「待保養」狀態** | 門檻可以設、也會產生保養提醒告警，徽章元件也有「待保養」，但判斷狀態時不會回傳它 | [hvac-service.ts:106](../src/apps/monitoring/pages/admin/_services/hvac-service.ts:106) | 有 `AccumulatedRunningHours` 規則的有效告警時回傳 `MAINTENANCE`。需定義優先順序：離線 > 異常 > 待保養 > 運轉／停止 | 優先順序 |
+| ✅ 2.3 | **冰水主機永遠不會出現「待保養」狀態**（2026-10-01 修正：改成「保養間隔＋基準點」模式，優先順序照右欄，見 BACKEND_INTEGRATION_PLAN §2.3） | 門檻可以設、也會產生保養提醒告警，徽章元件也有「待保養」，但判斷狀態時不會回傳它 | [hvac-service.ts:106](../src/apps/monitoring/pages/admin/_services/hvac-service.ts:106) | 有 `AccumulatedRunningHours` 規則的有效告警時回傳 `MAINTENANCE`。需定義優先順序：離線 > 異常 > 待保養 > 運轉／停止 | 優先順序 |
 | 2.4 | **FCU 讀不到時顯示成「停止」** | 開關狀態為「未知」（-1）時被當成停止，現場會誤以為設備關機 | [hvac-service.ts:113](../src/apps/monitoring/pages/admin/_services/hvac-service.ts:113) | 開關狀態未知時不判為停止，改為離線（或新增「未知」狀態） | 顯示成「離線」還是新增「未知」 |
 | ✅ 2.5 | **冰水主機報表缺「負載率」欄** | 規格書有列；彙總表已有 `avg_load_pct`，只是表格沒放 | [AdminChillerReportPage.vue:318](../src/apps/monitoring/pages/admin/reports/AdminChillerReportPage.vue:318) 附近的表頭 | 表格與匯出 Excel 加一欄 | — |
 | 2.6 | **耗電功率（kW）沒顯示在任何頁面** | 規格書要求冰水主機卡片顯示；供應商有、資料庫有存 | 冰水主機管理頁、監控中心、前台戰情室的冰水主機卡片 | API 回傳補上欄位，畫面加一項 | 放在哪些畫面 |
