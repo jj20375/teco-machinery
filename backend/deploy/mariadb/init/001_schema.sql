@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS device_chiller (
     display_name        VARCHAR(64)     NOT NULL COMMENT '顯示名稱（如「冰水主機 1」），由後台維護；本表自訂，非供應商文件欄位',
     rated_capacity_rt   DECIMAL(10,2)   NULL COMMENT '額定容量 RT，待供應商/東元確認',
     is_active           TINYINT(1)      NOT NULL DEFAULT 1 COMMENT '是否啟用；停用後不再顯示於清單，不影響歷史資料',
+    maintenance_baseline_hours INT UNSIGNED NULL COMMENT '上次保養（或開始計算）時的累積運轉時數；NULL＝尚未開始計算（見 014）',
+    maintenance_baseline_at    DATETIME(3)  NULL COMMENT '上次保養（或開始計算）的時間，UTC',
     UNIQUE KEY uk_chiller_code (code),
     UNIQUE KEY uk_chiller_modbus (modbus_id)
 ) ENGINE=InnoDB;
@@ -152,6 +154,19 @@ CREATE TABLE IF NOT EXISTS alarm_event (
     ack_at              DATETIME(3) NULL,
     memo                VARCHAR(255) NULL,
     KEY ix_alarm_active (device_type, device_id, rule_code, ended_at)
+) ENGINE=InnoDB;
+
+-- 冰水主機保養履歷（「保養完成・重置」按鈕寫入），說明見 014_chiller_maintenance.sql。
+CREATE TABLE IF NOT EXISTS chiller_maintenance_log (
+    id                    BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    device_id             INT UNSIGNED NOT NULL COMMENT 'device_chiller.id',
+    performed_at          DATETIME(3) NOT NULL COMMENT '按下「保養完成」的時間，UTC',
+    performed_by          INT UNSIGNED NOT NULL COMMENT 'app_user.id',
+    hours_at_reset        INT UNSIGNED NOT NULL COMMENT '保養當下的累積運轉時數，成為下一輪的基準點',
+    hours_since_previous  INT UNSIGNED NULL COMMENT '距上次保養運轉了多少小時；之前沒有基準點時為 NULL',
+    alarm_event_id        BIGINT UNSIGNED NULL COMMENT '這次保養一併關閉的保養告警；未達保養時數就提前保養時為 NULL',
+    memo                  VARCHAR(255) NULL,
+    KEY ix_chiller_maintenance_device (device_id, performed_at)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS channel_health (

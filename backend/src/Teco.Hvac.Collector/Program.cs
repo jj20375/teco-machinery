@@ -12,6 +12,7 @@ builder.Services.AddSingleton<DeviceRepository>();
 builder.Services.AddSingleton<TimeSeriesWriter>();
 builder.Services.AddSingleton<ChannelHealthRepository>();
 builder.Services.AddSingleton<AlarmRepository>();
+builder.Services.AddSingleton<ChillerMaintenanceRepository>();
 builder.Services.AddSingleton<AlarmEngine>();
 builder.Services.AddSingleton<ChannelWatchdog>();
 builder.Services.AddSingleton<ThrottlePolicy>();

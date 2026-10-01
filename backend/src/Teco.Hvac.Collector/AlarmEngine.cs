@@ -19,7 +19,8 @@ namespace Teco.Hvac.Collector;
 ///    規則清單由 CollectorHostedService 定期重新載入（見該檔案的 RunSupervisorLoopAsync），
 ///    畫面改門檻後不用重建 Collector，約一分鐘內生效。
 /// </summary>
-public sealed class AlarmEngine(AlarmRepository alarmRepository, ILogger<AlarmEngine> logger)
+public sealed class AlarmEngine(
+    AlarmRepository alarmRepository, ChillerMaintenanceRepository maintenanceRepository, ILogger<AlarmEngine> logger)
 {
     private static readonly string[] ChillerAlarmFlags =
     [
@@ -99,17 +100,57 @@ public sealed class AlarmEngine(AlarmRepository alarmRepository, ILogger<AlarmEn
             }
         }
 
-        // 硬體旗標之外，再評估後台「告警門檻設定」畫面可設定的門檻（供水/回水/溫差/累積運轉時數）。
+        // 硬體旗標之外，再評估後台「告警門檻設定」畫面可設定的門檻（供水/回水/溫差）。
         // Scope 用 ModbusId 字串比對，"*" 代表全部冰水主機共用。
-        var applicableRules = _chillerRules.Where(r => r.Scope == "*" || r.Scope == snapshot.ModbusId.ToString());
-        await EvaluateThresholdRulesAsync(AlarmDeviceType.Chiller, deviceId, applicableRules, metric => metric switch
+        // 累積運轉時數不走這裡：通用門檻會在低於門檻時自動關閉告警，保養提醒要等人按「保養完成」才熄燈。
+        var applicableRules = _chillerRules
+            .Where(r => r.Scope == "*" || r.Scope == snapshot.ModbusId.ToString())
+            .ToList();
+        await EvaluateThresholdRulesAsync(AlarmDeviceType.Chiller, deviceId,
+            applicableRules.Where(r => r.Metric != nameof(ChillerSnapshot.AccumulatedRunningHours)), metric => metric switch
         {
             nameof(ChillerSnapshot.ChilledWaterOutletTemperature) => snapshot.ChilledWaterOutletTemperature,
             nameof(ChillerSnapshot.ChilledWaterInletTemperature) => snapshot.ChilledWaterInletTemperature,
             nameof(ChillerSnapshot.ChilledWaterTemperatureDifference) => snapshot.ChilledWaterTemperatureDifference,
-            nameof(ChillerSnapshot.AccumulatedRunningHours) => snapshot.AccumulatedRunningHours,
             _ => null,
         }, nowUtc, ct);
+
+        var maintenanceRule = applicableRules.FirstOrDefault(r =>
+            r.Metric == nameof(ChillerSnapshot.AccumulatedRunningHours) && r.Operator == AlarmMetricOperator.GreaterThan);
+        if (maintenanceRule is not null)
+            await EvaluateMaintenanceAsync(deviceId, snapshot.AccumulatedRunningHours, (int)maintenanceRule.Threshold, nowUtc, ct);
+    }
+
+    /// <summary>
+    /// 保養提醒，比照機車換機油：距上次保養的時數達到間隔就開一筆告警（＝通知一次），
+    /// 之後不管拖多久都不會重開，也不會自動關閉，只有 API 的「保養完成」會關掉並重新起算。
+    /// 基準點每次都從 DB 讀、不快取：重置是 API 那邊寫的，快取的話重置後下一輪會拿舊基準點又開一次告警。
+    /// </summary>
+    private async Task EvaluateMaintenanceAsync(int deviceId, int currentHours, int intervalHours, DateTimeOffset nowUtc, CancellationToken ct)
+    {
+        if (intervalHours <= 0) return;
+
+        var state = await maintenanceRepository.GetStateAsync(deviceId, ct);
+        if (state.BaselineHours is not { } baseline)
+        {
+            await maintenanceRepository.InitBaselineIfMissingAsync(deviceId, currentHours, nowUtc, ct);
+            logger.LogInformation("保養時數開始計算：Chiller#{DeviceId} 起算點 {Hours}h", deviceId, currentHours);
+            return;
+        }
+
+        if (currentHours < baseline)
+        {
+            logger.LogWarning("累積運轉時數倒退（{Current}h < 基準點 {Baseline}h），疑似主機計數器歸零，改以目前時數重新起算：Chiller#{DeviceId}",
+                currentHours, baseline, deviceId);
+            await maintenanceRepository.RebaseAsync(deviceId, baseline, currentHours, nowUtc, ct);
+            return;
+        }
+
+        var sinceService = currentHours - (int)baseline;
+        if (sinceService < intervalHours) return;
+
+        if (await maintenanceRepository.OpenAlarmIfDueAsync(deviceId, baseline, sinceService, nowUtc, ct))
+            logger.LogWarning("開啟保養提醒：Chiller#{DeviceId} 距上次保養 {Since}h（間隔 {Interval}h）", deviceId, sinceService, intervalHours);
     }
 
     public async Task EvaluateFcuAsync(int deviceId, string floor, FcuSnapshot snapshot, ReadStatus ddcReadStatus,

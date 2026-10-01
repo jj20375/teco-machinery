@@ -51,13 +51,22 @@ public static class ThresholdEndpoints
 
         group.MapPut("/chillers/{code}", async (
             ClaimsPrincipal principal, string code, ChillerThresholdRequest request,
-            ChillerRepository chillers, AlarmRepository alarms, OperationLogger opLog, CancellationToken ct) =>
+            ChillerRepository chillers, AlarmRepository alarms, ChillerMaintenanceRepository maintenance,
+            CurrentStateStore store, OperationLogger opLog, CancellationToken ct) =>
         {
             if (!RequestScope.TryRead(principal, out var scope) || scope is null || !scope.Has("hvac.thresholds", "update"))
                 return Results.Forbid();
 
             var device = (await chillers.ListAsync(ct)).FirstOrDefault(d => d.Code == code);
             if (device is null) return Results.NotFound();
+
+            if (request.MaintenanceHoursLimit is { } interval && (interval < 1 || interval != Math.Floor(interval)))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["maintenanceHoursLimit"] = ["保養間隔要是大於 0 的整數小時。"],
+                });
+            }
 
             var scopeKey = device.ModbusId.ToString();
             var before = BuildChillerConfig(code, await alarms.GetRulesAsync(AlarmDeviceType.Chiller, scopeKey, ct));
@@ -70,9 +79,21 @@ public static class ThresholdEndpoints
             await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, TempDiff, AlarmMetricOperator.GreaterThan, request.TempDiffMax, ct);
             await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, ChilledWaterFlowRate, AlarmMetricOperator.LessThan, request.FlowMin, ct);
             await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, ChilledWaterFlowRate, AlarmMetricOperator.GreaterThan, request.FlowMax, ct);
-            // 保養時數只需要上限（累積運轉時數「超過」多少要保養），沒有下限的語意。
+            // 保養間隔：門檻值是「距上次保養多少小時」，不是主機總時數（判定見 AlarmEngine.EvaluateMaintenanceAsync）。
             await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, RunningHours, AlarmMetricOperator.GreaterThan,
                 request.MaintenanceHoursLimit, ct, severity: AlarmSeverity.Info);
+            if (request.MaintenanceHoursLimit is not null)
+            {
+                // 第一次設定就以當下時數起算；Collector 也會補做，但要等它約一分鐘後重新載入規則，
+                // 這段期間保養狀態會顯示「尚未開始計算」，容易讓人以為沒存成功。
+                if (ChillerMaintenanceEndpoints.GetLiveHours(store, device) is { } hours)
+                    await maintenance.InitBaselineIfMissingAsync(device.Id, hours, DateTimeOffset.UtcNow, ct);
+            }
+            else
+            {
+                // 取消保養提醒時把亮著的燈一起熄掉，不然沒有間隔可比，燈會永遠亮著。
+                await maintenance.CloseActiveAlarmAsync(device.Id, scope.UserId, DateTimeOffset.UtcNow, "已取消保養提醒設定", ct);
+            }
 
             var after = BuildChillerConfig(code, await alarms.GetRulesAsync(AlarmDeviceType.Chiller, scopeKey, ct));
             await opLog.LogAsync(scope, "hvac.threshold.chiller.update", "device_chiller", code,

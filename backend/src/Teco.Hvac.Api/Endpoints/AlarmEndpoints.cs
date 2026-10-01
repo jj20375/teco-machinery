@@ -47,6 +47,8 @@ public static class AlarmEndpoints
     /// </summary>
     private static string DescribeChillerThresholdRule(string ruleCode)
     {
+        // 保養提醒的 rule_code 固定不帶後綴（見 ChillerMaintenanceRepository.MaintenanceRuleCode）。
+        if (ruleCode == ChillerMaintenanceRepository.MaintenanceRuleCode) return "已達保養時數，請安排保養";
         var parts = ruleCode.Split('.', 3);
         if (parts.Length < 2) return ruleCode;
         var isMax = parts[1] == "0"; // 0=GreaterThan、1=LessThan，見 AlarmMetricOperator
