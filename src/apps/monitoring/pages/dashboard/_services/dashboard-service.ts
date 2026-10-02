@@ -56,9 +56,6 @@ function toFcuItem(f: Awaited<ReturnType<typeof loadFcusWithStatus>>[number]['f'
     code: f.zoneCode ?? `${f.floor}-${f.id}`,
     floor: f.floor as FloorId,
     roomTemp,
-    // 供應商 SDK 沒有 FCU 設定溫度這個欄位，一律回 NaN，畫面已改用 -- 顯示（見 FcuMatrixSection.vue）。
-    setTemp: NaN,
-    tempDiff: NaN,
     // 離線時快照是舊值，不能當成目前狀態顯示；未知（-1）由標籤函式轉成 --。
     mode: online && f.value ? fcuModeLabel(f.value.mode) : '--',
     fanSpeed: online && f.value ? fcuFanSpeedLabel(f.value.fanSpeed) : '--',

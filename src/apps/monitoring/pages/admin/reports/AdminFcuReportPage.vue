@@ -305,8 +305,6 @@ function exportExcel() {
               <thead class="bg-[#F8FAFC] text-[#64748B] border-b border-[#E2E8F0]">
                 <tr>
                   <th class="px-4 py-3 font-semibold">室內溫度</th>
-                  <th class="px-4 py-3 font-semibold">設定溫度</th>
-                  <th class="px-4 py-3 font-semibold whitespace-nowrap">溫度差 ΔT (°C)</th>
                   <th class="px-4 py-3 font-semibold">風速</th>
                   <th class="px-4 py-3 font-semibold">運轉模式</th>
                   <th class="px-4 py-3 font-semibold whitespace-nowrap">日期時間</th>
@@ -318,8 +316,6 @@ function exportExcel() {
                   <td class="px-4 py-3 font-tabular" :class="{ 'text-[#FF4757] font-bold': r.isExceeded }">
                     {{ r.roomTemp !== null ? `${r.roomTemp.toFixed(1)} °C` : '--' }}
                   </td>
-                  <td class="px-4 py-3 font-tabular" title="供應商尚未提供 FCU 設定溫度">--</td>
-                  <td class="px-4 py-3 font-tabular" title="供應商尚未提供 FCU 設定溫度，無法計算">--</td>
                   <td class="px-4 py-3">{{ r.fanSpeed ?? '--' }}</td>
                   <td class="px-4 py-3">{{ r.mode ?? '--' }}</td>
                   <td class="px-4 py-3 font-tabular text-[#64748B] whitespace-nowrap">{{ r.timestamp }}</td>

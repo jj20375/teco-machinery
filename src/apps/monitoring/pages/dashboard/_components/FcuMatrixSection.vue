@@ -40,11 +40,6 @@ function go(p: number) { page.value = (p + pageCount.value) % pageCount.value; }
 function reading(f: FcuItem): string {
   return Number.isFinite(f.roomTemp) ? `${f.roomTemp.toFixed(1)}°C` : '--';
 }
-// 供應商 SDK 沒有 FCU 設定溫度這個欄位（跟「水流量」是同一類已知硬體限制），
-// 真實資料一律是 NaN，這裡跟 reading() 一樣用 -- 表示「沒有這筆資料」，不要編數字。
-function setpointReading(f: FcuItem): string {
-  return Number.isFinite(f.setTemp) ? `${f.setTemp.toFixed(1)}°C` : '--';
-}
 function readingColor(f: FcuItem): string {
   if (f.status === 'ABNORMAL') return 'text-[#FF4D4F]';
   if (f.status === 'RUNNING') return 'text-[#5EEAD4]';
@@ -124,10 +119,6 @@ function readingColor(f: FcuItem): string {
           <div class="ml-auto text-center leading-tight">
             <div class="text-[10px] text-[#8B949E]">室溫</div>
             <div class="text-sm font-bold font-tabular" :class="readingColor(f)">{{ reading(f) }}</div>
-          </div>
-          <div class="text-center leading-tight w-[64px] shrink-0">
-            <div class="text-[10px] text-[#8B949E]">設定值</div>
-            <div class="text-sm font-bold font-tabular text-[#F0F6FC]">{{ setpointReading(f) }}</div>
           </div>
         </div>
       </div>

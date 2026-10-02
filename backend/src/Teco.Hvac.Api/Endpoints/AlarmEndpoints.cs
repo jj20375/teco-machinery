@@ -58,7 +58,6 @@ public static class AlarmEndpoints
             nameof(Teco.Hvac.Contracts.ChillerSnapshot.ChilledWaterInletTemperature) => isMax ? "回水溫度過高" : "回水溫度過低",
             nameof(Teco.Hvac.Contracts.ChillerSnapshot.ChilledWaterTemperatureDifference) => isMax ? "溫度差過高" : "溫度差過低",
             nameof(Teco.Hvac.Contracts.ChillerSnapshot.AccumulatedRunningHours) => "累積運轉時數達保養門檻",
-            ThresholdEndpoints.ChilledWaterFlowRate => isMax ? "水流量過高" : "水流量過低",
             _ => ruleCode,
         };
     }

@@ -6,9 +6,7 @@
  * 打的是 backend/ 的 /api/v1/thresholds/*（見
  * backend/src/Teco.Hvac.Api/Endpoints/ThresholdEndpoints.cs）。
  *
- * 水流量門檻（flowMin/flowMax）照設計稿可以設定、可以存，但目前不會觸發告警：供應商 SDK 沒有水流量
- * 量測值，AlarmEngine 對快照裡沒有對應欄位的規則會直接跳過。拿到量測值後，只要在 ChillerSnapshot
- * 加欄位、讓 AlarmEngine 的 resolver 回傳它，這裡存好的門檻就自動生效，前端不用再改。FCU 是「室溫上下限」不是「溫差」：溫差＝室溫－設定溫度，
+ * 沒有水流量門檻：供應商 SDK 沒有水流量量測值。FCU 是「室溫上下限」不是「溫差」：溫差＝室溫－設定溫度，
  * 但 Collector 沒有 FCU 設定溫度，這點在最早的規劃就決定用絕對室溫上下限
  * （docs/BACKEND_INTEGRATION_PLAN.md §2.1）。
  */
@@ -24,8 +22,6 @@ export interface ChillerThresholdConfig {
   returnTempMax: number | null;
   tempDiffMin: number | null;
   tempDiffMax: number | null;
-  flowMin: number | null;
-  flowMax: number | null;
   maintenanceHoursLimit: number | null;
 }
 

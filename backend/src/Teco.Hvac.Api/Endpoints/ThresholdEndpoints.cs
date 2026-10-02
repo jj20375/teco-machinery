@@ -14,10 +14,7 @@ namespace Teco.Hvac.Api.Endpoints;
 ///
 /// 權限走 hvac.thresholds，跟 hvac.chillers／hvac.fcus 分開——能看即時數據不代表能改告警門檻。
 ///
-/// 冰水主機的 flowMin/flowMax（水流量門檻）照設計稿可以設定、可以存，但目前不會觸發告警：供應商 SDK
-/// 沒有水流量量測值，AlarmEngine 對「快照裡沒有對應欄位」的規則會直接跳過（見其 resolveMetricValue
-/// 回傳 null 的處理）。存進 alarm_rule 不需要新欄位（metric 是字串），之後供應商提供數值時，只要
-/// 在 ChillerSnapshot 加欄位並讓 AlarmEngine 的 resolver 回傳它，既有規則就自動生效。
+/// 冰水主機沒有水流量門檻：供應商 SDK 沒有水流量量測值。
 /// FCU 端點叫 room-temp 不是 temp-diff：
 /// 溫差＝室溫－設定溫度，但 Collector 沒有 FCU 設定溫度，這點在最早的規劃就決定用「絕對室溫
 /// 上下限」（docs/BACKEND_INTEGRATION_PLAN.md §2.1），畫面文字要對應改成「室溫上下限」。
@@ -28,8 +25,6 @@ public static class ThresholdEndpoints
     private const string ReturnTemp = nameof(ChillerSnapshot.ChilledWaterInletTemperature);
     private const string TempDiff = nameof(ChillerSnapshot.ChilledWaterTemperatureDifference);
     private const string RunningHours = nameof(ChillerSnapshot.AccumulatedRunningHours);
-    /// <summary>ChillerSnapshot 目前沒有這個屬性，所以不能用 nameof；名稱先訂好，等有資料來源時對應同名屬性。</summary>
-    public const string ChilledWaterFlowRate = "ChilledWaterFlowRate";
     private const string RoomTemp = nameof(FcuSnapshot.Temperature);
 
     public static void MapThresholdEndpoints(this WebApplication app)
@@ -71,16 +66,14 @@ public static class ThresholdEndpoints
             var scopeKey = device.ModbusId.ToString();
             var before = BuildChillerConfig(code, await alarms.GetRulesAsync(AlarmDeviceType.Chiller, scopeKey, ct));
 
-            await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, SupplyTemp, AlarmMetricOperator.LessThan, request.SupplyTempMin, ct);
-            await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, SupplyTemp, AlarmMetricOperator.GreaterThan, request.SupplyTempMax, ct);
-            await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, ReturnTemp, AlarmMetricOperator.LessThan, request.ReturnTempMin, ct);
-            await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, ReturnTemp, AlarmMetricOperator.GreaterThan, request.ReturnTempMax, ct);
-            await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, TempDiff, AlarmMetricOperator.LessThan, request.TempDiffMin, ct);
-            await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, TempDiff, AlarmMetricOperator.GreaterThan, request.TempDiffMax, ct);
-            await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, ChilledWaterFlowRate, AlarmMetricOperator.LessThan, request.FlowMin, ct);
-            await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, ChilledWaterFlowRate, AlarmMetricOperator.GreaterThan, request.FlowMax, ct);
+            await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, device.Id, SupplyTemp, AlarmMetricOperator.LessThan, request.SupplyTempMin, ct);
+            await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, device.Id, SupplyTemp, AlarmMetricOperator.GreaterThan, request.SupplyTempMax, ct);
+            await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, device.Id, ReturnTemp, AlarmMetricOperator.LessThan, request.ReturnTempMin, ct);
+            await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, device.Id, ReturnTemp, AlarmMetricOperator.GreaterThan, request.ReturnTempMax, ct);
+            await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, device.Id, TempDiff, AlarmMetricOperator.LessThan, request.TempDiffMin, ct);
+            await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, device.Id, TempDiff, AlarmMetricOperator.GreaterThan, request.TempDiffMax, ct);
             // 保養間隔：門檻值是「距上次保養多少小時」，不是主機總時數（判定見 AlarmEngine.EvaluateMaintenanceAsync）。
-            await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, RunningHours, AlarmMetricOperator.GreaterThan,
+            await ApplyBoundAsync(alarms, AlarmDeviceType.Chiller, scopeKey, device.Id, RunningHours, AlarmMetricOperator.GreaterThan,
                 request.MaintenanceHoursLimit, ct, severity: AlarmSeverity.Info);
             if (request.MaintenanceHoursLimit is not null)
             {
@@ -118,8 +111,8 @@ public static class ThresholdEndpoints
 
             var before = BuildFcuConfig(await alarms.GetRulesAsync(AlarmDeviceType.Fcu, "*", ct));
 
-            await ApplyBoundAsync(alarms, AlarmDeviceType.Fcu, "*", RoomTemp, AlarmMetricOperator.LessThan, request.RoomTempMin, ct);
-            await ApplyBoundAsync(alarms, AlarmDeviceType.Fcu, "*", RoomTemp, AlarmMetricOperator.GreaterThan, request.RoomTempMax, ct);
+            await ApplyBoundAsync(alarms, AlarmDeviceType.Fcu, "*", null, RoomTemp, AlarmMetricOperator.LessThan, request.RoomTempMin, ct);
+            await ApplyBoundAsync(alarms, AlarmDeviceType.Fcu, "*", null, RoomTemp, AlarmMetricOperator.GreaterThan, request.RoomTempMax, ct);
 
             var after = BuildFcuConfig(await alarms.GetRulesAsync(AlarmDeviceType.Fcu, "*", ct));
             await opLog.LogAsync(scope, "hvac.threshold.fcu.update", "alarm_rule", "fcu-global",
@@ -131,19 +124,23 @@ public static class ThresholdEndpoints
 
     /// <summary>value 為 null 代表畫面把這個欄位清空——直接刪掉對應規則，而不是存一個停用的。</summary>
     private static async Task ApplyBoundAsync(
-        AlarmRepository alarms, AlarmDeviceType deviceType, string scopeKey, string metric, AlarmMetricOperator op,
+        AlarmRepository alarms, AlarmDeviceType deviceType, string scopeKey, int? deviceId, string metric, AlarmMetricOperator op,
         double? value, CancellationToken ct, AlarmSeverity severity = AlarmSeverity.Warning)
     {
         if (value is null)
         {
             await alarms.DeleteRuleAsync(deviceType, scopeKey, metric, op, ct);
-            return;
         }
-        await alarms.UpsertRuleAsync(new AlarmRule
+        else
         {
-            DeviceType = deviceType, Scope = scopeKey, Metric = metric, Operator = op,
-            Threshold = value.Value, Severity = severity, DebounceSeconds = 60, IsEnabled = true,
-        }, ct);
+            await alarms.UpsertRuleAsync(new AlarmRule
+            {
+                DeviceType = deviceType, Scope = scopeKey, Metric = metric, Operator = op,
+                Threshold = value.Value, Severity = severity, DebounceSeconds = 60, IsEnabled = true,
+            }, ct);
+        }
+        var keep = value is null ? null : AlarmRule.BuildRuleCode(metric, op, value.Value);
+        await alarms.CloseStaleThresholdEventsAsync(deviceType, deviceId, metric, op, keep, DateTimeOffset.UtcNow, ct);
     }
 
     private static object BuildChillerConfig(string code, IReadOnlyList<AlarmRule> rules)
@@ -160,8 +157,6 @@ public static class ThresholdEndpoints
             returnTempMax = Find(ReturnTemp, AlarmMetricOperator.GreaterThan),
             tempDiffMin = Find(TempDiff, AlarmMetricOperator.LessThan),
             tempDiffMax = Find(TempDiff, AlarmMetricOperator.GreaterThan),
-            flowMin = Find(ChilledWaterFlowRate, AlarmMetricOperator.LessThan),
-            flowMax = Find(ChilledWaterFlowRate, AlarmMetricOperator.GreaterThan),
             maintenanceHoursLimit = Find(RunningHours, AlarmMetricOperator.GreaterThan),
         };
     }
@@ -174,7 +169,7 @@ public static class ThresholdEndpoints
 
     public sealed record ChillerThresholdRequest(
         double? SupplyTempMin, double? SupplyTempMax, double? ReturnTempMin, double? ReturnTempMax,
-        double? TempDiffMin, double? TempDiffMax, double? FlowMin, double? FlowMax, double? MaintenanceHoursLimit);
+        double? TempDiffMin, double? TempDiffMax, double? MaintenanceHoursLimit);
 
     public sealed record FcuThresholdRequest(double? RoomTempMin, double? RoomTempMax);
 }

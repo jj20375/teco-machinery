@@ -28,7 +28,7 @@ const STATUS_ITEMS = [
   {
     type: 'ABNORMAL',
     name: '異常 (Abnormal)',
-    desc: '溫度差、回水溫度或水流量超出後台設定門檻。',
+    desc: '出水溫度、回水溫度或溫度差超出後台設定門檻。',
     device: '冰水主機 / FCU',
   },
   {

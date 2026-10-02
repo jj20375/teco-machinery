@@ -68,7 +68,7 @@ const chillerSummary = computed(() =>
 
 /** 每張卡片顯示的冰水主機明細。三個門檻超標旗標改從「目前有效告警」反查（見
  * threshold-service.ts 的 chillerExceededFlags），不是自己拿門檻跟即時值比大小，這樣才會跟
- * AlarmEngine 的 debounce 判斷一致。「水流量」供應商 SDK 沒有量測值，模板裡固定顯示 --。
+ * AlarmEngine 的 debounce 判斷一致。
  */
 const chillerCards = computed(() => {
   const alarms = alarmsQuery.data.value ?? [];
@@ -218,7 +218,6 @@ function dashArray(pct: number) {
                 <div class="flex justify-between py-1.5"><span class="text-[#64748B]">出水溫度</span><span class="font-tabular" :class="c.isSupplyTempExceeded ? 'text-[#FF4757] font-bold' : 'text-[#334155]'">{{ c.supplyTemp === null ? '--' : `${c.supplyTemp.toFixed(1)} °C` }}</span></div>
                 <div class="flex justify-between py-1.5"><span class="text-[#64748B]">回水溫度</span><span class="font-tabular" :class="c.isReturnTempExceeded ? 'text-[#FF4757] font-bold' : 'text-[#334155]'">{{ c.returnTemp === null ? '--' : `${c.returnTemp.toFixed(1)} °C` }}</span></div>
                 <div class="flex justify-between py-1.5"><span class="text-[#64748B]">溫度差</span><span class="font-tabular" :class="c.isTempDiffExceeded ? 'text-[#FF4757] font-bold' : 'text-[#334155]'">{{ c.tempDiff === null ? '--' : `${c.tempDiff.toFixed(1)} °C` }}</span></div>
-                <div class="flex justify-between py-1.5" title="供應商尚未提供水流量量測值"><span class="text-[#64748B]">水流量</span><span class="font-tabular text-[#334155]">--</span></div>
                 <div class="flex justify-between py-1.5"><span class="text-[#64748B]">累積運轉</span><span class="font-tabular text-[#334155]">{{ c.cumulativeHours === null ? '--' : `${c.cumulativeHours.toLocaleString()} 小時` }}</span></div>
               </div>
             </div>

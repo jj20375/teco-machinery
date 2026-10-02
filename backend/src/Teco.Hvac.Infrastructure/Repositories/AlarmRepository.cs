@@ -110,6 +110,31 @@ public sealed class AlarmRepository(TecoDbConnectionFactory factory)
             new { id, endedAt = endedAtUtc.UtcDateTime });
     }
 
+    /// <summary>
+    /// 改門檻或清空門檻後，關掉同一指標、同一方向、但代碼已經不是 <paramref name="keepRuleCode"/> 的未結案告警。
+    /// rule_code 含門檻值，舊門檻開出來的告警 Collector 不會再評估，不收掉就會永遠亮著。
+    /// 新門檻下若仍超標，Collector 過了防抖時間會用新代碼重開一筆。deviceId 為 null 代表該類型全部設備。
+    /// </summary>
+    public async Task<int> CloseStaleThresholdEventsAsync(
+        AlarmDeviceType deviceType, int? deviceId, string metric, AlarmMetricOperator op, string? keepRuleCode,
+        DateTimeOffset endedAtUtc, CancellationToken ct = default)
+    {
+        using var conn = await factory.CreateOpenAsync(ct);
+        return await conn.ExecuteAsync(
+            """
+            UPDATE alarm_event SET ended_at = @endedAt
+            WHERE ended_at IS NULL AND device_type = @deviceType
+              AND (@deviceId IS NULL OR device_id = @deviceId)
+              AND LEFT(rule_code, CHAR_LENGTH(@prefix)) = @prefix
+              AND (@keepRuleCode IS NULL OR rule_code <> @keepRuleCode)
+            """,
+            new
+            {
+                deviceType = (int)deviceType, deviceId, prefix = AlarmRule.RuleCodePrefix(metric, op), keepRuleCode,
+                endedAt = endedAtUtc.UtcDateTime,
+            });
+    }
+
     public async Task<bool> TryFindActiveAsync(AlarmDeviceType deviceType, int deviceId, string ruleCode, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);

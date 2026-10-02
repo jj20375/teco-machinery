@@ -8,9 +8,8 @@ import type { StatusType } from '@/ui/components/UiBadge.vue';
 export type FloorId = 'B1' | 'B2';
 
 /**
- * 冰水主機資料模型。沒有 flowRate（水流量）——供應商 SDK 沒有這個量測值，卡片上的「水流量」列
- * 固定顯示 --（照設計稿保留欄位，不編數字）；四個 isXxxExceeded 門檻旗標目前也還沒有場館可設定的告警門檻
- * （alarm_rule 只有 FCU 溫度規則），沒有真門檻可比對就一律回 false，不假裝有超標。
+ * 冰水主機資料模型。沒有 flowRate（水流量）：供應商 SDK 沒有這個量測值，畫面也不顯示。
+ * 三個 isXxxExceeded 旗標從目前有效告警反查（見 threshold-service.ts 的 chillerExceededFlags）。
  */
 export interface ChillerData {
   id: string;
@@ -71,14 +70,12 @@ export interface FloorHeatmapData {
   runRate: number;
 }
 
-/** 單台 FCU 資料 */
+/** 單台 FCU 資料。沒有設定溫度與溫度差：供應商 SDK 沒有 FCU 設定溫度。 */
 export interface FcuItem {
   id: string;
   code: string;
   floor: FloorId;
   roomTemp: number;
-  setTemp: number;
-  tempDiff: number;
   /** 共用 fcuModeLabel()：冷氣／暖氣／送風，離線或未知時為 --。 */
   mode: string;
   /** 共用 fcuFanSpeedLabel()：高／中／低／自動，離線或未知時為 --。 */

@@ -1455,3 +1455,50 @@ VM 內 Docker 的網路用的是 `172.18～172.20`。如果哪天 Default Switch
 
 **沒做的**：Email／LINE 推播（使用者確認只要站內通知）；`FloorPlanViewer`／前台戰情室會透過共用的
 `deriveChillerStatus` 自動顯示「待保養」，但沒有另外用瀏覽器逐頁點過。
+
+## 移除拿不到資料的畫面欄位：水流量、FCU 設定溫度與溫度差（2026-10-02）
+
+**決策**：以現有資料為準，需要東元／供應商確認的事項不再等待；畫面上沒有資料來源、只能顯示 `--` 的欄位
+直接移除（推翻 2026-09-30「照設計稿保留欄位顯示 `--`」的做法）。`docs/給供應商的確認事項.md` 一併刪除。
+
+**移除的地方**：
+- 水流量：前台戰情室冰水主機卡片、後台監控中心卡片、冰水主機管理表格、冰水主機報表的欄位；
+  告警門檻面板的水流量上下限（含 `threshold-validation.ts` 的 `flowMin`/`flowMax` 規則）；
+  後端 `ThresholdEndpoints` 的 `FlowMin`/`FlowMax` 讀寫與 `ChilledWaterFlowRate` 常數、
+  `AlarmEndpoints` 的「水流量過高／過低」標籤；狀態說明彈窗的文字。
+- FCU 設定溫度：前台 FCU 設備總覽的「設定值」、FCU 管理與 FCU 報表的「設定溫度」欄，
+  `FcuItem` 的 `setTemp`/`tempDiff`。
+- FCU 溫度差 ΔT：FCU 管理與 FCU 報表的欄位。
+
+**保留的**：冰水主機的溫度差（主機直接回報的真實數值）、冰水主機待保養、表 14 的「冰水流量異常」
+「冷卻水流量異常」警報旗標（照常轉成告警）。
+
+**migration `015_threshold_alarm_cleanup.sql`（第一段）**：刪除 `alarm_rule` 裡殘留的 `ChilledWaterFlowRate` 規則。這類規則先前可以在門檻面板存，
+但 AlarmEngine 對快照裡沒有的指標直接跳過，從來不會觸發；欄位拿掉之後它會變成看不到也刪不掉的孤兒資料。
+`alarm_event` 存的是 `rule_code` 字串不是外鍵，不影響歷史告警。已在跑的資料庫要手動執行。
+
+**驗證**：`npm run typecheck`（0 errors）、`npm run build`、`dotnet build` 通過；本機 `docker compose up -d --build api`
+後套用 015；用 `teco-iot-simulator` 的 `normal` 情境接上 Collector，瀏覽器確認前台戰情室冰水主機卡片沒有水流量列、
+FCU 設備總覽只剩室溫。
+
+## 改門檻後舊告警永遠不會關閉（2026-10-02 修正）
+
+**現象**：用模擬器切回 `normal` 後，冰水主機 1 還是一直顯示異常，看起來像「情境切了回不去」。
+查 `alarm_event` 發現一筆 `ChilledWaterInletTemperature.GreaterThan.0.8` 開著，但門檻早就改成 11～20。
+
+**原因**：`rule_code` 是「指標.方向.門檻值」，門檻值是代碼的一部分。改門檻（或清空）後，舊代碼的告警
+Collector 再也不會評估到，也就不會關閉；畫面依未結案告警判斷狀態，所以永遠是異常。
+
+**修正**：
+- `AlarmRule.RuleCode`／`BuildRuleCode` 集中組代碼（`InvariantCulture`），Collector 與 API 共用，避免兩邊格式飄掉。
+- `AlarmRepository.CloseStaleThresholdEventsAsync`：`ThresholdEndpoints.ApplyBoundAsync` 每次 upsert／刪除規則後，
+  關掉同一指標、同一方向、但代碼已經不同的未結案告警（冰水主機只關該台，FCU 全廠規則關全部 FCU）。
+  新門檻下仍超標的話，Collector 過了防抖時間會用新代碼重開一筆。
+- migration `015` 第二段：關掉資料庫裡已經存在的這類孤兒告警（找不到對應規則的門檻類代碼）。
+
+**驗證**：本機套用 015 後孤兒告警關閉；`docker compose up -d --build api collector`；停掉 Collector 避免干擾，
+建臨時 merchant-admin 帳號，塞三筆告警後 PUT 冰水主機 2 門檻（溫差下限 5）：主機 2 的 `LessThan.4` 被關閉、
+`LessThan.5` 保留、主機 1 的 `LessThan.4` 不受影響。臨時帳號、操作紀錄、測試告警都已刪除。
+
+**順帶發現**：本機與正式機 VM 原本的冰水主機 1 門檻是回水 0.6～0.8°C，任何正常值都會超標；
+本機已由使用者改成合理值，**VM 尚未改**。

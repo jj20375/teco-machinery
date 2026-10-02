@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Teco.Hvac.Domain.Entities;
 
 public enum AlarmDeviceType { Chiller, Fcu }
@@ -20,4 +22,15 @@ public sealed class AlarmRule
     /// <summary>去抖動秒數：超過門檻要持續這麼久才觸發，避免瞬間雜訊誤報。</summary>
     public int DebounceSeconds { get; set; } = 30;
     public bool IsEnabled { get; set; } = true;
+
+    /// <summary>
+    /// 寫進 alarm_event.rule_code 的識別字串。含門檻值，所以改門檻後舊告警的代碼會對不上新規則，
+    /// Collector 永遠不會再評估、也不會關掉它——改門檻的一方要自己收掉（見 AlarmRepository.CloseStaleThresholdEventsAsync）。
+    /// </summary>
+    public string RuleCode => BuildRuleCode(Metric, Operator, Threshold);
+
+    public static string BuildRuleCode(string metric, AlarmMetricOperator op, double threshold) =>
+        $"{metric}.{op}.{threshold.ToString(CultureInfo.InvariantCulture)}";
+
+    public static string RuleCodePrefix(string metric, AlarmMetricOperator op) => $"{metric}.{op}.";
 }

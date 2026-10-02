@@ -209,5 +209,5 @@ public sealed class AlarmEngine(
         }
     }
 
-    private static string RuleCode(AlarmRule rule) => $"{rule.Metric}.{rule.Operator}.{rule.Threshold}";
+    private static string RuleCode(AlarmRule rule) => rule.RuleCode;
 }
