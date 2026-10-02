@@ -41,6 +41,10 @@ public sealed class CollectorHostedService : BackgroundService
         new BoundedChannelOptions(32) { FullMode = BoundedChannelFullMode.DropOldest });
 
     private readonly ConcurrentDictionary<(Contracts.Channel, byte, int), bool> _warnedUnmappedFcu = new();
+    // 每個通道最後一次的連線狀態。DLL 只在狀態「改變」時發事件，API 只存在記憶體裡：API 晚於 Collector 啟動、
+    // 或之後單獨重啟（docker compose up -d --build api），就再也收不到「已連線」，畫面一直顯示離線，
+    // 直到設備下次斷線重連。所以監督迴圈每圈把這份重送一次（API 端只更新記憶體，不寫資料庫）。
+    private readonly ConcurrentDictionary<Contracts.Channel, Contracts.ConnectionStatusPayload> _lastConnection = new();
 
     private IReadOnlyDictionary<int, DeviceChiller> _chillersByModbusId = new Dictionary<int, DeviceChiller>();
     private IReadOnlyDictionary<(Contracts.Channel, byte, int), (int Id, string Floor)> _fcuIdMap =
@@ -117,6 +121,8 @@ public sealed class CollectorHostedService : BackgroundService
                 {
                     await Task.Delay(TimeSpan.FromSeconds(15), ct);
                     // 告警規則不在這裡定時重讀：每次評估前比對指紋，有改就立刻重載（見 AlarmEngine.RefreshRulesIfChangedAsync）。
+                    foreach (var status in _lastConnection.Values)
+                        await _ingestClient.PostConnectionStatusAsync(status, ct);
                 }
             }
             catch (OperationCanceledException)
@@ -322,6 +328,7 @@ public sealed class CollectorHostedService : BackgroundService
                     IsConnected = e.IsConnected,
                     TriggerTimeUtc = triggerTimeUtc,
                 };
+                _lastConnection[channel] = payload;
                 await _ingestClient.PostConnectionStatusAsync(payload, ct);
             }
         }

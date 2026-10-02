@@ -1545,3 +1545,17 @@ Collector 再也不會評估到，也就不會關閉；畫面依未結案告警�
 - 第一次建立時從正式資料庫**唯讀**複製設定類資料表（帳號、角色、設備、圖面配置、門檻），讀值、告警、操作紀錄不複製；
   另建 `tester`（場館管理員）與 `tester_platform`（平台管理員）兩個測試帳號，密碼存在 VM 上的 `vm/.env.test`。
 - Windows 主機加 NAT 轉送 8090、8091 到 VM（同附錄 E 的 8081 做法）。
+
+## API 重啟後設備一直顯示離線（2026-10-02 修正）
+
+**現象**：在 VM 建測試環境時，冰水主機數值正常進來，但 `dataQuality.isConnected` 一直是 `false`，前台把兩台主機都顯示成離線；
+同樣的程式在 Mac 上正常。
+
+**原因**：供應商 DLL 只在連線狀態「改變」時發事件，Collector 收到後推給 API 一次，API 只存在記憶體（`CurrentStateStore`）。
+API 比 Collector 晚好、或之後單獨重啟（例如 `docker compose up -d --build api`），就收不到「已連線」，直到設備下次斷線重連。
+**正式機也會中**：現場只要重建過 api，整個前台就會顯示離線。
+
+**修正**：Collector 記住每個通道最後一次的連線狀態（`_lastConnection`），監督迴圈每 15 秒重送一次。API 端只更新記憶體、不寫資料庫，
+`channel_health` 仍然只在狀態真的改變時記錄（由 `ChannelWatchdog` 判斷），不會因為重送多出紀錄。
+
+**驗證**：Mac 測試環境重建 Collector 後單獨 `restart api`，11 秒後 `isConnected` 回到 `true`（修正前會一直是 `false`）。
