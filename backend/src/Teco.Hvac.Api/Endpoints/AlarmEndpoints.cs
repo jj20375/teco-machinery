@@ -28,14 +28,22 @@ public static class AlarmEndpoints
     };
 
     /// <summary>
-    /// FCU 的 RuleCode 是 AlarmEngine 組出來的 "{Metric}.{Operator}.{Threshold}"（例："Temperature.0.28"），
-    /// 目前只有室溫門檻（見 AlarmEngine.EvaluateFcuAsync 的決策註解），操作子 0=GreaterThan、1=LessThan。
+    /// RuleCode 的方向段：AlarmRule.RuleCode 寫的是列舉名稱（"Temperature.GreaterThan.28"），
+    /// 更早期的資料是數字（"Temperature.0.28"）。原本只認數字，現行告警全部被翻成「過低」或原始代碼。
     /// </summary>
+    private static bool? IsUpperBound(string op) => op switch
+    {
+        "0" or nameof(AlarmMetricOperator.GreaterThan) => true,
+        "1" or nameof(AlarmMetricOperator.LessThan) => false,
+        _ => null,
+    };
+
+    /// <summary>FCU 目前只有室溫門檻（見 AlarmEngine.EvaluateFcuAsync 的決策註解）。</summary>
     private static string DescribeFcuRule(string ruleCode)
     {
         var parts = ruleCode.Split('.', 3);
         if (parts.Length < 2 || parts[0] != nameof(Teco.Hvac.Contracts.FcuSnapshot.Temperature)) return ruleCode;
-        return parts[1] == "0" ? "室內溫度過高" : parts[1] == "1" ? "室內溫度過低" : ruleCode;
+        return IsUpperBound(parts[1]) switch { true => "室內溫度過高", false => "室內溫度過低", null => ruleCode };
     }
 
     /// <summary>
@@ -51,7 +59,7 @@ public static class AlarmEndpoints
         if (ruleCode == ChillerMaintenanceRepository.MaintenanceRuleCode) return "已達保養時數，請安排保養";
         var parts = ruleCode.Split('.', 3);
         if (parts.Length < 2) return ruleCode;
-        var isMax = parts[1] == "0"; // 0=GreaterThan、1=LessThan，見 AlarmMetricOperator
+        if (IsUpperBound(parts[1]) is not { } isMax) return ruleCode;
         return parts[0] switch
         {
             nameof(Teco.Hvac.Contracts.ChillerSnapshot.ChilledWaterOutletTemperature) => isMax ? "出水溫度過高" : "出水溫度過低",

@@ -1522,3 +1522,26 @@ Collector 再也不會評估到，也就不會關閉；畫面依未結案告警�
 
 **順帶發現**：本機與正式機 VM 原本的冰水主機 1 門檻是回水 0.6～0.8°C，任何正常值都會超標；
 本機已由使用者改成合理值，**VM 尚未改**。
+
+## 告警清單的門檻類告警名稱翻錯（2026-10-02 修正）
+
+**現象**：`AlarmEndpoints` 把 `rule_code` 翻成中文時，用 `"0"`／`"1"` 判斷方向，但 `AlarmRule.RuleCode` 寫的是列舉名稱
+（`ChilledWaterOutletTemperature.GreaterThan.8.2`）。結果冰水主機的門檻告警全部被翻成「…過低」，FCU 室溫告警直接顯示原始代碼
+`Temperature.GreaterThan.28`。數字格式是更早期的資料（例如 demo 資料的 `ChilledWaterOutletTemperature.0.8`）。
+
+**修正**：新增 `IsUpperBound()`，`"0"`／`GreaterThan` 是上限、`"1"`／`LessThan` 是下限，兩種格式都認得；不認得的方向回傳原始代碼。
+
+**驗證**：測試環境（見下一節）跑 FCU 室溫過高情境，`/api/v1/public/alarms` 的 `ruleLabel` 由 `Temperature.GreaterThan.28` 變成「室內溫度過高」。
+
+## 測試人員用的模擬測試環境（2026-10-02）
+
+在正式機 VM 上另起一套**獨立的**系統給測試人員用：專案名稱 `teco-iot-test`、網站 8091、遙控面板 8090、自己的資料庫 volume，
+加上模擬器（三台設備）與網頁遙控面板。正式系統（`teco-iot-area`、8081）完全不受影響；測完 `test-env.sh down` 連資料庫一起刪光。
+
+- 定義全部放在專案外的 `~/Documents/projects/teco-iot-simulator`（`vm/compose.test.yaml` 疊在本專案 `compose.yaml` 上、
+  `vm/test-env.sh` 一鍵起停），本專案沒有為此改任何檔案。
+- 模擬設備網段刻意用 `172.31.10.0/24`：在 VM 上建立 `192.168.10.0/24` 的 docker bridge 會把整台 VM 往現場網段的封包導進
+  bridge，正式系統的 Collector 就連不到真的設備。
+- 第一次建立時從正式資料庫**唯讀**複製設定類資料表（帳號、角色、設備、圖面配置、門檻），讀值、告警、操作紀錄不複製；
+  另建 `tester`（場館管理員）與 `tester_platform`（平台管理員）兩個測試帳號，密碼存在 VM 上的 `vm/.env.test`。
+- Windows 主機加 NAT 轉送 8090、8091 到 VM（同附錄 E 的 8081 做法）。
