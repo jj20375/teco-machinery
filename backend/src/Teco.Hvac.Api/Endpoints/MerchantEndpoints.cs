@@ -158,9 +158,13 @@ public static class MerchantEndpoints
             if (existingMembership is not null) return Results.Conflict(new { message = "此帳號已經是本場館的成員。" });
         }
 
-        if (string.IsNullOrWhiteSpace(request.Password) && existingUser is null)
+        if (existingUser is null)
         {
-            return Results.ValidationProblem(new Dictionary<string, string[]> { ["password"] = ["新建帳號必須提供初始密碼。"] });
+            // 掛既有帳號時密碼會被忽略，只有新建帳號才檢查
+            if (string.IsNullOrWhiteSpace(request.Password))
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["password"] = ["新建帳號必須提供初始密碼。"] });
+            if (PasswordPolicy.Validate(request.Password) is { } passwordProblem)
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["password"] = [passwordProblem] });
         }
 
         var userId = existingUser?.Id ?? await users.CreateAsync(new AppUser
@@ -219,7 +223,10 @@ public static class MerchantEndpoints
         await memberships.UpdateRoleAsync(membershipId, request.RoleId, request.IsActive, ct);
         // 只讓「被改動的那個人」的舊 token 失效，不要整個場館一起踢——否則管理員每改一次
         // 別人的角色，自己也會被登出（實測發現的體驗問題，不是資安需要）。
-        await users.IncrementAuthVersionAsync(membership.UserId, ct);
+        // 而且只有角色或啟用狀態「真的有變」才需要：這兩個會影響權限，舊 token 要作廢；
+        // 只改顯示名稱不影響任何權限，不該讓人被登出（改自己的名字會被踢出去是使用者回報的問題）。
+        if (attempts.Contains(MemberAction.ChangeRole) || attempts.Contains(MemberAction.Activate) || attempts.Contains(MemberAction.Deactivate))
+            await users.IncrementAuthVersionAsync(membership.UserId, ct);
 
         var targetUser = await users.FindByIdAsync(membership.UserId, ct);
         var targetName = targetUser?.DisplayName ?? $"membership#{membershipId}";

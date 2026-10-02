@@ -6,7 +6,7 @@ import AdminButton from '../_components/AdminButton.vue';
 import AdminPagination from '../_components/AdminPagination.vue';
 import AdminRightPanel from '../_components/AdminRightPanel.vue';
 import EmptyState from '../_components/EmptyState.vue';
-import { ApiError, getSessionApi } from '../_services/auth-service';
+import { ApiError, getSessionApi, updateSessionDisplayName } from '../_services/auth-service';
 import {
   listMerchantUsersApi,
   listMerchantRolesApi,
@@ -250,6 +250,7 @@ async function confirmRename() {
   renameError.value = '';
   try {
     await renameMutation.mutateAsync({ membershipId: renameTarget.value.membershipId, displayName: renameForm.displayName.trim() });
+    if (isSelf(renameTarget.value)) updateSessionDisplayName(renameForm.displayName.trim());
     renameOpen.value = false;
   } catch (err) {
     renameError.value = err instanceof Error ? err.message : '改名失敗，請稍後再試。';
@@ -324,6 +325,10 @@ async function submitAdd() {
   if (adding.value) return;
   if (!addForm.username.trim() || !addForm.displayName.trim() || !addForm.password.trim() || !addForm.roleId) {
     addError.value = '帳號、使用者名稱、密碼與角色為必填。';
+    return;
+  }
+  if (addForm.password.length < 6) {
+    addError.value = '初始密碼至少要 6 個字元。';
     return;
   }
   addError.value = '';
@@ -618,27 +623,27 @@ async function submitAdd() {
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
-        <form class="px-6 py-5 flex flex-col gap-4" @submit.prevent="submitAdd">
+        <form autocomplete="off" class="px-6 py-5 flex flex-col gap-4" @submit.prevent="submitAdd">
           <div v-if="addError" class="p-2.5 rounded-lg bg-[#FFF5F5] text-[#FF4757] text-xs">{{ addError }}</div>
 
           <div>
             <label class="block text-xs font-bold text-[#334155] mb-1.5">帳號 <span class="text-[#FF4757]">*</span></label>
-            <input v-model="addForm.username" type="text" placeholder="登入用帳號，例如 daming.wang"
+            <input v-model="addForm.username" autocomplete="off" name="new-user-account" data-lpignore="true" data-1p-ignore type="text" placeholder="登入用帳號，例如 daming.wang"
               class="w-full px-3 py-2.5 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2] placeholder-[#94A3B8]" />
           </div>
           <div>
             <label class="block text-xs font-bold text-[#334155] mb-1.5">使用者名稱 <span class="text-[#FF4757]">*</span></label>
-            <input v-model="addForm.displayName" type="text" placeholder="顯示用姓名"
+            <input v-model="addForm.displayName" autocomplete="off" name="new-user-display-name" data-lpignore="true" data-1p-ignore type="text" placeholder="顯示用姓名"
               class="w-full px-3 py-2.5 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2] placeholder-[#94A3B8]" />
           </div>
           <div>
             <label class="block text-xs font-bold text-[#334155] mb-1.5">信箱</label>
-            <input v-model="addForm.email" type="email" placeholder="選填"
+            <input v-model="addForm.email" autocomplete="off" name="new-user-email" data-lpignore="true" data-1p-ignore type="email" placeholder="選填"
               class="w-full px-3 py-2.5 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2] placeholder-[#94A3B8]" />
           </div>
           <div>
             <label class="block text-xs font-bold text-[#334155] mb-1.5">初始密碼 <span class="text-[#FF4757]">*</span></label>
-            <input v-model="addForm.password" type="text" placeholder="請告知使用者，日後可自行修改"
+            <input v-model="addForm.password" autocomplete="new-password" name="new-user-initial-password" data-lpignore="true" data-1p-ignore type="text" placeholder="請告知使用者，日後可自行修改"
               class="w-full px-3 py-2.5 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2] placeholder-[#94A3B8]" />
           </div>
           <div>

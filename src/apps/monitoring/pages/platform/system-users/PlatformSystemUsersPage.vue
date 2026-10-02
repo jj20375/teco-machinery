@@ -54,6 +54,10 @@ async function submitAdd() {
     addError.value = '帳號、使用者名稱、密碼、角色都是必填。';
     return;
   }
+  if (addForm.password.length < 6) {
+    addError.value = '初始密碼至少要 6 個字元。';
+    return;
+  }
   addError.value = '';
   try {
     await createMutation.mutateAsync();
@@ -115,19 +119,19 @@ async function submitAdd() {
     <div v-if="addOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40" @click.self="addOpen = false">
       <div class="bg-white rounded-xl shadow-2xl border border-[#E2E8F0] w-full max-w-[420px] overflow-hidden">
         <div class="px-6 pt-6 pb-4 border-b border-[#E2E8F0]"><h3 class="text-base font-bold text-[#1A202C]">新增系統帳號</h3></div>
-        <form class="px-6 py-5 flex flex-col gap-4" @submit.prevent="submitAdd">
+        <form autocomplete="off" class="px-6 py-5 flex flex-col gap-4" @submit.prevent="submitAdd">
           <div v-if="addError" class="p-2.5 rounded-lg bg-[#FFF5F5] text-[#FF4757] text-xs">{{ addError }}</div>
           <label class="flex flex-col gap-1.5 text-xs text-[#64748B]">
             帳號
-            <input v-model="addForm.username" type="text" class="px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2]" />
+            <input v-model="addForm.username" autocomplete="off" name="new-user-account" data-lpignore="true" data-1p-ignore type="text" class="px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2]" />
           </label>
           <label class="flex flex-col gap-1.5 text-xs text-[#64748B]">
             使用者名稱
-            <input v-model="addForm.displayName" type="text" class="px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2]" />
+            <input v-model="addForm.displayName" autocomplete="off" name="new-user-display-name" data-lpignore="true" data-1p-ignore type="text" class="px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2]" />
           </label>
           <label class="flex flex-col gap-1.5 text-xs text-[#64748B]">
             初始密碼
-            <input v-model="addForm.password" type="text" class="px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2]" />
+            <input v-model="addForm.password" autocomplete="new-password" name="new-user-initial-password" data-lpignore="true" data-1p-ignore type="text" class="px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2]" />
           </label>
           <label class="flex flex-col gap-1.5 text-xs text-[#64748B]">
             平台角色

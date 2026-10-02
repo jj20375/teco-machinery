@@ -158,6 +158,10 @@ async function submitAddMember() {
     addMemberError.value = '帳號、使用者名稱、密碼、角色都是必填。';
     return;
   }
+  if (addMemberForm.password.length < 6) {
+    addMemberError.value = '初始密碼至少要 6 個字元。';
+    return;
+  }
   addMemberError.value = '';
   try {
     await addMemberMutation.mutateAsync();
@@ -336,24 +340,24 @@ async function resetPassword(membershipId: number) {
 
             <section>
               <h4 class="text-sm font-bold text-[#1A202C] mb-2">新增成員</h4>
-              <form class="rounded-lg border border-[#E2E8F0] p-4 flex flex-col gap-3" @submit.prevent="submitAddMember">
+              <form autocomplete="off" class="rounded-lg border border-[#E2E8F0] p-4 flex flex-col gap-3" @submit.prevent="submitAddMember">
                 <div v-if="addMemberError" class="p-2.5 rounded-lg bg-[#FFF5F5] text-[#FF4757] text-xs">{{ addMemberError }}</div>
                 <div class="grid grid-cols-2 gap-3">
                   <label class="flex flex-col gap-1.5 text-xs text-[#64748B]">
                     帳號
-                    <input v-model="addMemberForm.username" type="text" class="px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2]" />
+                    <input v-model="addMemberForm.username" autocomplete="off" name="new-user-account" data-lpignore="true" data-1p-ignore type="text" class="px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2]" />
                   </label>
                   <label class="flex flex-col gap-1.5 text-xs text-[#64748B]">
                     使用者名稱
-                    <input v-model="addMemberForm.displayName" type="text" class="px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2]" />
+                    <input v-model="addMemberForm.displayName" autocomplete="off" name="new-user-display-name" data-lpignore="true" data-1p-ignore type="text" class="px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2]" />
                   </label>
                   <label class="flex flex-col gap-1.5 text-xs text-[#64748B]">
                     Email（選填）
-                    <input v-model="addMemberForm.email" type="email" class="px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2]" />
+                    <input v-model="addMemberForm.email" autocomplete="off" name="new-user-email" data-lpignore="true" data-1p-ignore type="email" class="px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2]" />
                   </label>
                   <label class="flex flex-col gap-1.5 text-xs text-[#64748B]">
                     初始密碼
-                    <input v-model="addMemberForm.password" type="text" class="px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2]" />
+                    <input v-model="addMemberForm.password" autocomplete="new-password" name="new-user-initial-password" data-lpignore="true" data-1p-ignore type="text" class="px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2]" />
                   </label>
                   <label class="flex flex-col gap-1.5 text-xs text-[#64748B] col-span-2">
                     角色

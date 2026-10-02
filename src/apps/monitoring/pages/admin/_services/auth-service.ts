@@ -91,6 +91,16 @@ export function getSessionApi(): AuthSession | null {
   }
 }
 
+/**
+ * 改了自己的顯示名稱後，把工作階段裡存的名稱一併更新（只改本機顯示用的資料，不涉及權限）。
+ * 後端不會因為改名而讓登入失效，所以不更新的話，右上角會一直顯示舊名稱直到下次登入。
+ */
+export function updateSessionDisplayName(displayName: string): void {
+  const session = getSessionApi();
+  if (!session) return;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...session, user: { ...session.user, displayName } }));
+}
+
 /** 判斷工作階段是否仍在有效期內（只解 JWT payload 做 UX 判斷，不驗簽章——真正的授權檢查在後端）。 */
 export function isSessionValidApi(session: AuthSession | null): boolean {
   if (!session?.accessToken) return false;

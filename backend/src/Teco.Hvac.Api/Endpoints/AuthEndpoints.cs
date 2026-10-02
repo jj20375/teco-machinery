@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
 using Teco.Hvac.Api.Auth;
 using Teco.Hvac.Api.Services;
@@ -14,15 +13,10 @@ namespace Teco.Hvac.Api.Endpoints;
 /// 登入與工作範圍切換（拿掉 tenant closure table 的部分——
 /// TECO 場館是扁平的，一個 membership 就是一個場館 + 一個角色，不需要子節點繼承）。
 /// </summary>
-public static partial class AuthEndpoints
+public static class AuthEndpoints
 {
     private const int MaxFailuresBeforeLock = 5;
     private static readonly TimeSpan LockDuration = TimeSpan.FromMinutes(15);
-
-    // 跟前端 ChangePasswordModal.vue 的 PWD_RULE 一致：8~16 碼、至少一個英文字母＋一個數字。
-    // 前端驗證只是體驗優化，真正的規則邊界一定要在後端再檢查一次。
-    [GeneratedRegex(@"^(?=.*[A-Za-z])(?=.*\d).{8,16}$")]
-    private static partial Regex PasswordPolicy();
 
     public static void MapAuthEndpoints(this WebApplication app)
     {
@@ -55,12 +49,10 @@ public static partial class AuthEndpoints
                 "嘗試修改密碼但目前密碼輸入錯誤", isSuccess: false, errorMessage: "目前密碼不正確", ct: ct);
             return Results.Json(new { message = "目前密碼不正確。" }, statusCode: StatusCodes.Status400BadRequest);
         }
-        if (!PasswordPolicy().IsMatch(request.NewPassword ?? string.Empty))
+        // 前端驗證只是體驗優化，真正的規則邊界一定要在後端再檢查一次（規則見 PasswordPolicy）。
+        if (PasswordPolicy.Validate(request.NewPassword) is { } passwordProblem)
         {
-            return Results.ValidationProblem(new Dictionary<string, string[]>
-            {
-                ["newPassword"] = ["新密碼長度須為 8~16 個字元，且包含英文字母及數字。"],
-            });
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["newPassword"] = [passwordProblem] });
         }
 
         await users.UpdatePasswordAsync(user.Id, PasswordHasher.Hash(request.NewPassword!), ct);

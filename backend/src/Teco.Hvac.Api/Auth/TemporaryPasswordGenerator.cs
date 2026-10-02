@@ -8,7 +8,7 @@ namespace Teco.Hvac.Api.Auth;
 /// </summary>
 public static class TemporaryPasswordGenerator
 {
-    /// <summary>符合登入頁密碼規則（8~16 碼、含英文字母＋數字）的隨機臨時密碼，固定 12 碼。</summary>
+    /// <summary>符合 PasswordPolicy（最少 6 碼）的隨機臨時密碼，固定 12 碼、含英文字母＋數字。</summary>
     public static string Generate()
     {
         const string letters = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz";

@@ -180,6 +180,10 @@ public static class PlatformEndpoints
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["password"] = ["新建帳號必須提供初始密碼。"] });
             }
+            if (PasswordPolicy.Validate(request.Password) is { } passwordProblem)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["password"] = [passwordProblem] });
+            }
             userId = await users.CreateAsync(new AppUser
             {
                 Username = request.Username.Trim(),
@@ -253,6 +257,11 @@ public static class PlatformEndpoints
 
         var role = await roles.FindByIdAsync(request.SystemRoleId, ct);
         if (role is null || role.Scope != RoleScope.Platform) return Results.BadRequest(new { message = "角色不存在或不是平台範圍角色。" });
+
+        if (PasswordPolicy.Validate(request.Password) is { } passwordProblem)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["password"] = [passwordProblem] });
+        }
 
         var id = await users.CreateAsync(new AppUser
         {

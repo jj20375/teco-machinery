@@ -25,7 +25,8 @@ const errorMsg = ref('');
 const isSuccess = ref(false);
 const isSubmitting = ref(false);
 
-const PWD_RULE = /^(?=.*[A-Za-z])(?=.*\d).{8,16}$/;
+// 跟後端 PasswordPolicy 一致：只要求長度，最少 6 個字元（後端才是真正的檢查）。
+const PWD_MIN_LENGTH = 6;
 
 function close() {
   if (isSubmitting.value) return;
@@ -49,8 +50,8 @@ async function handleSubmit() {
     errorMsg.value = '請完整填寫所有密碼欄位';
     return;
   }
-  if (!PWD_RULE.test(newPassword.value)) {
-    errorMsg.value = '新密碼長度須為 8~16 個字元，且包含英文字母及數字';
+  if (newPassword.value.length < PWD_MIN_LENGTH) {
+    errorMsg.value = `新密碼至少要 ${PWD_MIN_LENGTH} 個字元`;
     return;
   }
   if (newPassword.value !== confirmPassword.value) {
@@ -165,7 +166,7 @@ async function handleSubmit() {
             <svg class="w-4 h-4 flex-shrink-0 mt-px" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span>密碼長度至少 8~16 個字元，需包含英文字母及數字</span>
+            <span>密碼至少 6 個字元</span>
           </div>
 
           <div class="flex items-center justify-end gap-3 pt-1">
