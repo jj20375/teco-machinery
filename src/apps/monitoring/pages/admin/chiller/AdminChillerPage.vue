@@ -312,7 +312,7 @@ const save = handleSubmit(async (values) => {
         </section>
 
         <p class="text-xs text-[#94A3B8]">
-          門檻改變後，Collector 會在約一分鐘內自動套用新設定，不需要重新啟動系統。
+          門檻改變後，儲存後約數秒內自動套用新設定，不需要重新啟動系統。數值超出範圍需持續 60 秒才會告警，所以存檔後約 1 分鐘才會看到結果；回到範圍內則在下一次讀取（數秒內）解除。
         </p>
       </div>
     </AdminRightPanel>

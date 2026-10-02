@@ -20,6 +20,18 @@ public sealed class AlarmRepository(TecoDbConnectionFactory factory)
         }).ToList();
     }
 
+    /// <summary>
+    /// 全部規則（含停用）的指紋：筆數＋各欄位的 CRC32 加總。Collector 每次評估前拿來比對，
+    /// 規則有任何變動（門檻、啟用、新增、刪除）就立刻重載，不用等定時重讀。
+    /// </summary>
+    public async Task<string> GetRulesFingerprintAsync(CancellationToken ct = default)
+    {
+        using var conn = await factory.CreateOpenAsync(ct);
+        return await conn.ExecuteScalarAsync<string>(
+            "SELECT CONCAT(COUNT(*), ':', COALESCE(SUM(CRC32(CONCAT_WS('|', id, device_type, scope, metric, operator, " +
+            "threshold, severity, debounce_seconds, is_enabled))), 0)) FROM alarm_rule") ?? "";
+    }
+
     /// <summary>單一設備+範圍底下目前設定的全部規則——給「告警門檻設定」畫面讀取用，不篩 is_enabled。</summary>
     public async Task<IReadOnlyList<AlarmRule>> GetRulesAsync(AlarmDeviceType deviceType, string scope, CancellationToken ct = default)
     {
@@ -133,6 +145,26 @@ public sealed class AlarmRepository(TecoDbConnectionFactory factory)
                 deviceType = (int)deviceType, deviceId, prefix = AlarmRule.RuleCodePrefix(metric, op), keepRuleCode,
                 endedAt = endedAtUtc.UtcDateTime,
             });
+    }
+
+    /// <summary>
+    /// 關掉「代碼不屬於任何現行規則」的未結案門檻類告警。API 改門檻時雖然會關舊告警，但 Collector 手上的規則
+    /// 最多晚 1 分鐘才更新，這段期間它會用舊代碼再開一筆（2026-10-02 實測：改門檻後 0.8 秒又被開回來），
+    /// 所以 Collector 每次重新載入規則後都要再掃一次。只認含 .GreaterThan./.LessThan./.Equals. 的代碼，
+    /// 硬體旗標與保養提醒的代碼沒有這段，不會被關。
+    /// </summary>
+    public async Task<int> CloseOrphanThresholdEventsAsync(
+        IReadOnlyCollection<string> validRuleCodes, DateTimeOffset endedAtUtc, CancellationToken ct = default)
+    {
+        using var conn = await factory.CreateOpenAsync(ct);
+        return await conn.ExecuteAsync(
+            """
+            UPDATE alarm_event SET ended_at = @endedAt
+            WHERE ended_at IS NULL
+              AND (rule_code LIKE '%.GreaterThan.%' OR rule_code LIKE '%.LessThan.%' OR rule_code LIKE '%.Equals.%')
+              AND rule_code NOT IN @validRuleCodes
+            """,
+            new { endedAt = endedAtUtc.UtcDateTime, validRuleCodes = validRuleCodes.Count == 0 ? new[] { "" } : validRuleCodes.ToArray() });
     }
 
     public async Task<bool> TryFindActiveAsync(AlarmDeviceType deviceType, int deviceId, string ruleCode, CancellationToken ct = default)

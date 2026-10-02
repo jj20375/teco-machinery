@@ -44,13 +44,45 @@ public sealed class AlarmEngine(
     private IReadOnlyList<AlarmRule> _chillerRules = [];
     private readonly ConcurrentDictionary<(int RuleId, int DeviceId), DateTimeOffset> _breachSince = new();
 
+    private string _rulesFingerprint = "";
+    private readonly SemaphoreSlim _reloadLock = new(1, 1);
+
+    /// <summary>
+    /// 每次評估前呼叫：規則在後台被改過就立刻重載。後台改的門檻不能讓使用者等一段「快取過期」的時間才生效，
+    /// 不然畫面上設定值和實際判定會對不上（改了範圍卻還在用舊門檻告警）。
+    /// 比對失敗（資料庫暫時連不上）時沿用目前規則，下一輪再試。
+    /// </summary>
+    public async Task RefreshRulesIfChangedAsync(CancellationToken ct)
+    {
+        if (!await _reloadLock.WaitAsync(0, ct)) return;
+        try
+        {
+            if (await alarmRepository.GetRulesFingerprintAsync(ct) != _rulesFingerprint)
+                await LoadRulesAsync(ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "檢查告警規則是否異動失敗，沿用目前規則直到下次評估");
+        }
+        finally { _reloadLock.Release(); }
+    }
+
     public async Task LoadRulesAsync(CancellationToken ct)
     {
+        // 指紋要在讀規則「之前」取：讀的途中若又被改，下一輪指紋不同會再重載一次。
+        _rulesFingerprint = await alarmRepository.GetRulesFingerprintAsync(ct);
         var rules = await alarmRepository.GetEnabledRulesAsync(ct);
         _fcuRules = rules.Where(r => r.DeviceType == AlarmDeviceType.Fcu).ToList();
         _chillerRules = rules.Where(r => r.DeviceType == AlarmDeviceType.Chiller).ToList();
         logger.LogInformation(
             "告警規則載入完成：FCU 規則 {FcuCount} 條、冰水主機規則 {ChillerCount} 條", _fcuRules.Count, _chillerRules.Count);
+
+        // 門檻改過之後，舊代碼的告警沒人會再評估也沒人會關；API 改門檻當下會關一次，但那一刻 Collector
+        // 還握著舊規則，可能又開回來，所以每次換上新規則後掃一次。
+        var closed = await alarmRepository.CloseOrphanThresholdEventsAsync(
+            rules.Select(r => r.RuleCode).ToList(), DateTimeOffset.UtcNow, ct);
+        if (closed > 0)
+            logger.LogInformation("已關閉 {Count} 筆門檻已變更、找不到對應規則的告警", closed);
     }
 
     public async Task EvaluateChillerAsync(int deviceId, ChillerSnapshot snapshot, DateTimeOffset nowUtc, CancellationToken ct)

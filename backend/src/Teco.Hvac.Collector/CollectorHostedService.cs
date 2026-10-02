@@ -113,27 +113,10 @@ public sealed class CollectorHostedService : BackgroundService
 
             try
             {
-                var ticksSinceRuleReload = 0;
                 while (!ct.IsCancellationRequested && !_watchdog.ShouldRestart(DateTimeOffset.UtcNow))
                 {
                     await Task.Delay(TimeSpan.FromSeconds(15), ct);
-
-                    // 每 4 個迴圈（約 1 分鐘）重新讀一次告警規則，「告警門檻設定」畫面改門檻後
-                    // 不用重建 Collector 就會生效——原本規則只在啟動時載入一次，是先前的已知缺口。
-                    // 放這裡而不是獨立的 Timer，是因為這個迴圈本來就在跑、生命週期已經跟著
-                    // Collector 走，不需要再多管一個計時器的啟動/釋放。
-                    if (++ticksSinceRuleReload >= 4)
-                    {
-                        ticksSinceRuleReload = 0;
-                        try
-                        {
-                            await _alarmEngine.LoadRulesAsync(ct);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(ex, "定期重新載入告警規則失敗，沿用目前規則直到下次重試");
-                        }
-                    }
+                    // 告警規則不在這裡定時重讀：每次評估前比對指紋，有改就立刻重載（見 AlarmEngine.RefreshRulesIfChangedAsync）。
                 }
             }
             catch (OperationCanceledException)
@@ -248,6 +231,8 @@ public sealed class CollectorHostedService : BackgroundService
         Contracts.ChillerSnapshot h1, Contracts.ChillerSnapshot h2,
         Contracts.DdcSnapshot ddc1, Contracts.DdcSnapshot ddc2, DateTimeOffset nowUtc, CancellationToken ct)
     {
+        await _alarmEngine.RefreshRulesIfChangedAsync(ct);
+
         if (_chillersByModbusId.TryGetValue(h1.ModbusId, out var c1))
             await _alarmEngine.EvaluateChillerAsync(c1.Id, h1, nowUtc, ct);
         if (_chillersByModbusId.TryGetValue(h2.ModbusId, out var c2))
