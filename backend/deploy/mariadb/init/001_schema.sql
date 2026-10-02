@@ -337,6 +337,7 @@ CREATE TABLE IF NOT EXISTS merchant_membership (
     user_id         INT UNSIGNED NOT NULL,
     role_id         INT UNSIGNED NULL,
     is_active       TINYINT(1) NOT NULL DEFAULT 1,
+    is_owner        TINYINT(1) NOT NULL DEFAULT 0 COMMENT '場館擁有者（第一位管理員）：不可刪除、停用、改角色；每個場館最多一位',
     created_at      DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     UNIQUE KEY uk_membership_merchant_user (merchant_id, user_id),
     FOREIGN KEY (merchant_id) REFERENCES merchant(id) ON DELETE CASCADE,

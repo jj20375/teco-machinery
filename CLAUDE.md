@@ -169,6 +169,11 @@
   但更早的舊資料裡仍有 0 值的 Disconnected 列。
   操作流程見 `docs/IOT_現場接通驗證手冊.md`。
 - P6（Hyper-V VM 現場部署）的腳本寫好了但沒有在真正的現場主機上跑過，因為沒有那台主機的存取權限。
+- **場館成員管理有層級保護，新增任何「對別人帳號動手」的功能都要套用 `MerchantMembershipGuard`**（2026-10-02）：
+  場館擁有者（`merchant_membership.is_owner`，第一位管理員）不能被刪除、停用、改角色；其他 `merchant-admin` 只有擁有者能動。
+  只擋「刪除」不夠——能重設密碼、改角色、停用就能接管或癱瘓帳號，所以這幾條路都要擋。前端只是讓按鈕點不到，
+  真正的防線在後端，且要先用 `membership.MerchantId == scope.MerchantId` 確認屬於自己的場館。
+  平台建立場館的第一位管理員時自動成為擁有者（`PlatformEndpoints.CreateMerchantMembership`）。
 - **角色清單查詢一律要排除 `member-%` 個人專屬角色**（`WHERE code NOT LIKE 'member-%'`）：
   「編輯成員」六個核取方塊面板會自動幫每個成員建立一個 `Code = "member-{membershipId}"`、
   `Name = "自訂權限"` 的專屬角色，這是內部實作細節，不該出現在給人挑選的一般角色下拉選單裡。

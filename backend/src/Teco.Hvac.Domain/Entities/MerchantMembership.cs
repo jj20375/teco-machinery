@@ -11,5 +11,7 @@ public sealed class MerchantMembership
     public required int UserId { get; set; }
     public int? RoleId { get; set; }
     public bool IsActive { get; set; } = true;
+    /// <summary>場館擁有者（第一位管理員）：不能被刪除、停用、改角色；其他管理員的管理動作只有擁有者能做。</summary>
+    public bool IsOwner { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

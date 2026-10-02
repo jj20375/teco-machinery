@@ -146,6 +146,25 @@ function isSelf(u: MerchantUserRow): boolean {
   return u.userId === getSessionApi()?.user.id;
 }
 
+/**
+ * 管理員之間的層級保護，跟後端 MerchantMembershipGuard 一致（後端才是真正的防線，這裡只是讓按鈕點不到、
+ * 並說明原因）：擁有者（第一位管理員）不能被刪除、停用、改角色，別人也不能幫他重設密碼或改名；
+ * 其他管理員只有擁有者能刪除、停用、重設密碼、改名。
+ */
+const callerIsOwner = computed(() => users.value.some((u) => isSelf(u) && u.isOwner));
+function lockReason(u: MerchantUserRow, action: 'delete' | 'toggle' | 'reset' | 'rename'): string | null {
+  const self = isSelf(u);
+  if (u.isOwner) {
+    if (action === 'delete') return '這是場館的擁有者（第一位管理員），無法刪除';
+    if (action === 'toggle') return '這是場館的擁有者（第一位管理員），無法停用';
+    return self ? null : '這是場館的擁有者（第一位管理員），只有本人可以變更';
+  }
+  if (!isMerchantAdmin(u) || callerIsOwner.value) return null;
+  if (self && (action === 'reset' || action === 'rename')) return null;
+  const verb = { delete: '刪除', toggle: '停用／啟用', reset: '重設密碼', rename: '修改' }[action];
+  return `這是場館管理員的帳號，只有場館擁有者可以${verb}`;
+}
+
 async function openPanel(u: MerchantUserRow) {
   if (isMerchantAdmin(u)) return;
   activeUser.value = u;
@@ -372,8 +391,16 @@ async function submitAdd() {
             <tbody>
               <tr v-for="u in paged" :key="u.membershipId" class="border-b border-[#F1F5F9] hover:bg-slate-50/70">
                 <td class="px-4 py-3 font-medium">
-                  <button type="button" class="flex items-center gap-1.5 hover:text-[#00A88E]" title="編輯使用者名稱" @click="openRename(u)">
+                  <button
+                    type="button"
+                    class="flex items-center gap-1.5"
+                    :class="lockReason(u, 'rename') ? 'cursor-not-allowed text-[#94A3B8]' : 'hover:text-[#00A88E]'"
+                    :title="lockReason(u, 'rename') ?? '編輯使用者名稱'"
+                    :disabled="!!lockReason(u, 'rename')"
+                    @click="openRename(u)"
+                  >
                     {{ u.displayName }}
+                    <span v-if="u.isOwner" class="px-1.5 py-0.5 rounded text-[11px] font-semibold bg-[#FEF3C7] text-[#B45309]" title="場館的第一位管理員：不能被刪除、停用或改角色">擁有者</span>
                     <svg class="w-3.5 h-3.5 text-[#94A3B8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
@@ -401,7 +428,9 @@ async function submitAdd() {
                     role="switch"
                     :aria-checked="u.isActive"
                     class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
-                    :class="u.isActive ? 'bg-[#00D1B2]' : 'bg-[#CBD5E1]'"
+                    :class="[u.isActive ? 'bg-[#00D1B2]' : 'bg-[#CBD5E1]', lockReason(u, 'toggle') ? 'opacity-50 cursor-not-allowed' : '']"
+                    :title="lockReason(u, 'toggle') ?? undefined"
+                    :disabled="!!lockReason(u, 'toggle')"
                     @click="toggleEnabled(u)"
                   >
                     <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform" :class="u.isActive ? 'translate-x-4' : 'translate-x-0.5'" />
@@ -415,11 +444,12 @@ async function submitAdd() {
                       title="場館管理員的權限由角色本身決定，請到角色管理調整，不能用此面板編輯"
                     >設定</span>
                     <button v-else type="button" class="link-action" @click="openPanel(u)">設定</button>
-                    <button type="button" class="link-action" @click="openReset(u)">重設密碼</button>
+                    <span v-if="lockReason(u, 'reset')" class="text-[#CBD5E1] cursor-not-allowed" :title="lockReason(u, 'reset') ?? undefined">重設密碼</span>
+                    <button v-else type="button" class="link-action" @click="openReset(u)">重設密碼</button>
                     <span
-                      v-if="isSelf(u) || isLastActiveAdmin(u)"
+                      v-if="isSelf(u) || lockReason(u, 'delete') || isLastActiveAdmin(u)"
                       class="text-[#CBD5E1] cursor-not-allowed"
-                      :title="isSelf(u) ? '無法刪除自己的帳號' : '場館至少要留一位在職的場館管理員，無法從這裡刪除；如需異動，請先指派另一位場館管理員'"
+                      :title="isSelf(u) ? '無法刪除自己的帳號' : (lockReason(u, 'delete') ?? '場館至少要留一位在職的場館管理員，無法從這裡刪除；如需異動，請先指派另一位場館管理員')"
                     >刪除</span>
                     <button v-else type="button" class="link-action" style="color: #FF4757" @click="openDelete(u)">刪除</button>
                   </div>

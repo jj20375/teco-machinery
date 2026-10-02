@@ -127,6 +127,10 @@ backend/
 - **上限防線**：場館自訂角色算出的 grant，最終都會跟 `merchant-admin`（全域範本角色）的
   實際授予做交集（`MerchantRolePermissionCeilingRules.RestrictGrants`），即使資料或程式碼
   有 bug 也不會讓人越權。
+- **場館擁有者與管理員層級保護**（2026-10-02）：`merchant_membership.is_owner` 標出場館的第一位管理員（擁有者），
+  由 `MerchantMembershipGuard` 在刪除、停用／啟用、改角色、重設密碼、改名時檢查：擁有者不能被刪除、停用、改角色，
+  別人也不能幫他重設密碼或改名；其他場館管理員只有擁有者能刪除、停用、改角色、重設密碼、改名；本人改自己的名字與密碼不受限。
+  違規回 403＋中文原因。平台管理員走 `/api/v1/platform`，仍可重設擁有者的密碼。擁有者換人目前沒有畫面，要直接改資料庫。
 - **JWT 失效機制**：`AppUser.AuthVersion` 在密碼重設、角色/權限變更、場館開關變更時遞增；
   `Program.cs` 的 `OnTokenValidated` 每次請求都比對 DB，版本不符立即拒絕。
 

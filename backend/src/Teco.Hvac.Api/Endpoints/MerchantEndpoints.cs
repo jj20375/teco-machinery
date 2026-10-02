@@ -124,6 +124,7 @@ public static class MerchantEndpoints
             r.DisplayName,
             r.Email,
             r.IsActive,
+            r.IsOwner,
             r.RoleId,
             r.RoleCode,
             r.RoleName,
@@ -201,6 +202,20 @@ public static class MerchantEndpoints
         var membership = await memberships.FindByIdAsync(membershipId, ct);
         if (membership is null || membership.MerchantId != scope.MerchantId) return Results.NotFound();
 
+        // 管理員／擁有者的層級保護（見 MerchantMembershipGuard）：只擋「真的有變動」的欄位，
+        // 前端送一樣的值（例如存檔時帶著原本的角色）不算。
+        var currentName = (await users.FindByIdAsync(membership.UserId, ct))?.DisplayName;
+        var attempts = new List<MemberAction>();
+        if (request.RoleId is not null && request.RoleId != membership.RoleId) attempts.Add(MemberAction.ChangeRole);
+        if (request.IsActive is not null && request.IsActive != membership.IsActive)
+            attempts.Add(request.IsActive.Value ? MemberAction.Activate : MemberAction.Deactivate);
+        if (trimmedDisplayName is not null && trimmedDisplayName != currentName) attempts.Add(MemberAction.Rename);
+        foreach (var attempt in attempts)
+        {
+            if (await MerchantMembershipGuard.CheckAsync(scope, membership, attempt, memberships, roles, ct) is { } denied)
+                return MerchantMembershipGuard.Denied(denied);
+        }
+
         await memberships.UpdateRoleAsync(membershipId, request.RoleId, request.IsActive, ct);
         // 只讓「被改動的那個人」的舊 token 失效，不要整個場館一起踢——否則管理員每改一次
         // 別人的角色，自己也會被登出（實測發現的體驗問題，不是資安需要）。
@@ -241,7 +256,7 @@ public static class MerchantEndpoints
     /// </summary>
     private static async Task<IResult> DeleteUser(
         ClaimsPrincipal principal, int membershipId, MembershipRepository memberships, UserRepository users,
-        RefreshTokenRepository refreshTokens, OperationLogger opLog, CancellationToken ct)
+        RoleRepository roles, RefreshTokenRepository refreshTokens, OperationLogger opLog, CancellationToken ct)
     {
         if (!RequestScope.TryRead(principal, out var scope) || scope is null || scope.IsPlatform || scope.MerchantId is null)
             return Results.Forbid();
@@ -252,6 +267,8 @@ public static class MerchantEndpoints
 
         if (membership.UserId == scope.UserId)
             return Results.Json(new { message = "無法刪除自己的帳號。" }, statusCode: StatusCodes.Status400BadRequest);
+        if (await MerchantMembershipGuard.CheckAsync(scope, membership, MemberAction.Delete, memberships, roles, ct) is { } denied)
+            return MerchantMembershipGuard.Denied(denied);
 
         var targetUser = await users.FindByIdAsync(membership.UserId, ct);
         var targetName = targetUser?.DisplayName ?? $"membership#{membershipId}";
@@ -286,7 +303,7 @@ public static class MerchantEndpoints
     /// </summary>
     private static async Task<IResult> ResetUserPassword(
         ClaimsPrincipal principal, int membershipId, MembershipRepository memberships, UserRepository users,
-        OperationLogger opLog, CancellationToken ct)
+        RoleRepository roles, OperationLogger opLog, CancellationToken ct)
     {
         if (!RequestScope.TryRead(principal, out var scope) || scope is null || scope.IsPlatform || scope.MerchantId is null)
             return Results.Forbid();
@@ -294,6 +311,8 @@ public static class MerchantEndpoints
 
         var membership = await memberships.FindByIdAsync(membershipId, ct);
         if (membership is null || membership.MerchantId != scope.MerchantId) return Results.NotFound();
+        if (await MerchantMembershipGuard.CheckAsync(scope, membership, MemberAction.ResetPassword, memberships, roles, ct) is { } denied)
+            return MerchantMembershipGuard.Denied(denied);
 
         var temporaryPassword = TemporaryPasswordGenerator.Generate();
         await users.UpdatePasswordAsync(membership.UserId, PasswordHasher.Hash(temporaryPassword), ct);

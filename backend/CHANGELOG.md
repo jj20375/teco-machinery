@@ -1559,3 +1559,28 @@ API 比 Collector 晚好、或之後單獨重啟（例如 `docker compose up -d 
 `channel_health` 仍然只在狀態真的改變時記錄（由 `ChannelWatchdog` 判斷），不會因為重送多出紀錄。
 
 **驗證**：Mac 測試環境重建 Collector 後單獨 `restart api`，11 秒後 `isConnected` 回到 `true`（修正前會一直是 `false`）。
+
+## 場館擁有者與管理員層級保護（2026-10-02）
+
+**起因**：測試環境用 `tester`（場館管理員）登入，在使用者管理頁看到 `merchant_admin`（第一位管理員）的「刪除」是可以點的。
+原本只有兩條擋板：不能刪自己、不能刪最後一個在職管理員，管理員之間沒有任何層級——任何一位管理員都能刪掉、停用、
+降級別的管理員，或幫他重設密碼後登入成他（只擋刪除不夠）。
+
+**做法**：
+- `merchant_membership.is_owner`（001 已含；migration `016_merchant_owner.sql` 給既有資料庫）：每個場館最早加入的在職管理員標為擁有者。
+  平台建立場館的第一位管理員時自動標記（`PlatformEndpoints.CreateMerchantMembership`，場館已有擁有者就不再標）。
+- `Api/Auth/MerchantMembershipGuard.cs` 統一規則，`MerchantEndpoints` 的 UpdateUser／DeleteUser／ResetUserPassword 呼叫：
+  - 擁有者：任何人（含本人）都不能刪除、停用、改角色；別人不能幫他重設密碼或改名，本人可以。
+  - 其他場館管理員：只有擁有者能刪除、停用／啟用、改角色、重設密碼、改名；本人改自己的名字與密碼不受限。
+  - 一般成員：沒有額外限制。違規回 403＋中文原因（前端 `ApiError` 會直接顯示）。
+  - UpdateUser 只擋「真的有變動」的欄位，前端存檔時帶著原本的值不會被誤擋。
+- 前端 `AdminUsersPage.vue`：擁有者顯示橘色「擁有者」標籤；名稱編輯、啟用開關、重設密碼、刪除依 `lockReason()` 變灰並用 hover 說明原因
+  （規則跟後端一致，但後端才是真正的防線）。
+- 平台管理員走 `/api/v1/platform`，不受影響，仍可幫擁有者重設密碼。擁有者換人目前沒有畫面，需要時直接改資料庫的 `is_owner`。
+
+**驗證**（本機，臨時場館＋四個帳號，測完全部刪除）：一般管理員對擁有者的刪除／停用／重設密碼／改名、對其他管理員的刪除／停用／重設密碼
+全部 403；對一般成員的刪除成功；改自己名字、重設自己密碼成功。擁有者對自己的刪除（400）、停用、改角色回 403，改自己名字成功；
+對其他管理員的停用、重設密碼、刪除成功。瀏覽器以一般管理員登入：三位管理員的列、擁有者列的按鈕都變灰且 hover 有原因，一般成員的列照常可操作。
+migration 016 套用到本機後，`merchant_admin`（場館 1）與 `kym_leader_admin`（場館 4）被標為擁有者，`qa_admin`、`oplog_admin` 不是。
+
+**已知的既有行為**：`PATCH /merchant/users/{id}` 無論改什麼都會遞增該帳號的 AuthVersion，所以改自己的名字會讓自己被登出。這次沒動。

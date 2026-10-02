@@ -190,10 +190,13 @@ public static class PlatformEndpoints
             targetName = request.DisplayName.Trim();
         }
 
-        var id = await memberships.CreateAsync(new MerchantMembership { MerchantId = merchantId, UserId = userId, RoleId = request.RoleId }, ct);
+        // 場館的第一位管理員就是擁有者（見 MerchantMembershipGuard）；已經有擁有者就不再標。
+        var becomesOwner = role.Code == MerchantMembershipGuard.AdminRoleCode && !await memberships.HasOwnerAsync(merchantId, ct);
+        var id = await memberships.CreateAsync(
+            new MerchantMembership { MerchantId = merchantId, UserId = userId, RoleId = request.RoleId, IsOwner = becomesOwner }, ct);
 
         await opLog.LogAsync(scope!, "platform.membership.create", "merchant_membership", id.ToString(),
-            $"將使用者「{targetName}」加入商家「{merchant.Name}」，角色：{role.Name}",
+            $"將使用者「{targetName}」加入商家「{merchant.Name}」，角色：{role.Name}{(becomesOwner ? "（場館擁有者）" : "")}",
             after: new { MerchantId = merchantId, UserId = userId, request.RoleId }, ct: ct);
         return Results.Created($"/api/v1/platform/merchants/{merchantId}/memberships/{id}", new { id });
     }

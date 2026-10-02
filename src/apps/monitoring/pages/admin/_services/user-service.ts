@@ -17,6 +17,8 @@ export interface MerchantUserRow {
   displayName: string;
   email: string | null;
   isActive: boolean;
+  /** 場館擁有者（第一位管理員）：不能被刪除、停用、改角色。 */
+  isOwner: boolean;
   roleId: number | null;
   roleCode: string | null;
   roleName: string | null;

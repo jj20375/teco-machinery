@@ -17,6 +17,7 @@ public sealed class MerchantUserRow
     public required string DisplayName { get; init; }
     public string? Email { get; init; }
     public bool IsActive { get; init; }
+    public bool IsOwner { get; init; }
     public int? RoleId { get; init; }
     public string? RoleCode { get; init; }
     public string? RoleName { get; init; }
@@ -32,7 +33,7 @@ public sealed class MembershipRepository(TecoDbConnectionFactory factory)
         using var conn = await factory.CreateOpenAsync(ct);
         var rows = await conn.QueryAsync<MembershipRow>(
             """
-            SELECT id, merchant_id AS MerchantId, user_id AS UserId, role_id AS RoleId, is_active AS IsActive, created_at AS CreatedAt
+            SELECT id, merchant_id AS MerchantId, user_id AS UserId, role_id AS RoleId, is_active AS IsActive, is_owner AS IsOwner, created_at AS CreatedAt
             FROM merchant_membership WHERE user_id = @userId AND is_active = 1
             ORDER BY created_at
             """, new { userId });
@@ -44,7 +45,7 @@ public sealed class MembershipRepository(TecoDbConnectionFactory factory)
         using var conn = await factory.CreateOpenAsync(ct);
         var row = await conn.QuerySingleOrDefaultAsync<MembershipRow>(
             """
-            SELECT id, merchant_id AS MerchantId, user_id AS UserId, role_id AS RoleId, is_active AS IsActive, created_at AS CreatedAt
+            SELECT id, merchant_id AS MerchantId, user_id AS UserId, role_id AS RoleId, is_active AS IsActive, is_owner AS IsOwner, created_at AS CreatedAt
             FROM merchant_membership WHERE id = @membershipId
             """, new { membershipId });
         return row is null ? null : ToEntity(row);
@@ -55,7 +56,7 @@ public sealed class MembershipRepository(TecoDbConnectionFactory factory)
         using var conn = await factory.CreateOpenAsync(ct);
         var row = await conn.QuerySingleOrDefaultAsync<MembershipRow>(
             """
-            SELECT id, merchant_id AS MerchantId, user_id AS UserId, role_id AS RoleId, is_active AS IsActive, created_at AS CreatedAt
+            SELECT id, merchant_id AS MerchantId, user_id AS UserId, role_id AS RoleId, is_active AS IsActive, is_owner AS IsOwner, created_at AS CreatedAt
             FROM merchant_membership WHERE merchant_id = @merchantId AND user_id = @userId
             """, new { merchantId, userId });
         return row is null ? null : ToEntity(row);
@@ -68,7 +69,7 @@ public sealed class MembershipRepository(TecoDbConnectionFactory factory)
         var rows = await conn.QueryAsync<MerchantUserRow>(
             """
             SELECT m.id AS MembershipId, m.user_id AS UserId, u.username AS Username, u.display_name AS DisplayName,
-                   u.email AS Email, m.is_active AS IsActive, m.role_id AS RoleId, r.code AS RoleCode, r.name AS RoleName,
+                   u.email AS Email, m.is_active AS IsActive, m.is_owner AS IsOwner, m.role_id AS RoleId, r.code AS RoleCode, r.name AS RoleName,
                    u.last_login_at AS LastLoginAt, u.locked_until AS LockedUntil
             FROM merchant_membership m
             JOIN app_user u ON u.id = m.user_id
@@ -84,8 +85,8 @@ public sealed class MembershipRepository(TecoDbConnectionFactory factory)
         using var conn = await factory.CreateOpenAsync(ct);
         var id = await conn.ExecuteScalarAsync<long>(
             """
-            INSERT INTO merchant_membership (merchant_id, user_id, role_id, is_active)
-            VALUES (@MerchantId, @UserId, @RoleId, @IsActive);
+            INSERT INTO merchant_membership (merchant_id, user_id, role_id, is_active, is_owner)
+            VALUES (@MerchantId, @UserId, @RoleId, @IsActive, @IsOwner);
             SELECT LAST_INSERT_ID();
             """, membership);
         return (int)id;
@@ -113,6 +114,13 @@ public sealed class MembershipRepository(TecoDbConnectionFactory factory)
         await conn.ExecuteAsync("DELETE FROM merchant_membership WHERE id = @membershipId", new { membershipId });
     }
 
+    public async Task<bool> HasOwnerAsync(int merchantId, CancellationToken ct = default)
+    {
+        using var conn = await factory.CreateOpenAsync(ct);
+        return await conn.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM merchant_membership WHERE merchant_id = @merchantId AND is_owner = 1", new { merchantId }) > 0;
+    }
+
     /// <summary>刪除角色前的擋板用——還有人在用這個角色就不給刪，避免這些成員突然失去所有權限。</summary>
     public async Task<int> CountByRoleAsync(int roleId, CancellationToken ct = default)
     {
@@ -124,7 +132,7 @@ public sealed class MembershipRepository(TecoDbConnectionFactory factory)
     private static MerchantMembership ToEntity(MembershipRow r) => new()
     {
         Id = r.Id, MerchantId = r.MerchantId, UserId = r.UserId, RoleId = r.RoleId,
-        IsActive = r.IsActive, CreatedAt = r.CreatedAt,
+        IsActive = r.IsActive, IsOwner = r.IsOwner, CreatedAt = r.CreatedAt,
     };
 
     private class MembershipRow
@@ -134,6 +142,7 @@ public sealed class MembershipRepository(TecoDbConnectionFactory factory)
         public int UserId { get; init; }
         public int? RoleId { get; init; }
         public bool IsActive { get; init; }
+        public bool IsOwner { get; init; }
         public DateTimeOffset CreatedAt { get; init; }
     }
 }
