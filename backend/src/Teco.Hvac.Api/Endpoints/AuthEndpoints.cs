@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security.Claims;
 using Microsoft.Extensions.Options;
 using Teco.Hvac.Api.Auth;
@@ -29,6 +30,7 @@ public static class AuthEndpoints
         group.MapPost("/refresh-token", RefreshWithToken); // 刻意不掛 RequireAuthorization：access token 過期後才會用到這支
         group.MapGet("/me", GetMe).RequireAuthorization();
         group.MapPost("/change-password", ChangePassword).RequireAuthorization();
+        group.MapPost("/logout", Logout).RequireAuthorization();
     }
 
     /// <summary>
@@ -67,9 +69,52 @@ public static class AuthEndpoints
 
     public sealed record ChangePasswordRequest(string CurrentPassword, string? NewPassword);
 
+    /// <summary>
+    /// 帳號不存在的失敗登入，同一個「帳號＋IP」一分鐘最多記一筆：存在的帳號最多連錯 5 次就鎖定、天然有上限，
+    /// 但亂猜不存在的帳號沒有上限，不節流的話任何人都能用掃描流量把操作紀錄灌爆。
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, DateTimeOffset> UnknownUserLogThrottle = new();
+
+    private static bool ShouldLogUnknownUser(string username, string? ip)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (UnknownUserLogThrottle.Count > 5000) UnknownUserLogThrottle.Clear();
+        var key = $"{username.ToLowerInvariant()}|{ip}";
+        if (UnknownUserLogThrottle.TryGetValue(key, out var last) && now - last < TimeSpan.FromMinutes(1)) return false;
+        UnknownUserLogThrottle[key] = now;
+        return true;
+    }
+
+    /// <summary>登入失敗的稽核。原因只寫進操作紀錄給管理員看，回給前端的訊息仍然不區分（避免帳號枚舉）。</summary>
+    private static async Task LogLoginFailureAsync(
+        OperationLogger opLog, MembershipRepository memberships, HttpContext http, AppUser? user, string attemptedUsername,
+        string reason, bool justLocked, CancellationToken ct)
+    {
+        var ip = http.Connection.RemoteIpAddress?.ToString();
+        if (user is null)
+        {
+            if (!ShouldLogUnknownUser(attemptedUsername, ip)) return;
+            await opLog.LogAuthAsync(0, attemptedUsername, "（不存在的帳號）", null, OperationActionLabels.Login,
+                "登入失敗：帳號不存在", isSuccess: false, errorMessage: reason, ct: ct);
+            return;
+        }
+        // 場館成員的失敗登入掛在他的場館底下，場館管理員才看得到（平台帳號沒有場館，merchant_id 為空）
+        int? merchantId = user.SystemRoleId is null && !user.IsPlatformAdmin
+            ? (await memberships.ListActiveForUserAsync(user.Id, ct)).FirstOrDefault()?.MerchantId
+            : null;
+        await opLog.LogAuthAsync(user.Id, user.Username, user.DisplayName, merchantId, OperationActionLabels.Login,
+            $"登入失敗：{reason}", isSuccess: false, errorMessage: reason, ct: ct);
+        if (justLocked)
+        {
+            await opLog.LogAuthAsync(user.Id, user.Username, user.DisplayName, merchantId, OperationActionLabels.AccountLocked,
+                $"連續登入失敗 {MaxFailuresBeforeLock} 次，帳號已鎖定 {(int)LockDuration.TotalMinutes} 分鐘", isSuccess: false,
+                errorMessage: "連續登入失敗", ct: ct);
+        }
+    }
+
     private static async Task<IResult> Login(
-        LoginRequest request, UserRepository users, MembershipRepository memberships, MerchantRepository merchants,
-        PermissionGrantService grants, JwtTokenService jwt, RefreshTokenRepository refreshTokens,
+        LoginRequest request, HttpContext http, UserRepository users, MembershipRepository memberships, MerchantRepository merchants,
+        PermissionGrantService grants, JwtTokenService jwt, RefreshTokenRepository refreshTokens, OperationLogger opLog,
         IOptions<JwtOptions> jwtOptions, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
@@ -84,7 +129,10 @@ public static class AuthEndpoints
 
         if (user is null || !user.IsActive || isLocked || !passwordValid)
         {
-            if (user is not null && !isLocked) await users.RegisterLoginFailureAsync(user.Id, MaxFailuresBeforeLock, LockDuration, ct);
+            var justLocked = user is not null && !isLocked
+                && await users.RegisterLoginFailureAsync(user.Id, MaxFailuresBeforeLock, LockDuration, ct);
+            var reason = user is null ? "帳號不存在" : !user.IsActive ? "帳號已停用" : isLocked ? "帳號鎖定中" : "密碼錯誤";
+            await LogLoginFailureAsync(opLog, memberships, http, user, request.Username.Trim(), reason, justLocked, ct);
             // 不區分帳號不存在、密碼錯誤、帳號停用與鎖定，避免登入端點成為帳號枚舉來源。
             return Results.Json(new { message = "帳號或密碼不正確，或帳號已停用。" }, statusCode: StatusCodes.Status401Unauthorized);
         }
@@ -96,6 +144,8 @@ public static class AuthEndpoints
         {
             var platformGrants = await grants.ForPlatformUserAsync(user, ct);
             var token = jwt.Create(user, "platform", merchantId: null, platformGrants);
+            await opLog.LogAuthAsync(user.Id, user.Username, user.DisplayName, null, OperationActionLabels.Login,
+                "登入系統（平台管理）", isSuccess: true, ct: ct);
             return Results.Ok(BuildResponse(token, user, "platform", null, platformGrants, refreshToken: refreshToken));
         }
 
@@ -103,20 +153,43 @@ public static class AuthEndpoints
         var membership = activeMemberships.FirstOrDefault();
         if (membership is null)
         {
+            await opLog.LogAuthAsync(user.Id, user.Username, user.DisplayName, null, OperationActionLabels.Login,
+                "登入失敗：帳號未獲授權使用任何場館", isSuccess: false, errorMessage: "沒有任何場館成員資格", ct: ct);
             return Results.Json(new { message = "帳號未獲授權使用任何場館，請聯絡平台管理員。" }, statusCode: StatusCodes.Status401Unauthorized);
         }
 
         var merchant = await merchants.FindByIdAsync(membership.MerchantId, ct);
         if (merchant is null || merchant.Status != "active")
         {
+            await opLog.LogAuthAsync(user.Id, user.Username, user.DisplayName, membership.MerchantId, OperationActionLabels.Login,
+                "登入失敗：所屬場館已停用", isSuccess: false, errorMessage: "場館已停用", ct: ct);
             return Results.Json(new { message = "所屬場館已停用，無法登入系統。" }, statusCode: StatusCodes.Status401Unauthorized);
         }
 
         var merchantGrants = await grants.ForMerchantAsync(membership, merchant, ct);
         var merchantToken = jwt.Create(user, "merchant", merchant.Id, merchantGrants,
             merchant.IsRoleCrudConfigurationEnabled, merchant.IsRoleOptionConfigurationEnabled);
+        await opLog.LogAuthAsync(user.Id, user.Username, user.DisplayName, merchant.Id, OperationActionLabels.Login,
+            $"登入系統（{merchant.Name}）", isSuccess: true, ct: ct);
         return Results.Ok(BuildResponse(merchantToken, user, "merchant", merchant, merchantGrants,
             merchant.IsRoleCrudConfigurationEnabled, merchant.IsRoleOptionConfigurationEnabled, refreshToken));
+    }
+
+    /// <summary>
+    /// 登出：撤銷這個瀏覽器的 refresh token（只撤銷呼叫端帶來的那一顆，不影響同一個帳號在別處的登入）並寫紀錄。
+    /// 前端登出是盡力而為——這支失敗不能擋住登出，工作階段照樣在本機清掉。
+    /// </summary>
+    private static async Task<IResult> Logout(
+        LogoutRequest? request, ClaimsPrincipal principal, RefreshTokenRepository refreshTokens, OperationLogger opLog, CancellationToken ct)
+    {
+        if (!RequestScope.TryRead(principal, out var scope) || scope is null) return Results.Unauthorized();
+        if (!string.IsNullOrWhiteSpace(request?.RefreshToken))
+        {
+            var stored = await refreshTokens.FindActiveAsync(RefreshTokenGenerator.Hash(request.RefreshToken), ct);
+            if (stored is not null && stored.UserId == scope.UserId) await refreshTokens.RevokeAsync(stored.Id, ct);
+        }
+        await opLog.LogAsync(scope, OperationActionLabels.Logout, "app_user", scope.UserId.ToString(), "登出系統", ct: ct);
+        return Results.NoContent();
     }
 
     /// <summary>簽發並落地一顆新的 refresh token，回傳明文（只有這一刻拿得到，資料庫只存 hash）。</summary>
@@ -295,4 +368,5 @@ public static class AuthEndpoints
     public sealed record LoginRequest(string Username, string Password);
     public sealed record SelectScopeRequest(string ScopeKind, int? MerchantId);
     public sealed record RefreshTokenRequest(string RefreshToken);
+    public sealed record LogoutRequest(string? RefreshToken);
 }

@@ -9,7 +9,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useQuery } from '@tanstack/vue-query';
 import {
-  ApiError, clearSessionApi, getSessionApi, listScopesApi, selectScopeApi, defaultHomePathApi, type ScopeOption,
+  ApiError, clearSessionApi, getSessionApi, logoutApi, listScopesApi, selectScopeApi, defaultHomePathApi, type ScopeOption,
 } from '../_services/auth-service';
 import {
   ACTIVE_ALARMS_QUERY, allAlarmsOpen, seenAlarmIds, loadSeenAlarmIds, markAlarmsSeen, openAllAlarms,
@@ -83,7 +83,9 @@ function onDocClick(e: MouseEvent) {
 onMounted(() => document.addEventListener('click', onDocClick));
 onUnmounted(() => document.removeEventListener('click', onDocClick));
 
-function handleLogout() {
+async function handleLogout() {
+  // 最多等 1.5 秒讓後端撤銷 token 並寫紀錄；慢或失敗都不擋登出
+  await Promise.race([logoutApi(), new Promise((resolve) => setTimeout(resolve, 1500))]);
   clearSessionApi();
   window.location.href = '/login';
 }

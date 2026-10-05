@@ -44,13 +44,14 @@ public static class MerchantMembershipGuard
         if (caller?.IsOwner == true) return null;
         if (isSelf && action is MemberAction.ResetPassword or MemberAction.Rename) return null;
 
-        var verb = action switch
-        {
-            MemberAction.Delete => "刪除", MemberAction.Deactivate => "停用", MemberAction.Activate => "啟用", MemberAction.ChangeRole => "變更角色",
-            MemberAction.ResetPassword => "重設密碼", _ => "修改",
-        };
-        return $"這是場館管理員的帳號，只有場館擁有者可以{verb}。";
+        return $"這是場館管理員的帳號，只有場館擁有者可以{Verb(action)}。";
     }
+
+    public static string Verb(MemberAction action) => action switch
+    {
+        MemberAction.Delete => "刪除", MemberAction.Deactivate => "停用", MemberAction.Activate => "啟用",
+        MemberAction.ChangeRole => "變更角色", MemberAction.ResetPassword => "重設密碼", _ => "修改名稱",
+    };
 
     public static IResult Denied(string message) => Results.Json(new { message }, statusCode: StatusCodes.Status403Forbidden);
 }

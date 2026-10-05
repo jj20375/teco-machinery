@@ -114,6 +114,25 @@ export function isSessionValidApi(session: AuthSession | null): boolean {
 }
 
 /** 清掉工作階段（登出）。 */
+/**
+ * 通知後端登出：撤銷這個瀏覽器的 refresh token 並寫操作紀錄。盡力而為——網路不通、token 已過期都不能擋住登出，
+ * 呼叫端不管成功與否都要接著 clearSessionApi()。keepalive 讓緊接著的頁面跳轉不會把請求中斷。
+ */
+export async function logoutApi(): Promise<void> {
+  const session = getSessionApi();
+  if (!session?.accessToken) return;
+  try {
+    await fetch('/api/v1/auth/logout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.accessToken}` },
+      body: JSON.stringify({ refreshToken: session.refreshToken }),
+      keepalive: true,
+    });
+  } catch {
+    // 登出本來就是盡力而為
+  }
+}
+
 export function clearSessionApi(): void {
   localStorage.removeItem(STORAGE_KEY);
 }

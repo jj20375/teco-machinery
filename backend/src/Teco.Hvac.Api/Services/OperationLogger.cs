@@ -12,6 +12,17 @@ namespace Teco.Hvac.Api.Services;
 /// </summary>
 public sealed class OperationLogger(OperationLogRepository repo, UserRepository users, IHttpContextAccessor httpContextAccessor)
 {
+    /// <summary>
+    /// 寫過紀錄就在這次請求上做記號：DeniedRequestAudit 只補記「沒人記過」的 403，
+    /// 已經由 handler 寫了更詳細說明的拒絕不會重複記一筆。
+    /// </summary>
+    public const string LoggedMarker = "OperationLogged";
+
+    private void MarkLogged() { if (httpContextAccessor.HttpContext is { } ctx) ctx.Items[LoggedMarker] = true; }
+
+    private static string Cut(string? value, int max) =>
+        string.IsNullOrEmpty(value) ? "" : value.Length <= max ? value : value[..max];
+
     public async Task LogAsync(
         RequestScope scope, string action, string targetType, string targetId, string summary,
         object? before = null, object? after = null, bool isSuccess = true, string? errorMessage = null,
@@ -36,5 +47,37 @@ public sealed class OperationLogger(OperationLogRepository repo, UserRepository 
             ErrorMessage = errorMessage,
             Ip = httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString(),
         }, ct);
+        MarkLogged();
     }
+
+    /// <summary>
+    /// 登入、登入失敗、帳號鎖定：這時候還沒有 JWT（沒有 RequestScope），操作者資訊由呼叫端直接給。
+    /// 帳號不存在的失敗登入 userId 給 0、username 放對方輸入的帳號（截短）。
+    /// </summary>
+    public async Task LogAuthAsync(
+        int userId, string username, string displayName, int? merchantId, string action, string summary,
+        bool isSuccess, string? errorMessage = null, CancellationToken ct = default)
+    {
+        await repo.CreateAsync(new OperationLog
+        {
+            MerchantId = merchantId,
+            UserId = userId,
+            ActorUsername = Cut(username, 64),
+            ActorDisplayName = Cut(displayName, 64),
+            Action = action,
+            TargetType = "app_user",
+            TargetId = userId.ToString(),
+            Summary = Cut(summary, 255),
+            IsSuccess = isSuccess,
+            ErrorMessage = errorMessage is null ? null : Cut(errorMessage, 255),
+            Ip = httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString(),
+        }, ct);
+        MarkLogged();
+    }
+
+    /// <summary>被拒絕的操作（業務規則擋下、權限不足）也要留下紀錄，對資安追蹤一樣有價值。</summary>
+    public Task LogDeniedAsync(
+        RequestScope scope, string action, string targetType, string targetId, string summary, string reason,
+        CancellationToken ct = default) =>
+        LogAsync(scope, action, targetType, targetId, Cut(summary, 255), isSuccess: false, errorMessage: Cut(reason, 255), ct: ct);
 }

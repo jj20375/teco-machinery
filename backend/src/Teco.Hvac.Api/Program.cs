@@ -151,6 +151,8 @@ var app = builder.Build();
 
 app.UseCors();
 app.UseAuthentication();
+// 放在 UseAuthorization 之前包住它：授權層回的 403 也要看得到
+app.UseDeniedRequestAudit();
 app.UseAuthorization();
 
 app.MapHealthEndpoints();

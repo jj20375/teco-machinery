@@ -38,19 +38,7 @@ public static class MerchantEndpoints
         group.MapGet("/operation-logs", ListOperationLogs);
     }
 
-    /// <summary>action 代碼 → 畫面「操作類別」欄的分類標籤，跟 summary（人話句子）分開存放的原因
-    /// 見 OperationLog 實體上的註解。找不到對照時直接顯示代碼本身，不擋畫面。</summary>
-    private static readonly Dictionary<string, string> ActionCategoryLabels = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["merchant.user.create"] = "使用者異動",
-        ["merchant.user.update"] = "使用者異動",
-        ["merchant.user.reset_password"] = "重設密碼",
-        ["merchant.user.features.update"] = "使用者異動",
-        ["merchant.role.create"] = "角色設定",
-        ["merchant.role.permission.update"] = "角色設定",
-        ["auth.change_password"] = "重設密碼",
-        ["alarm.ack"] = "告警處理",
-    };
+    // action 代碼 → 畫面「動作類型」欄的分類標籤見 OperationActionLabels（找不到對照時顯示代碼本身，不擋畫面）。
 
     private const int MaxOperationLogRangeDays = 366; // 對齊畫面「最大範圍：一年」的查詢限制。
 
@@ -86,7 +74,7 @@ public static class MerchantEndpoints
             username = r.ActorUsername,
             userFullName = r.ActorDisplayName,
             action = r.Action,
-            actionType = ActionCategoryLabels.GetValueOrDefault(r.Action, r.Action),
+            actionType = OperationActionLabels.For(r.Action),
             content = r.Summary,
             ipAddress = r.Ip,
             isSuccess = r.IsSuccess,
@@ -184,6 +172,16 @@ public static class MerchantEndpoints
         return Results.Created($"/api/v1/merchant/users/{id}", new { id });
     }
 
+    /// <summary>被層級保護或業務規則擋下的成員管理操作，一樣要留下紀錄（is_success=false）。</summary>
+    private static async Task LogMemberDeniedAsync(
+        OperationLogger opLog, UserRepository users, RequestScope scope, string action, MerchantMembership target,
+        string verb, string reason, CancellationToken ct)
+    {
+        var targetUser = await users.FindByIdAsync(target.UserId, ct);
+        await opLog.LogDeniedAsync(scope, action, "merchant_membership", target.Id.ToString(),
+            $"嘗試{verb}「{targetUser?.DisplayName}」（{targetUser?.Username}）但被拒絕：{reason}", reason, ct);
+    }
+
     private static async Task<IResult> UpdateUser(
         ClaimsPrincipal principal, int membershipId, UpdateMerchantUserRequest request,
         MembershipRepository memberships, UserRepository users, RoleRepository roles, OperationLogger opLog, CancellationToken ct)
@@ -217,7 +215,10 @@ public static class MerchantEndpoints
         foreach (var attempt in attempts)
         {
             if (await MerchantMembershipGuard.CheckAsync(scope, membership, attempt, memberships, roles, ct) is { } denied)
+            {
+                await LogMemberDeniedAsync(opLog, users, scope, "merchant.user.update", membership, MerchantMembershipGuard.Verb(attempt), denied, ct);
                 return MerchantMembershipGuard.Denied(denied);
+            }
         }
 
         await memberships.UpdateRoleAsync(membershipId, request.RoleId, request.IsActive, ct);
@@ -273,9 +274,15 @@ public static class MerchantEndpoints
         if (membership is null || membership.MerchantId != scope.MerchantId) return Results.NotFound();
 
         if (membership.UserId == scope.UserId)
+        {
+            await LogMemberDeniedAsync(opLog, users, scope, "merchant.user.delete", membership, "刪除", "無法刪除自己的帳號。", ct);
             return Results.Json(new { message = "無法刪除自己的帳號。" }, statusCode: StatusCodes.Status400BadRequest);
+        }
         if (await MerchantMembershipGuard.CheckAsync(scope, membership, MemberAction.Delete, memberships, roles, ct) is { } denied)
+        {
+            await LogMemberDeniedAsync(opLog, users, scope, "merchant.user.delete", membership, "刪除", denied, ct);
             return MerchantMembershipGuard.Denied(denied);
+        }
 
         var targetUser = await users.FindByIdAsync(membership.UserId, ct);
         var targetName = targetUser?.DisplayName ?? $"membership#{membershipId}";
@@ -285,6 +292,7 @@ public static class MerchantEndpoints
         var targetIsActiveAdmin = merchantUsers.Any(u => u.MembershipId == membershipId && u.RoleCode == "merchant-admin" && u.IsActive);
         if (targetIsActiveAdmin && activeAdminCount <= 1)
         {
+            await LogMemberDeniedAsync(opLog, users, scope, "merchant.user.delete", membership, "刪除", "這是目前唯一在職的場館管理員。", ct);
             return Results.Json(
                 new { message = "這是目前唯一在職的場館管理員，無法刪除，請先指派另一位場館管理員。" },
                 statusCode: StatusCodes.Status400BadRequest);
@@ -319,7 +327,10 @@ public static class MerchantEndpoints
         var membership = await memberships.FindByIdAsync(membershipId, ct);
         if (membership is null || membership.MerchantId != scope.MerchantId) return Results.NotFound();
         if (await MerchantMembershipGuard.CheckAsync(scope, membership, MemberAction.ResetPassword, memberships, roles, ct) is { } denied)
+        {
+            await LogMemberDeniedAsync(opLog, users, scope, "merchant.user.reset_password", membership, "重設密碼", denied, ct);
             return MerchantMembershipGuard.Denied(denied);
+        }
 
         var temporaryPassword = TemporaryPasswordGenerator.Generate();
         await users.UpdatePasswordAsync(membership.UserId, PasswordHasher.Hash(temporaryPassword), ct);
@@ -380,6 +391,8 @@ public static class MerchantEndpoints
             var currentRole = await roles.FindByIdAsync(currentRoleId, ct);
             if (currentRole is { IsSystem: true, Code: "merchant-admin" })
             {
+                await LogMemberDeniedAsync(opLog, users, scope, "merchant.user.features.update", membership, "調整頁面權限",
+                    "場館管理員的權限由角色本身決定，無法用此面板調整。", ct);
                 return Results.BadRequest(new
                 {
                     message = "場館管理員的權限由角色本身決定，無法用此面板調整（會導致永久失去角色管理等未列在開關上的能力）。如需調整，請改到角色管理編輯 merchant-admin 角色。",
