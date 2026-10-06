@@ -55,7 +55,7 @@ const rows = computed(() => {
     const status = deriveFcuStatus(f, alarmingIds);
     return {
       id: f.id,
-      // 場館自訂代碼跟系統編號分成兩欄並存：沒設定時這欄留空顯示「未設定」，不要退回顯示
+      // 設備名稱（客戶自訂代碼）跟設備編號（系統編號）分成兩欄並存：沒設定時這欄顯示「未設定」，不要退回顯示
       // 系統編號——兩欄長得一模一樣的話，使用者根本看不出來哪一欄是自己可以改的。
       customCode: f.displayName,
       code: f.zoneCode ?? `${f.floor}-${f.id}`,
@@ -75,7 +75,7 @@ const page = ref(1);
 const pageSize = ref(20);
 const paged = computed(() => rows.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value));
 
-// ── 自訂代碼編輯 ──────────────────────────
+// ── 設備名稱編輯 ──────────────────────────
 const editOpen = ref(false);
 const editSaving = ref(false);
 const editError = ref('');
@@ -93,7 +93,7 @@ async function submitEdit() {
   if (!editTarget.value || editSaving.value) return;
   const value = editValue.value.trim();
   if (value.length > 64) {
-    editError.value = '自訂代碼最多 64 個字。';
+    editError.value = '設備名稱最多 64 個字。';
     return;
   }
   // 沒改就直接關掉，不要打 API，避免操作紀錄留下前後一模一樣的空紀錄。
@@ -179,8 +179,8 @@ const save = handleSubmit(async (values) => {
           <table class="w-full text-left text-[13px] text-[#334155]">
             <thead class="bg-[#F8FAFC] text-[#64748B] border-b border-[#E2E8F0]">
               <tr>
-                <th class="px-4 py-3 font-semibold">自訂代碼</th>
-                <th class="px-4 py-3 font-semibold">系統編號</th>
+                <th class="px-4 py-3 font-semibold">設備名稱</th>
+                <th class="px-4 py-3 font-semibold">設備編號</th>
                 <th class="px-4 py-3 font-semibold whitespace-nowrap">供應商編號</th>
                 <th class="px-4 py-3 font-semibold">安裝位置</th>
                 <th class="px-4 py-3 font-semibold">室內溫度</th>
@@ -251,20 +251,20 @@ const save = handleSubmit(async (values) => {
       </div>
     </AdminRightPanel>
 
-    <!-- 自訂代碼 -->
+    <!-- 設備名稱 -->
     <div v-if="editOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40" @click.self="editOpen = false">
       <div class="bg-white rounded-xl shadow-2xl border border-[#E2E8F0] w-full max-w-[420px] overflow-hidden">
         <div class="px-6 pt-6 pb-4 border-b border-[#E2E8F0]">
-          <h3 class="text-base font-bold text-[#1A202C]">編輯自訂代碼</h3>
-          <p class="text-xs text-[#94A3B8] mt-1">系統編號 <span class="font-tabular text-[#64748B]">{{ editTarget?.code }}</span>、供應商編號 <span class="font-tabular text-[#64748B]">{{ editTarget?.vendorLabel }}</span>（由現場接線決定，不可修改）</p>
+          <h3 class="text-base font-bold text-[#1A202C]">編輯設備名稱</h3>
+          <p class="text-xs text-[#94A3B8] mt-1">設備編號 <span class="font-tabular text-[#64748B]">{{ editTarget?.code }}</span>、供應商編號 <span class="font-tabular text-[#64748B]">{{ editTarget?.vendorLabel }}</span>（由現場接線決定，不可修改）</p>
         </div>
         <form class="px-6 py-5 flex flex-col gap-4" @submit.prevent="submitEdit">
           <div v-if="editError" class="p-2.5 rounded-lg bg-[#FFF5F5] text-[#FF4757] text-xs">{{ editError }}</div>
           <label class="flex flex-col gap-1.5 text-xs text-[#64748B]">
-            自訂代碼
+            設備名稱
             <input v-model="editValue" type="text" maxlength="64" placeholder="例如現場標籤上的編號 AC-B1-012" class="px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2] placeholder-[#94A3B8]" />
           </label>
-          <p class="text-xs text-[#94A3B8]">留空代表不設定，清單與告警會改回顯示系統編號。</p>
+          <p class="text-xs text-[#94A3B8]">留空代表不設定，清單與告警的設備名稱會顯示「未設定」。</p>
           <div class="flex justify-end gap-3 pt-1">
             <AdminButton variant="tertiary" type="button" :disabled="editSaving" @click="editOpen = false">取消</AdminButton>
             <AdminButton variant="primary" type="submit" :disabled="editSaving">

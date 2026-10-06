@@ -224,7 +224,7 @@ public sealed class CollectorHostedService : BackgroundService
         await _ingestClient.PostDataAsync(payload, ct);
 
         // 告警評估：不受節流影響，每次事件都評估（告警要即時反應，不能等 60 秒落地週期）。
-        await EvaluateAlarmsAsync(h1, h2, ddc1, ddc2, nowUtc, ct);
+        await EvaluateAlarmsAsync(h1, h2, ddc1, ddc2, gatewayReadStatus, nowUtc, ct);
 
         // 節流落地：只有決定要寫的才進資料庫。
         await WriteChillerIfDueAsync(h1, nowUtc, ct);
@@ -235,9 +235,15 @@ public sealed class CollectorHostedService : BackgroundService
 
     private async Task EvaluateAlarmsAsync(
         Contracts.ChillerSnapshot h1, Contracts.ChillerSnapshot h2,
-        Contracts.DdcSnapshot ddc1, Contracts.DdcSnapshot ddc2, DateTimeOffset nowUtc, CancellationToken ct)
+        Contracts.DdcSnapshot ddc1, Contracts.DdcSnapshot ddc2, Contracts.ReadStatus gatewayReadStatus,
+        DateTimeOffset nowUtc, CancellationToken ct)
     {
         await _alarmEngine.RefreshRulesIfChangedAsync(ct);
+
+        // 通道離線告警放在設備判斷之前，也不受「讀取不乾淨就不動設備告警」的規則影響：離線本身就是要通知的事。
+        await _alarmEngine.EvaluateChannelAsync(Contracts.Channel.HanbellModbusGateway, gatewayReadStatus, nowUtc, ct);
+        await _alarmEngine.EvaluateChannelAsync(Contracts.Channel.Ddc1, ddc1.ReadStatus, nowUtc, ct);
+        await _alarmEngine.EvaluateChannelAsync(Contracts.Channel.Ddc2, ddc2.ReadStatus, nowUtc, ct);
 
         if (_chillersByModbusId.TryGetValue(h1.ModbusId, out var c1))
             await _alarmEngine.EvaluateChillerAsync(c1.Id, h1, nowUtc, ct);

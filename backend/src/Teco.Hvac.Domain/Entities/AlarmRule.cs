@@ -2,7 +2,11 @@ using System.Globalization;
 
 namespace Teco.Hvac.Domain.Entities;
 
-public enum AlarmDeviceType { Chiller, Fcu }
+/// <summary>
+/// Channel 不是實體設備而是一條通訊通道（device_id＝Contracts.Channel 的數值：0 漢鐘 Gateway、1 DDC1、2 DDC2），
+/// 給「離線」告警用：DDC 讀取失敗時整層 FCU 都會離線，逐台開告警會一次冒出 64 筆。
+/// </summary>
+public enum AlarmDeviceType { Chiller, Fcu, Channel }
 public enum AlarmMetricOperator { GreaterThan, LessThan, Equals }
 
 /// <summary>

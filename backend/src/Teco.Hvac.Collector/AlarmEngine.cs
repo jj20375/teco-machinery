@@ -85,6 +85,45 @@ public sealed class AlarmEngine(
             logger.LogInformation("已關閉 {Count} 筆門檻已變更、找不到對應規則的告警", closed);
     }
 
+    /// <summary>通道離線告警的 rule_code，沒有門檻也不走 alarm_rule，跟 14 個硬體旗標一樣由引擎直接判斷。</summary>
+    public const string ChannelOfflineRuleCode = "ChannelOffline";
+
+    /// <summary>連續讀不到這麼久才開告警：DLL 偶爾會單輪失敗或重連，不能一閃就通知。</summary>
+    private static readonly TimeSpan ChannelOfflineDebounce = TimeSpan.FromSeconds(60);
+
+    private readonly ConcurrentDictionary<Channel, DateTimeOffset> _offlineSince = new();
+
+    /// <summary>
+    /// 通道離線告警（離線也要通知）：連續 60 秒沒有成功讀取就開一筆，恢復成功讀取就結案。
+    /// 一條通道一筆告警，不逐台設備開——DDC 讀取失敗時整層 FCU（64／31 台）都讀不到，逐台會一次冒出幾十筆。
+    /// 「失敗」包含連線中斷與某一站故障（供應商 DLL 一站失敗整台 DDC 判為失敗），兩者從這裡分不出來，
+    /// 差別看平台「系統診斷」頁。NotRead（還沒讀、剛啟動或重連中）不算失敗也不算恢復，狀態維持原樣。
+    /// 告警存在資料庫，Collector 重啟後仍然有效：重啟後計時重來，但已經開著的不會重複開。
+    /// </summary>
+    public async Task EvaluateChannelAsync(Channel channel, ReadStatus readStatus, DateTimeOffset nowUtc, CancellationToken ct)
+    {
+        var deviceId = (int)channel;
+        switch (readStatus)
+        {
+            case ReadStatus.NotRead:
+                return;
+            case ReadStatus.Success:
+                _offlineSince.TryRemove(channel, out _);
+                if (await alarmRepository.CloseActiveEventsAsync(AlarmDeviceType.Channel, deviceId, ChannelOfflineRuleCode, nowUtc, ct) > 0)
+                    logger.LogInformation("通道恢復，關閉離線告警：{Channel}", channel);
+                return;
+            default:
+                var since = _offlineSince.GetOrAdd(channel, nowUtc);
+                if (nowUtc - since < ChannelOfflineDebounce) return;
+                if (await alarmRepository.TryFindActiveAsync(AlarmDeviceType.Channel, deviceId, ChannelOfflineRuleCode, ct)) return;
+                await alarmRepository.OpenEventAsync(AlarmDeviceType.Channel, deviceId, ChannelOfflineRuleCode,
+                    AlarmSeverity.Critical, nowUtc, peakValue: (double)readStatus, ct);
+                logger.LogWarning("開啟告警：通道離線 {Channel}（讀取狀態 {Status}，已連續 {Seconds} 秒讀不到）",
+                    channel, readStatus, (int)(nowUtc - since).TotalSeconds);
+                return;
+        }
+    }
+
     public async Task EvaluateChillerAsync(int deviceId, ChillerSnapshot snapshot, DateTimeOffset nowUtc, CancellationToken ct)
     {
         if (snapshot.ReadStatus != ReadStatus.Success) return; // 規則 1：讀取不乾淨時完全不動告警狀態

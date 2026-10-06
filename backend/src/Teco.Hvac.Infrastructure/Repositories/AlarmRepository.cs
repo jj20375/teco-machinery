@@ -167,6 +167,17 @@ public sealed class AlarmRepository(TecoDbConnectionFactory factory)
             new { endedAt = endedAtUtc.UtcDateTime, validRuleCodes = validRuleCodes.Count == 0 ? new[] { "" } : validRuleCodes.ToArray() });
     }
 
+    /// <summary>設備恢復後結案某設備某規則的未結案告警（沒有的話什麼都不做）。回傳關閉的筆數。</summary>
+    public async Task<int> CloseActiveEventsAsync(
+        AlarmDeviceType deviceType, int deviceId, string ruleCode, DateTimeOffset endedAtUtc, CancellationToken ct = default)
+    {
+        using var conn = await factory.CreateOpenAsync(ct);
+        return await conn.ExecuteAsync(
+            "UPDATE alarm_event SET ended_at = @endedAt " +
+            "WHERE device_type = @deviceType AND device_id = @deviceId AND rule_code = @ruleCode AND ended_at IS NULL",
+            new { deviceType = (int)deviceType, deviceId, ruleCode, endedAt = endedAtUtc.UtcDateTime });
+    }
+
     public async Task<bool> TryFindActiveAsync(AlarmDeviceType deviceType, int deviceId, string ruleCode, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);

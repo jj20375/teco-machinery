@@ -27,6 +27,14 @@ public static class AlarmEndpoints
         [nameof(Teco.Hvac.Contracts.ChillerSnapshot.IsInletAntiFreezeAbnormal)] = "入水防凍異常",
     };
 
+    /// <summary>通道離線告警（AlarmDeviceType.Channel）的顯示名稱，key 是 Contracts.Channel 的數值；名稱與平台診斷頁一致。</summary>
+    private static readonly Dictionary<int, (string Name, string Code, string Location)> ChannelNames = new()
+    {
+        [(int)Teco.Hvac.Contracts.Channel.HanbellModbusGateway] = ("漢鐘 Gateway（冰水主機 ×2）", "GATEWAY", "機房"),
+        [(int)Teco.Hvac.Contracts.Channel.Ddc1] = ("DDC1（B1F FCU）", "DDC1", "B1"),
+        [(int)Teco.Hvac.Contracts.Channel.Ddc2] = ("DDC2（B2F FCU）", "DDC2", "B2"),
+    };
+
     /// <summary>
     /// RuleCode 的方向段：AlarmRule.RuleCode 寫的是列舉名稱（"Temperature.GreaterThan.28"），
     /// 更早期的資料是數字（"Temperature.0.28"）。原本只認數字，現行告警全部被翻成「過低」或原始代碼。
@@ -119,6 +127,7 @@ public static class AlarmEndpoints
         return events.Select(e =>
         {
             string deviceName, deviceCode, location, ruleLabel;
+            string? vendorLabel = null;
             if (e.DeviceType == AlarmDeviceType.Chiller && chillerById.TryGetValue(e.DeviceId, out var chiller))
             {
                 deviceName = chiller.DisplayName;
@@ -130,10 +139,22 @@ public static class AlarmEndpoints
             }
             else if (e.DeviceType == AlarmDeviceType.Fcu && fcuById.TryGetValue(e.DeviceId, out var fcu))
             {
-                deviceName = fcu.DisplayName ?? $"FCU#{fcu.Id}";
+                // 設備名稱＝客戶自訂代碼；沒設定就顯示「未設定」，不退回系統編號（旁邊的設備編號欄已經是系統編號，
+                // 兩欄一樣就看不出哪欄可改），也不用資料庫流水號（FCU#3 沒有任何業務意義）。
+                deviceName = string.IsNullOrWhiteSpace(fcu.DisplayName) ? "未設定" : fcu.DisplayName;
                 deviceCode = fcu.ZoneCode ?? fcu.Floor;
+                // 供應商編號在 DDC1、DDC2 之間會重複，一律搭配 DDC 顯示（同前端 fcuVendorLabel）
+                vendorLabel = $"DDC{(int)fcu.Channel} · {FcuEndpoints.VendorCodeOf(fcu.StationId, fcu.Position)}";
                 location = fcu.Floor;
                 ruleLabel = DescribeFcuRule(e.RuleCode);
+            }
+            else if (e.DeviceType == AlarmDeviceType.Channel && ChannelNames.TryGetValue(e.DeviceId, out var channel))
+            {
+                // 通道離線告警：device_id 是 Contracts.Channel 的數值，名稱與診斷頁一致
+                deviceName = channel.Name;
+                deviceCode = channel.Code;
+                location = channel.Location;
+                ruleLabel = e.RuleCode == "ChannelOffline" ? "離線，無法讀取設備資料" : e.RuleCode;
             }
             else
             {
@@ -160,6 +181,7 @@ public static class AlarmEndpoints
                 deviceName,
                 deviceCode,
                 location,
+                vendorLabel,
                 ruleLabel,
             };
         });

@@ -2,7 +2,7 @@
 /**
  * @file AdminAllAlarmsModal.vue
  * 「全部告警」彈窗 — 對齊設計稿「查看全部告警」：標題＋「N 筆告警中」、時間／設備名稱／設備編號／
- * 安裝位置／狀態。設備恢復正常後告警會從有效清單移除，歷史紀錄在「異常告警報表」。
+ * 供應商編號（FCU 才有，現場技術人員跟供應商對照用）／安裝位置／狀態。設備恢復正常後告警會從有效清單移除，歷史紀錄在「異常告警報表」。
  */
 import AdminStatusBadge from './AdminStatusBadge.vue';
 import { alarmBadgeStatus, formatAlarmTime, type AlarmRow } from '../_services/hvac-service';
@@ -41,6 +41,7 @@ const emit = defineEmits<{ (e: 'close'): void }>();
                 <th class="px-4 py-3 font-semibold whitespace-nowrap">時間</th>
                 <th class="px-4 py-3 font-semibold">設備名稱</th>
                 <th class="px-4 py-3 font-semibold">設備編號</th>
+                <th class="px-4 py-3 font-semibold whitespace-nowrap">供應商編號</th>
                 <th class="px-4 py-3 font-semibold">安裝位置</th>
                 <th class="px-4 py-3 font-semibold">狀態</th>
               </tr>
@@ -48,13 +49,14 @@ const emit = defineEmits<{ (e: 'close'): void }>();
             <tbody>
               <tr v-for="a in alarms" :key="a.id" class="border-b border-[#F1F5F9] last:border-b-0">
                 <td class="px-4 py-3 font-tabular text-[#64748B] whitespace-nowrap">{{ formatAlarmTime(a.startedAt) }}</td>
-                <td class="px-4 py-3 font-medium">{{ a.deviceName }}</td>
+                <td class="px-4 py-3 font-medium" :class="{ 'text-[#94A3B8] font-normal': a.deviceName === '未設定' }">{{ a.deviceName }}</td>
                 <td class="px-4 py-3 font-tabular text-[#64748B]">{{ a.deviceCode }}</td>
+                <td class="px-4 py-3 font-tabular text-[#64748B] whitespace-nowrap">{{ a.vendorLabel ?? '—' }}</td>
                 <td class="px-4 py-3 text-[#64748B]">{{ a.location }}</td>
                 <td class="px-4 py-3"><AdminStatusBadge :status="alarmBadgeStatus(a)" :reason="a.ruleLabel" /></td>
               </tr>
               <tr v-if="alarms.length === 0">
-                <td colspan="5" class="px-4 py-6 text-center text-[#94A3B8]">目前沒有任何告警中的設備</td>
+                <td colspan="6" class="px-4 py-6 text-center text-[#94A3B8]">目前沒有任何告警中的設備</td>
               </tr>
             </tbody>
           </table>

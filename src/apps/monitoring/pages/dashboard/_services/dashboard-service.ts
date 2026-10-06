@@ -147,9 +147,10 @@ function toAlarmItem(a: AlarmRow): AlarmItem {
     deviceName: a.deviceName,
     deviceCode: a.deviceCode,
     location: a.location,
-    // 冰水主機沒有樓層欄位（機台實體皆位於 B1 機房，跟 floor-plan.ts 的既有假設一致）。
-    floor: (isFcu ? a.location : 'B1') as FloorId,
-    statusText: `異常：${a.ruleLabel}`,
+    // 冰水主機沒有樓層欄位（機台實體皆位於 B1 機房，跟 floor-plan.ts 的既有假設一致）；
+    // 通道離線告警（DDC2 在 B2）則直接用後端給的樓層。
+    floor: (isFcu || a.location === 'B2' ? a.location : 'B1') as FloorId,
+    statusText: a.ruleCode === 'ChannelOffline' ? `離線：${a.ruleLabel}` : `異常：${a.ruleLabel}`,
     triggerValue: isFcu && a.peakValue !== null ? `${a.peakValue.toFixed(1)} °C` : '已觸發',
     thresholdValue: isFcu ? fcuThresholdText(a.ruleCode) : '—',
     isCritical: a.severity === 2,

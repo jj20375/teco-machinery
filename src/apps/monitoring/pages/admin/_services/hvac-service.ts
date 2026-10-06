@@ -16,7 +16,8 @@ import { authorizedJsonApi, publicJsonApi } from './auth-service';
 
 export const ReadStatus = { NotRead: 0, Success: 1, Failed: 2, Disconnected: 3 } as const;
 export const FcuSwitchStatus = { Off: 0, On: 1, Unknown: -1 } as const;
-export const AlarmDeviceType = { Chiller: 0, Fcu: 1 } as const;
+/** Channel 是通訊通道（deviceId＝0 漢鐘 Gateway、1 DDC1、2 DDC2），給「離線」告警用，不是實體設備。 */
+export const AlarmDeviceType = { Chiller: 0, Fcu: 1, Channel: 2 } as const;
 /** 對應後端 FcuOperationMode／FcuFanSpeed（backend/src/Teco.Hvac.Contracts/Enums.cs），皆為供應商 SDK 的真實列舉值。 */
 export const FcuOperationMode = { Cooling: 1, Heating: 2, Ventilation: 3, Unknown: -1 } as const;
 export const FcuFanSpeedCode = { High: 0, Medium: 1, Low: 2, Auto: 3, Unknown: -1 } as const;
@@ -113,6 +114,8 @@ export interface AlarmRow {
   deviceName: string;
   deviceCode: string;
   location: string;
+  /** 只有 FCU 有：供應商編號搭配 DDC，例如「DDC1 · FC_MC1_03」；冰水主機為 null。 */
+  vendorLabel: string | null;
   ruleLabel: string;
 }
 
@@ -126,8 +129,9 @@ export function isMaintenanceAlarm(alarm: Pick<AlarmRow, 'ruleCode'>): boolean {
   return alarm.ruleCode === MAINTENANCE_RULE_CODE || alarm.ruleCode.startsWith(`${MAINTENANCE_RULE_CODE}.`);
 }
 
-/** 保養提醒要顯示成「待保養」，不是「異常」。 */
-export function alarmBadgeStatus(alarm: Pick<AlarmRow, 'ruleCode'>): 'ABNORMAL' | 'MAINTENANCE' {
+/** 保養提醒要顯示成「待保養」、通道離線要顯示成「離線」（跟設備狀態同一組樣式），其餘是「異常」。 */
+export function alarmBadgeStatus(alarm: Pick<AlarmRow, 'ruleCode'>): 'ABNORMAL' | 'MAINTENANCE' | 'OFFLINE' {
+  if (alarm.ruleCode === 'ChannelOffline') return 'OFFLINE';
   return isMaintenanceAlarm(alarm) ? 'MAINTENANCE' : 'ABNORMAL';
 }
 
