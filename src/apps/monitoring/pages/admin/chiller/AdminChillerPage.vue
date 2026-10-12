@@ -91,7 +91,7 @@ const page = ref(1);
 const pageSize = ref(20);
 const paged = computed(() => rows.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value));
 
-// ── 自訂名稱編輯 ──────────────────────────────
+// ── 設備名稱編輯 ──────────────────────────────
 // 跟 FCU 的差別：device_chiller.display_name 是 NOT NULL，所以這裡不接受留空。
 const editOpen = ref(false);
 const editSaving = ref(false);
@@ -110,11 +110,11 @@ async function submitEdit() {
   if (!editTarget.value || editSaving.value) return;
   const value = editValue.value.trim();
   if (!value) {
-    editError.value = '顯示名稱不能留空。';
+    editError.value = '設備名稱不能留空。';
     return;
   }
   if (value.length > 64) {
-    editError.value = '顯示名稱最多 64 個字。';
+    editError.value = '設備名稱最多 64 個字。';
     return;
   }
   // 沒改就直接關掉，不要打 API——不然操作紀錄會留下「冰水主機 1 → 冰水主機 1」這種空紀錄。
@@ -217,8 +217,8 @@ const save = handleSubmit(async (values) => {
           <table class="w-full text-left text-[13px] text-[#334155]">
             <thead class="bg-[#F8FAFC] text-[#64748B] border-b border-[#E2E8F0]">
               <tr>
-                <th class="px-4 py-3 font-semibold">自訂名稱</th>
-                <th class="px-4 py-3 font-semibold">系統編號</th>
+                <th class="px-4 py-3 font-semibold">設備名稱</th>
+                <th class="px-4 py-3 font-semibold">設備編號</th>
                 <th class="px-4 py-3 font-semibold">安裝位置</th>
                 <th class="px-4 py-3 font-semibold">出水溫度</th>
                 <th class="px-4 py-3 font-semibold">回水溫度</th>
@@ -240,7 +240,7 @@ const save = handleSubmit(async (values) => {
                 <td class="px-4 py-3"><AdminStatusBadge :status="c.status" /></td>
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-3">
-                    <button type="button" class="link-action" @click="openEdit(c)">編輯名稱</button>
+                    <button type="button" class="link-action" @click="openEdit(c)">編輯</button>
                     <button type="button" class="link-action" @click="openPanel(c)">告警門檻</button>
                     <button type="button" class="link-action" :class="c.maintenanceDue ? '!text-[#9A7B1F] font-bold' : ''" @click="openMaintenance(c)">
                       {{ c.maintenanceDue ? '待保養' : '保養' }}
@@ -319,17 +319,17 @@ const save = handleSubmit(async (values) => {
 
     <ChillerMaintenanceModal :open="maintenanceOpen" :chiller="maintenanceTarget" @close="maintenanceOpen = false" @reset="onMaintenanceReset" />
 
-    <!-- 自訂名稱 -->
+    <!-- 設備名稱 -->
     <div v-if="editOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40" @click.self="editOpen = false">
       <div class="bg-white rounded-xl shadow-2xl border border-[#E2E8F0] w-full max-w-[420px] overflow-hidden">
         <div class="px-6 pt-6 pb-4 border-b border-[#E2E8F0]">
-          <h3 class="text-base font-bold text-[#1A202C]">編輯自訂名稱</h3>
-          <p class="text-xs text-[#94A3B8] mt-1">系統編號 <span class="font-tabular text-[#64748B]">{{ editTarget?.code }}</span>（對應 Modbus 位址，不可修改）</p>
+          <h3 class="text-base font-bold text-[#1A202C]">編輯設備名稱</h3>
+          <p class="text-xs text-[#94A3B8] mt-1">設備編號 <span class="font-tabular text-[#64748B]">{{ editTarget?.code }}</span>（對應 Modbus 位址，不可修改）</p>
         </div>
         <form class="px-6 py-5 flex flex-col gap-4" @submit.prevent="submitEdit">
           <div v-if="editError" class="p-2.5 rounded-lg bg-[#FFF5F5] text-[#FF4757] text-xs">{{ editError }}</div>
           <label class="flex flex-col gap-1.5 text-xs text-[#64748B]">
-            自訂名稱
+            設備名稱
             <input v-model="editValue" type="text" maxlength="64" placeholder="例如 冰水主機 1 或現場標籤編號" class="px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2] placeholder-[#94A3B8]" />
           </label>
           <div class="flex justify-end gap-3 pt-1">

@@ -168,7 +168,7 @@ const save = handleSubmit(async (values) => {
   <AdminLayout page-title="FCU管理" current-path="/admin/fcu">
     <div class="flex flex-col gap-4">
       <div class="flex justify-end">
-        <AdminButton variant="primary" size="sm" @click="openPanel">室溫上下限設定</AdminButton>
+        <AdminButton variant="primary" size="sm" @click="openPanel">設定室溫</AdminButton>
       </div>
 
       <div v-if="loadError" class="p-3 rounded-lg bg-[#FFF5F5] text-[#FF4757] text-sm">{{ loadError }}</div>
@@ -218,10 +218,10 @@ const save = handleSubmit(async (values) => {
       </div>
     </div>
 
-    <!-- 室溫上下限設定 面板 -->
+    <!-- 設定室溫 面板 -->
     <AdminRightPanel
       :open="panelOpen"
-      title="室溫上下限設定"
+      title="設定室溫"
       :can-save="meta.dirty && meta.valid"
       :saving="saving"
       @close="panelOpen = false"
@@ -234,8 +234,7 @@ const save = handleSubmit(async (values) => {
         <section>
           <h4 class="text-sm font-bold text-[#1A202C]">室內溫度上下限 (°C)</h4>
           <p class="text-xs text-[#94A3B8] mt-0.5 mb-2">
-            當室內溫度不在設定範圍時將觸發異常告警；適用於全廠所有 FCU（供應商 SDK 沒有提供 FCU
-            設定溫度，無法用「溫差」判斷，改用絕對室溫上下限）
+            當室內溫度不在設定範圍時將觸發異常告警；適用於全廠所有 FCU
           </p>
           <div class="flex items-center gap-2">
             <input v-model="roomTempMin" v-bind="roomTempMinAttrs" type="number" step="0.1" placeholder="最低溫度" class="flex-1 min-w-0 px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2] placeholder-[#94A3B8]" />
