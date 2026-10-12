@@ -259,7 +259,7 @@ function updateAreaHeat() {
     const heat = areaHeat(area.id, props.placements, props.equipment);
     material.color.set(heat.color ?? AREA_COLOR);
     material.emissive.set(heat.color ?? '#000000');
-    material.emissiveIntensity = heat.tone === 'alert' ? .5 + heat.intensity : heat.tone === 'normal' ? .35 : 0;
+    material.emissiveIntensity = heat.tone === 'alert' ? .5 + heat.intensity : heat.tone === 'maintenance' ? .45 : heat.tone === 'normal' ? .35 : 0;
   }
   render();
 }

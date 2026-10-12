@@ -60,6 +60,7 @@ const selectedEquipment = computed(() => equipment.value.find((e) => e.id === se
 const available = computed(() => equipment.value.filter((e) => e.kind === kind.value && !placements.value.some((p) => p.deviceId === e.id)));
 const areaPlacements = computed(() => placements.value.filter((p) => p.areaId === selectedAreaId.value));
 const abnormalCount = computed(() => placements.value.filter((p) => equipmentColor(equipment.value.find((e) => e.id === p.deviceId)?.status) === '#f87171').length);
+const maintenanceCount = computed(() => placements.value.filter((p) => equipment.value.find((e) => e.id === p.deviceId)?.status === 'MAINTENANCE').length);
 
 watch(available, (list) => {
   if (!list.some((e) => e.id === pendingDeviceId.value)) pendingDeviceId.value = list[0]?.id ?? '';
@@ -220,7 +221,7 @@ onUnmounted(() => window.removeEventListener('beforeunload', beforeLeave));
               <button type="button" :aria-pressed="view === '3d'" @click="view = '3d'">3D 立體</button>
             </div>
           </div>
-          <div class="map-caption"><span>CAD 分區圖 <span class="divider">/</span> {{ areas.length }} 個分區</span><span>{{ placements.length }} 台已配置 <span class="divider">·</span> {{ abnormalCount }} 台異常／待保養</span></div>
+          <div class="map-caption"><span>CAD 分區圖 <span class="divider">/</span> {{ areas.length }} 個分區</span><span>{{ placements.length }} 台已配置 <span class="divider">·</span> {{ abnormalCount }} 台異常 <span class="divider">·</span> {{ maintenanceCount }} 台待保養</span></div>
           <div v-if="loading" class="loading" role="status">正在讀取配置…</div>
           <div v-else-if="view === '2d'" class="map-stage">
             <FloorPlanCanvas ref="canvasRef" :floor="floor" :placements="placements" :equipment="equipment" :editable="!loadError"
@@ -229,7 +230,7 @@ onUnmounted(() => window.removeEventListener('beforeunload', beforeLeave));
           </div>
           <!-- :key：3D 場景是掛載時一次建好的，換樓層要整個重建才會換成該層的圖面與分區 -->
           <FloorPlan3D v-else :key="floor" :floor="floor" :placements="placements" :equipment="equipment" :selected-device-id="selectedDeviceId" @fallback="view = '2d'" />
-          <div class="map-bottom"><div class="legend"><span><i class="blue" />正常</span><span><i class="red" />異常／待保養</span><span><i class="gray" />離線／停止</span></div>
+          <div class="map-bottom"><div class="legend"><span><i class="blue" />正常</span><span><i class="red" />異常</span><span><i class="yellow" />待保養</span><span><i class="gray" />離線／停止</span></div>
             <div v-if="view === '2d'" class="zoom-controls">
               <span class="zoom-hint">滾輪平移 · Ctrl+滾輪或雙指縮放</span>
               <button type="button" aria-label="縮小平面圖" :disabled="zoomView.atDefault" @click="canvasRef?.zoomBy(1 / 1.4)">−</button>
@@ -302,7 +303,7 @@ h2 { font-size: 25px; font-weight: 750; color: #142b3b; margin: 4px 0; }
 .map-caption { justify-content: space-between; padding: 13px 18px 0; font-size: 11px; color: #94adbd; gap: 8px; }.divider { margin: 0 7px; color: #506c7e; }
 .map-stage { height: clamp(440px, 65vh, 850px); padding: 8px 12px; background-image: radial-gradient(#284050 1px, transparent 1px); background-size: 22px 22px; }
 .map-bottom { justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 12px 18px; border-top: 1px solid #253847; }
-.legend { gap: 14px; font-size: 11px; color: #b3c6d3; }.legend span { gap: 6px; }i { display: inline-block; width: 8px; height: 8px; border-radius: 3px; flex-shrink: 0; }.blue { background: #60a5fa; }.red { background: #f87171; }.gray { background: #94a3b8; }
+.legend { gap: 14px; font-size: 11px; color: #b3c6d3; }.legend span { gap: 6px; }i { display: inline-block; width: 8px; height: 8px; border-radius: 3px; flex-shrink: 0; }.blue { background: #60a5fa; }.red { background: #f87171; }.yellow { background: #fbbf24; }.gray { background: #94a3b8; }
 .zoom-controls { display: flex; align-items: center; gap: 8px; }.zoom-hint { font-size: 10px; color: #6c8598; }.zoom-controls button { font-size: 12px; padding: 5px 8px; background: #1c303f; border-radius: 4px; }.zoom-controls button:not(:disabled):hover { background: #24425a; }
 .inspector { background: white; border: 1px solid #e2e8f0; border-radius: 14px; padding: 20px; color: #334155; }
 .inspector-heading { gap: 9px; margin-bottom: 15px; }h3 { font-size: 13px; font-weight: 700; margin: 0; }.step { border: 1px solid #cbe3e7; color: #32828e; border-radius: 6px; padding: 3px 5px; font-size: 10px; font-weight: 700; }

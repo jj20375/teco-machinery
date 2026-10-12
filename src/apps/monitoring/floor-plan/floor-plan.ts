@@ -44,8 +44,8 @@ export interface Area {
   unnamed: boolean;
 }
 export interface AreaHeat {
-  tone: 'normal' | 'alert' | 'none';
-  color?: '#60a5fa' | '#f87171';
+  tone: 'normal' | 'alert' | 'maintenance' | 'none';
+  color?: '#60a5fa' | '#f87171' | '#fbbf24';
   intensity: number;
   equipmentCount: number;
 }
@@ -124,8 +124,12 @@ export function basePlanImage(floor: FloorId): string {
 // 'b1-fcu-01' 這種樓層流水號，跟真實 device_fcu.id（依 channel/station_id/position 編號）
 // 沒有可靠對應關係，硬搬會把真實設備放到當初替假設備擺的位置上。舊資料就讓它留在瀏覽器裡失效。
 
+/** 待保養只是提醒（設備可能還在運轉），跟「異常」的紅色分開，用黃色。 */
+export const MAINTENANCE_COLOR = '#fbbf24';
+
 export function equipmentColor(status?: string): string {
   if (status === 'RUNNING') return '#60a5fa';
+  if (status === 'MAINTENANCE') return MAINTENANCE_COLOR;
   if (status && !['OFFLINE', 'STOPPED'].includes(status)) return '#f87171';
   return '#94a3b8';
 }
@@ -138,8 +142,9 @@ export function equipmentStatus(status?: string): string {
   return status ? '異常' : '無資料';
 }
 
+/** 異常（紅色）：不含待保養，那個另外用黃色顯示。 */
 export function isAlertStatus(status?: string): boolean {
-  return status !== undefined && !['RUNNING', 'STOPPED', 'OFFLINE'].includes(status);
+  return status !== undefined && !['RUNNING', 'STOPPED', 'OFFLINE', 'MAINTENANCE'].includes(status);
 }
 
 export function areaHeat(areaId: string, placements: Placement[], equipment: Equipment[]): AreaHeat {
@@ -153,6 +158,10 @@ export function areaHeat(areaId: string, placements: Placement[], equipment: Equ
     // 異常優先顯示，避免正常設備掩蓋同一區域的告警。
     const highest = Math.max(...temperatures, 26);
     return { tone: 'alert', color: '#f87171', intensity: Math.min(.88, .58 + Math.max(0, highest - 26) / 20), equipmentCount: devices.length };
+  }
+  if (devices.some((item) => item.status === 'MAINTENANCE')) {
+    // 異常 > 待保養 > 正常：有待保養的區域整塊顯示黃色，不被同區其他正常設備蓋掉。
+    return { tone: 'maintenance', color: MAINTENANCE_COLOR, intensity: .5, equipmentCount: devices.length };
   }
   if (devices.some((item) => item.status === 'RUNNING')) {
     return { tone: 'normal', color: '#60a5fa', intensity: .46, equipmentCount: devices.length };

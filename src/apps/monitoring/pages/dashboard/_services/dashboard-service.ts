@@ -14,7 +14,7 @@ import {
   listPublicChillersApi as listChillersApi, listPublicFcusApi as listFcusApi, listPublicAlarmsApi as listAlarmsApi,
   getPublicHourlyFcuStatsApi,
   deriveChillerStatus, chillerOperatingStatus, deriveFcuStatus, alarmingFcuIdsOf, isDataQualityOnline, fcuModeLabel, fcuFanSpeedLabel,
-  AlarmDeviceType, type AlarmRow,
+  AlarmDeviceType, alarmBadgeStatus, type AlarmRow,
 } from '../../admin/_services/hvac-service';
 import { chillerExceededFlags } from '../../admin/_services/threshold-service';
 
@@ -139,6 +139,9 @@ function fcuThresholdText(ruleCode: string): string {
   return Number.isFinite(threshold) ? `${threshold.toFixed(1)} °C` : '—';
 }
 
+/** 跟後台「全部告警」彈窗同一套分類：離線、待保養（保養提醒不是異常）、其餘才是異常。 */
+const ALARM_PREFIX = { OFFLINE: '離線', MAINTENANCE: '待保養', ABNORMAL: '異常' } as const;
+
 function toAlarmItem(a: AlarmRow): AlarmItem {
   const isFcu = a.deviceType === AlarmDeviceType.Fcu;
   return {
@@ -150,7 +153,7 @@ function toAlarmItem(a: AlarmRow): AlarmItem {
     // 冰水主機沒有樓層欄位（機台實體皆位於 B1 機房，跟 floor-plan.ts 的既有假設一致）；
     // 通道離線告警（DDC2 在 B2）則直接用後端給的樓層。
     floor: (isFcu || a.location === 'B2' ? a.location : 'B1') as FloorId,
-    statusText: a.ruleCode === 'ChannelOffline' ? `離線：${a.ruleLabel}` : `異常：${a.ruleLabel}`,
+    statusText: `${ALARM_PREFIX[alarmBadgeStatus(a)]}：${a.ruleLabel}`,
     triggerValue: isFcu && a.peakValue !== null ? `${a.peakValue.toFixed(1)} °C` : '已觸發',
     thresholdValue: isFcu ? fcuThresholdText(a.ruleCode) : '—',
     isCritical: a.severity === 2,
