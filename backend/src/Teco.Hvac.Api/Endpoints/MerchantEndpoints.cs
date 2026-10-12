@@ -83,15 +83,17 @@ public static class MerchantEndpoints
     }
 
     /// <summary>
-    /// 畫面上「編輯成員」核取方塊對應的頁面級資源，順序即畫面顯示順序。
-    /// 原本只有六項（對齊 Figma），新增 hvac.floor_plan 後變七項，跟側邊欄的七個項目 1:1 對應——
-    /// 少了這一項的話，用個人權限（member-{id} 專屬角色）的使用者永遠拿不到空間設備配置權限。
+    /// 新增／編輯使用者畫面上的功能核取方塊，順序即畫面顯示順序。每一項對應一個權限資源；勾選＝給 read，
+    /// 發 JWT 時 read 會自動展開成完整 CRUD ＋ 該資源全部子功能（場館的「CRUD 簡化模式」），所以畫面只需要開／關。
+    /// 全部勾選就等於場館管理員（見 AssignFeaturesAsync）；場館角色管理（merchant.roles）不在清單內，只有管理員擁有。
     /// </summary>
-    private static readonly string[] MemberFeatureCodes =
+    private static readonly (string Code, string Name)[] MemberFeatures =
     [
-        "hvac.overview", "hvac.floor_plan", "hvac.chillers", "hvac.fcus", "hvac.reports",
-        "merchant.users", "merchant.operation_log",
+        ("hvac.overview", "監控中心"), ("hvac.floor_plan", "空間設備配置"), ("hvac.chillers", "冰水主機管理"),
+        ("hvac.fcus", "FCU管理"), ("hvac.alarms", "告警"), ("hvac.thresholds", "告警門檻"), ("hvac.reports", "報表統計匯出"),
+        ("merchant.users", "使用者管理"), ("merchant.operation_log", "操作紀錄"),
     ];
+    private static readonly string[] MemberFeatureCodes = MemberFeatures.Select(f => f.Code).ToArray();
 
     private static bool RequireMerchant(ClaimsPrincipal principal, string code, string action, out RequestScope? scope)
     {
@@ -137,8 +139,19 @@ public static class MerchantEndpoints
             return Results.ValidationProblem(new Dictionary<string, string[]> { ["username"] = ["帳號與使用者名稱為必填。"] });
         }
 
-        var role = await roles.FindByIdAsync(request.RoleId, ct);
-        if (role is null || role.Scope != RoleScope.Merchant) return Results.BadRequest(new { message = "角色不存在或不是場館範圍角色。" });
+        // 新版畫面直接帶功能清單（Features）；舊的 RoleId 寫法保留給既有腳本與相容性。
+        AppRole? role = null;
+        var features = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (request.Features is not null)
+        {
+            if (NormalizeFeatures(scope!, request.Features, out features) is { } featureProblem) return featureProblem;
+        }
+        else
+        {
+            if (request.RoleId is not int requestedRoleId) return Results.BadRequest(new { message = "請選擇這個使用者可以使用的功能。" });
+            role = await roles.FindByIdAsync(requestedRoleId, ct);
+            if (role is null || role.Scope != RoleScope.Merchant) return Results.BadRequest(new { message = "角色不存在或不是場館範圍角色。" });
+        }
 
         var existingUser = await users.FindByUsernameAsync(request.Username.Trim(), ct);
         if (existingUser is not null)
@@ -165,11 +178,13 @@ public static class MerchantEndpoints
         }, ct);
 
         var id = await memberships.CreateAsync(
-            new MerchantMembership { MerchantId = scope!.MerchantId!.Value, UserId = userId, RoleId = request.RoleId }, ct);
+            new MerchantMembership { MerchantId = scope!.MerchantId!.Value, UserId = userId, RoleId = role?.Id }, ct);
+        if (role is null) await AssignFeaturesAsync(id, features, scope, memberships, roles, ct);
 
+        var permissionSummary = role is not null ? $"角色：{role.Name}" : DescribeFeatures(features);
         await opLog.LogAsync(scope, "merchant.user.create", "merchant_membership", id.ToString(),
-            $"新增使用者「{request.DisplayName.Trim()}」（{request.Username.Trim()}），角色：{role.Name}",
-            after: new { request.Username, request.DisplayName, request.Email, RoleId = request.RoleId, RoleName = role.Name }, ct: ct);
+            $"新增使用者「{request.DisplayName.Trim()}」（{request.Username.Trim()}），{permissionSummary}",
+            after: new { request.Username, request.DisplayName, request.Email, RoleId = role?.Id, RoleName = role?.Name, Features = role is null ? features.ToArray() : null }, ct: ct);
         return Results.Created($"/api/v1/merchant/users/{id}", new { id });
     }
 
@@ -346,8 +361,8 @@ public static class MerchantEndpoints
     }
 
     /// <summary>
-    /// 「編輯成員」面板要顯示的六個頁面開關目前是否勾選——讀這個人目前指派角色的實際授予
-    /// （不管是系統範本還是個人專屬角色都一樣讀），只看六個固定資源有沒有 per_read。
+    /// 編輯使用者畫面要預先勾選的功能：讀這個人目前指派角色的實際授予（系統範本、自訂角色、個人專屬角色都適用）。
+    /// 全權限角色（場館管理員）沒有逐項資料列、是發 JWT 時動態算的，所以直接視為全部勾選。
     /// </summary>
     private static async Task<IResult> GetUserFeatures(
         ClaimsPrincipal principal, int membershipId, MembershipRepository memberships, RoleRepository roles, CancellationToken ct)
@@ -356,92 +371,128 @@ public static class MerchantEndpoints
         var membership = await memberships.FindByIdAsync(membershipId, ct);
         if (membership is null || membership.MerchantId != scope!.MerchantId) return Results.NotFound();
 
-        var enabled = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (membership.RoleId is int roleId)
+        return Results.Ok(new { features = (await CurrentFeaturesAsync(membership, roles, ct)).ToArray() });
+    }
+
+    private static async Task<IReadOnlyList<string>> CurrentFeaturesAsync(MerchantMembership membership, RoleRepository roles, CancellationToken ct)
+    {
+        if (membership.RoleId is not int roleId) return [];
+        var role = await roles.FindByIdAsync(roleId, ct);
+        if (role?.IsFullAccess == true) return MemberFeatureCodes;
+        var enabled = new HashSet<string>(
+            (await roles.GetRolePermissionsAsync(roleId, ct)).Where(d => d.PerRead).Select(d => d.PermissionCode), StringComparer.OrdinalIgnoreCase);
+        return MemberFeatureCodes.Where(enabled.Contains).ToArray();
+    }
+
+    private static bool IsAdminRole(AppRole? role) => role is { IsSystem: true, Code: MerchantMembershipGuard.AdminRoleCode };
+
+    /// <summary>
+    /// 檢查並整理請求的功能清單。授予的每一項都必須是「操作者自己也有」的權限——不然只有「使用者管理」權限的人
+    /// 把全部功能勾給自己，就等於升級成場館管理員。回傳 null 表示通過。
+    /// </summary>
+    private static IResult? NormalizeFeatures(RequestScope scope, string[]? raw, out HashSet<string> features)
+    {
+        features = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var code in raw ?? [])
         {
-            var details = await roles.GetRolePermissionsAsync(roleId, ct);
-            foreach (var d in details.Where(d => d.PerRead)) enabled.Add(d.PermissionCode);
+            var match = MemberFeatures.FirstOrDefault(f => f.Code.Equals(code, StringComparison.OrdinalIgnoreCase));
+            if (match.Code is null) return Results.BadRequest(new { message = $"未知的功能代碼：{code}" });
+            features.Add(match.Code);
         }
-        return Results.Ok(new { features = MemberFeatureCodes.Where(enabled.Contains).ToArray() });
+        foreach (var (code, name) in MemberFeatures)
+        {
+            if (features.Contains(code) && !scope.Has(code, "read"))
+                return MerchantMembershipGuard.Denied($"您本身沒有「{name}」的權限，無法授予給其他人。");
+        }
+        return null;
+    }
+
+    private static string DescribeFeatures(IReadOnlyCollection<string> features)
+    {
+        if (features.Count == MemberFeatures.Length) return "權限：場館管理員（全部功能）";
+        if (features.Count == 0) return "權限：無任何功能";
+        return "權限：" + string.Join('、', MemberFeatures.Where(f => features.Contains(f.Code)).Select(f => f.Name));
     }
 
     /// <summary>
-    /// 儲存「編輯成員」的六個核取方塊：幫這個成員準備一個專屬角色（第一次會建立，之後沿用），
-    /// 把該角色在六個固定資源上的 per_read 設成勾選狀態，並把 membership 指到這個專屬角色。
-    ///
-    /// 只給 read，不直接給 create/update/delete——這正是刻意的設計，不是偷懶：場館目前是
-    /// 「CRUD 簡化模式」，read 在發 JWT 時會自動展開成完整 CRUD（見 MerchantRolePermissionConfigurationRules），
-    /// 剛好對應這個畫面「只是勾選要不要用某個功能」的語意，細部 CRUD 交給角色系統自己算，
-    /// 不需要在這裡重新發明一次。絕不直接改 merchant-admin/editor/viewer 這三個系統範本——
-    /// 那是所有場館共用的全域範本，改了會波及其他場館。
+    /// 把功能清單落實到這個成員身上：全部勾選就指到「場館管理員」系統角色（全權限、之後新增的功能也自動涵蓋、
+    /// 管理員的各項保護機制照常運作）；否則給他一個專屬角色（第一次建立，之後沿用）並把清單寫進去。
+    /// 絕不修改 merchant-admin／editor／viewer 這三個跨場館共用的系統範本。
+    /// </summary>
+    private static async Task AssignFeaturesAsync(
+        int membershipId, HashSet<string> features, RequestScope scope, MembershipRepository memberships, RoleRepository roles, CancellationToken ct)
+    {
+        if (features.Count == MemberFeatures.Length)
+        {
+            var admin = await roles.FindByCodeAsync(RoleScope.Merchant, MerchantMembershipGuard.AdminRoleCode, null, ct)
+                ?? throw new InvalidOperationException("找不到「場館管理員」系統角色。");
+            await memberships.UpdateRoleAsync(membershipId, admin.Id, null, ct);
+            return;
+        }
+
+        var personalRoleCode = $"member-{membershipId}";
+        var personalRole = await roles.FindByCodeAsync(RoleScope.Merchant, personalRoleCode, scope.MerchantId, ct);
+        var personalRoleId = personalRole?.Id ?? await roles.CreateAsync(new AppRole
+        {
+            Code = personalRoleCode, Name = "自訂權限", Scope = RoleScope.Merchant, MerchantId = scope.MerchantId, IsSystem = false,
+        }, ct);
+
+        foreach (var (code, _) in MemberFeatures)
+            await roles.SetRolePermissionAsync(personalRoleId, code, false, features.Contains(code), false, false, [], ct);
+        await memberships.UpdateRoleAsync(membershipId, personalRoleId, null, ct);
+    }
+
+    /// <summary>
+    /// 儲存使用者的功能清單。全部勾選＝場館管理員，所以這裡等同「升級／降級管理員」：
+    /// 沿用 MerchantMembershipGuard（擁有者不能被降級、其他管理員只有擁有者能動），並擋住「降級最後一位在職管理員」。
     /// </summary>
     private static async Task<IResult> SetUserFeatures(
         ClaimsPrincipal principal, int membershipId, SetUserFeaturesRequest request,
         MembershipRepository memberships, RoleRepository roles, UserRepository users, OperationLogger opLog, CancellationToken ct)
     {
         if (!RequireMerchant(principal, "merchant.users", "update", out var scope)) return Results.Forbid();
+        if (!scope!.HasOption("merchant.users", "assign_role")) return Results.Forbid();
         var membership = await memberships.FindByIdAsync(membershipId, ct);
-        if (membership is null || membership.MerchantId != scope!.MerchantId) return Results.NotFound();
+        if (membership is null || membership.MerchantId != scope.MerchantId) return Results.NotFound();
 
-        // 場館管理員絕對不能被這個面板轉成專屬角色——MemberFeatureCodes 只有六個固定資源，
-        // 沒有 merchant.roles，一旦轉換，這個帳號會永久失去角色管理能力（實際發生過的事故：
-        // 管理員自己在這個面板存檔後，隔天發現看不到「角色管理」，因為帳號已經不是 merchant-admin
-        // 角色了）。要調整場館管理員的權限，本來就應該去角色管理改 merchant-admin 這個角色本身。
-        if (membership.RoleId is int currentRoleId)
+        if (NormalizeFeatures(scope, request.Features, out var features) is { } featureProblem) return featureProblem;
+
+        // 勾選結果跟目前完全一樣就什麼都不做：不寫資料、不留紀錄，也不能讓對方的登入失效（自己存一次就被登出）。
+        var beforeFeatures = await CurrentFeaturesAsync(membership, roles, ct);
+        if (beforeFeatures.Count == features.Count && beforeFeatures.All(features.Contains)) return Results.NoContent();
+
+        var currentRole = membership.RoleId is int currentRoleId ? await roles.FindByIdAsync(currentRoleId, ct) : null;
+        var currentIsAdmin = IsAdminRole(currentRole);
+        var newIsAdmin = features.Count == MemberFeatures.Length;
+        if (currentIsAdmin != newIsAdmin)
         {
-            var currentRole = await roles.FindByIdAsync(currentRoleId, ct);
-            if (currentRole is { IsSystem: true, Code: "merchant-admin" })
+            var verb = newIsAdmin ? "升級為場館管理員" : "調降場館管理員的權限";
+            if (await MerchantMembershipGuard.CheckAsync(scope, membership, MemberAction.ChangeRole, memberships, roles, ct) is { } denied)
             {
-                await LogMemberDeniedAsync(opLog, users, scope, "merchant.user.features.update", membership, "調整頁面權限",
-                    "場館管理員的權限由角色本身決定，無法用此面板調整。", ct);
-                return Results.BadRequest(new
+                await LogMemberDeniedAsync(opLog, users, scope, "merchant.user.features.update", membership, verb, denied, ct);
+                return MerchantMembershipGuard.Denied(denied);
+            }
+            if (currentIsAdmin)
+            {
+                var merchantUsers = await memberships.ListForMerchantAsync(scope.MerchantId!.Value, ct);
+                var activeAdminCount = merchantUsers.Count(u => u.RoleCode == MerchantMembershipGuard.AdminRoleCode && u.IsActive);
+                if (membership.IsActive && activeAdminCount <= 1)
                 {
-                    message = "場館管理員的權限由角色本身決定，無法用此面板調整（會導致永久失去角色管理等未列在開關上的能力）。如需調整，請改到角色管理編輯 merchant-admin 角色。",
-                });
+                    const string reason = "這是目前唯一在職的場館管理員，無法調降權限，請先讓另一位使用者成為管理員（勾選全部功能）。";
+                    await LogMemberDeniedAsync(opLog, users, scope, "merchant.user.features.update", membership, verb, reason, ct);
+                    return Results.BadRequest(new { message = reason });
+                }
             }
         }
 
-        var personalRoleCode = $"member-{membershipId}";
-        var personalRole = await roles.FindByCodeAsync(RoleScope.Merchant, personalRoleCode, scope.MerchantId, ct);
-        int personalRoleId;
-        if (personalRole is null)
-        {
-            personalRoleId = await roles.CreateAsync(new AppRole
-            {
-                Code = personalRoleCode,
-                Name = "自訂權限",
-                Scope = RoleScope.Merchant,
-                MerchantId = scope.MerchantId,
-                IsSystem = false,
-            }, ct);
-        }
-        else
-        {
-            personalRoleId = personalRole.Id;
-        }
-
-        // 在真的動手改之前，先把這個專屬角色目前勾選了什麼記下來，才有 before 可以比對。
-        var beforeDetails = await roles.GetRolePermissionsAsync(personalRoleId, ct);
-        var beforeFeatures = beforeDetails.Where(d => d.PerRead).Select(d => d.PermissionCode).ToArray();
-
-        var checkedFeatures = new HashSet<string>(request.Features ?? [], StringComparer.OrdinalIgnoreCase);
-        foreach (var code in MemberFeatureCodes)
-        {
-            var isChecked = checkedFeatures.Contains(code);
-            await roles.SetRolePermissionAsync(personalRoleId, code, false, isChecked, false, false, [], ct);
-        }
-
-        if (membership.RoleId != personalRoleId)
-        {
-            await memberships.UpdateRoleAsync(membershipId, personalRoleId, null, ct);
-        }
+        await AssignFeaturesAsync(membershipId, features, scope, memberships, roles, ct);
+        // 只讓被改動的這個人的舊 token 失效（不整個場館一起踢，否則管理員每改一次別人權限自己也被登出）。
         await users.IncrementAuthVersionAsync(membership.UserId, ct);
 
         var targetUser = await users.FindByIdAsync(membership.UserId, ct);
-        var afterFeatures = MemberFeatureCodes.Where(checkedFeatures.Contains).ToArray();
         await opLog.LogAsync(scope, "merchant.user.features.update", "merchant_membership", membershipId.ToString(),
-            $"調整了「{targetUser?.DisplayName ?? $"membership#{membershipId}"}」可使用的頁面權限",
-            before: new { Features = beforeFeatures }, after: new { Features = afterFeatures }, ct: ct);
+            $"調整了「{targetUser?.DisplayName ?? $"membership#{membershipId}"}」可使用的功能（{DescribeFeatures(features)}）",
+            before: new { Features = beforeFeatures }, after: new { Features = MemberFeatureCodes.Where(features.Contains).ToArray() }, ct: ct);
         return Results.NoContent();
     }
 
@@ -630,7 +681,7 @@ public static class MerchantEndpoints
         return Results.NoContent();
     }
 
-    public sealed record AddMerchantUserRequest(string Username, string DisplayName, string? Email, string? Password, int RoleId);
+    public sealed record AddMerchantUserRequest(string Username, string DisplayName, string? Email, string? Password, int? RoleId, string[]? Features = null);
     public sealed record UpdateMerchantUserRequest(int? RoleId, bool? IsActive, string? DisplayName = null);
     public sealed record CreateMerchantRoleRequest(string Code, string Name);
     public sealed record RenameMerchantRoleRequest(string Name);

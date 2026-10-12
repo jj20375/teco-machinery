@@ -4,8 +4,9 @@ import AdminSidebar from './AdminSidebar.vue';
 import AdminHeader from './AdminHeader.vue';
 import ChangePasswordModal from './ChangePasswordModal.vue';
 import { getSessionApi } from '../_services/auth-service';
+import { canReadAdminFeature, firstAccessibleAdminPath } from '../_services/admin-menu';
 
-defineProps<{
+const props = defineProps<{
   pageTitle: string;
   currentPath: string;
 }>();
@@ -17,7 +18,18 @@ const isChangePasswordOpen = ref(false);
 // 內容整頁 403 的破碎畫面——這是 2026-09-24 修過的真實 bug，直接導去平台帳號真正該去的
 // 首頁，不要讓人卡在這種畫面上。純 UX 優化，真正的防線仍是後端 JWT 檢查。
 onMounted(() => {
-  if (getSessionApi()?.user.scopeKind === 'platform') window.location.replace('/platform/merchants');
+  const user = getSessionApi()?.user;
+  if (user?.scopeKind === 'platform') {
+    window.location.replace('/platform/merchants');
+    return;
+  }
+  // 登入後一律先到 /admin（監控中心）；沒有「監控中心」權限的人（例如只有使用者管理）會直接看到整頁錯誤，
+  // 改導去他第一個有權限的選單頁。一個都沒有就留在原地，頁面本身會顯示沒有權限的說明。
+  const isHome = props.currentPath === '/admin' || props.currentPath === '/admin/';
+  if (user && isHome && !canReadAdminFeature(user.grants, 'hvac.overview')) {
+    const alternative = firstAccessibleAdminPath(user.grants);
+    if (alternative) window.location.replace(alternative);
+  }
 });
 </script>
 

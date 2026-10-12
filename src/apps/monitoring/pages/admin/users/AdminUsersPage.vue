@@ -6,34 +6,27 @@ import AdminButton from '../_components/AdminButton.vue';
 import AdminPagination from '../_components/AdminPagination.vue';
 import AdminRightPanel from '../_components/AdminRightPanel.vue';
 import EmptyState from '../_components/EmptyState.vue';
+import MemberFeatureChecklist from './_components/MemberFeatureChecklist.vue';
 import { ApiError, getSessionApi, updateSessionDisplayName } from '../_services/auth-service';
 import {
   listMerchantUsersApi,
-  listMerchantRolesApi,
   createMerchantUserApi,
   updateMerchantUserApi,
   resetMerchantUserPasswordApi,
   deleteMerchantUserApi,
   getMemberFeaturesApi,
   setMemberFeaturesApi,
-  MEMBER_FEATURE_OPTIONS,
   type MerchantUserRow,
-  type MerchantRoleOption,
 } from '../_services/user-service';
 
 const queryClient = useQueryClient();
 
-// ── 清單：使用者 + 角色（TanStack Query 取代原本手寫的 ref+onMounted+try/catch） ──
+// ── 清單 ──────────────────────────
 const usersQuery = useQuery({ queryKey: ['merchant-users'], queryFn: listMerchantUsersApi });
-const rolesQuery = useQuery({ queryKey: ['merchant-roles'], queryFn: listMerchantRolesApi });
 
 const users = computed<MerchantUserRow[]>(() => usersQuery.data.value ?? []);
-const roles = computed<MerchantRoleOption[]>(() => rolesQuery.data.value ?? []);
-const loading = computed(() => usersQuery.isPending.value || rolesQuery.isPending.value);
+const loading = computed(() => usersQuery.isPending.value);
 
-// 兩個查詢分開報錯：使用者清單失敗才算「整頁都看不到」，角色清單失敗只影響角色名稱顯示與
-// 新增使用者的角色下拉選單——之前把兩者合併成同一個 loadError，會出現「清單明明有資料，
-// 卻整頁顯示紅字說看不到清單」這種矛盾畫面（角色清單 403，使用者清單其實是 200）。
 function describeError(err: unknown, forbiddenMessage: string, fallbackMessage: string): string {
   if (!err) return '';
   if (err instanceof ApiError && err.status === 403) return forbiddenMessage;
@@ -46,25 +39,15 @@ const loadError = computed(() =>
     '載入使用者清單失敗，請稍後再試。',
   ),
 );
-const rolesLoadError = computed(() =>
-  describeError(
-    rolesQuery.error.value,
-    '目前登入的帳號沒有「場館角色管理」權限，角色名稱與新增使用者的角色選單暫時無法使用。',
-    '載入角色清單失敗，角色名稱與新增使用者的角色選單暫時無法使用。',
-  ),
-);
 
 /** 場館成員清單的 queryKey，任何寫入操作成功後都要讓它失效重打，取代原本手動呼叫 fetchAll()。 */
 function invalidateUsers() {
   return queryClient.invalidateQueries({ queryKey: ['merchant-users'] });
 }
 
-// 角色名稱優先用 MerchantUserRow 自帶的 roleName（後端 JOIN app_role 算出來的，一定準確）。
-// 不能只靠去 roles 清單裡找 roleId，因為「編輯成員」六個核取方塊面板產生的個人專屬角色
-// （member-{membershipId}）故意不會出現在 /api/v1/merchant/roles 清單裡（見後端
-// RoleRepository.ListAsync 的註解），用清單反查會把這批人的角色名稱誤判成「（未指派）」。
-function roleLabel(user: Pick<MerchantUserRow, 'roleId' | 'roleName'>): string {
-  return user.roleName ?? '（未指派）';
+// 角色機制在畫面上已隱藏：只區分「場館管理員」（擁有全部功能）和一般使用者，細節看「設定」裡的功能勾選。
+function identityLabel(user: MerchantUserRow): string {
+  return isMerchantAdmin(user) ? '場館管理員' : '一般使用者';
 }
 function formatLastLogin(value: string | null): string {
   if (!value) return '—';
@@ -116,9 +99,9 @@ const createUserMutation = useMutation({
   onSuccess: () => invalidateUsers(),
 });
 
-// ── 編輯成員（頁面權限開關、啟用狀態）面板 ─────────────────
-// UI 比照設計稿改成「這個人能看哪些頁面」的核取方塊，但底層仍然是角色算權限：
-// 存檔時後端會幫這個人準備一個專屬角色（member-{membershipId}），不是真的取消角色系統。
+// ── 編輯成員（可使用的功能、啟用狀態）面板 ─────────────────
+// 勾選功能而不是選角色：存檔時後端把全部勾選指到「場館管理員」系統角色，其餘幫這個人準備專屬角色
+// （member-{membershipId}）。角色機制仍在後端運作，只是不再讓使用者面對它。
 const panelOpen = ref(false);
 const panelLoading = ref(false);
 const saveError = ref('');
@@ -127,12 +110,7 @@ const originalFeatures = ref<string[]>([]);
 const form = reactive<{ features: string[]; isActive: boolean }>({ features: [], isActive: true });
 const saving = computed(() => setFeaturesMutation.isPending.value || updateUserMutation.isPending.value);
 
-/**
- * 場館管理員不能用這個面板編輯——面板只有六個固定開關，儲存時後端會把這個人的角色換成
- * 只有那六項的專屬角色，永久失去角色管理等未列在開關上的能力（實際發生過：管理員自己存檔後
- * 隔天發現看不到「角色管理」）。要調整場館管理員的權限，應該去角色管理改 merchant-admin 角色本身。
- * 後端 SetUserFeatures 也擋了同樣的情況，這裡只是讓使用者一開始就點不到，不用等 API 報錯。
- */
+/** 全部功能都勾選＝場館管理員（跟後端 AssignFeaturesAsync 一致，角色代碼是 merchant-admin）。 */
 function isMerchantAdmin(u: MerchantUserRow): boolean {
   return u.roleCode === 'merchant-admin';
 }
@@ -152,21 +130,22 @@ function isSelf(u: MerchantUserRow): boolean {
  * 其他管理員只有擁有者能刪除、停用、重設密碼、改名。
  */
 const callerIsOwner = computed(() => users.value.some((u) => isSelf(u) && u.isOwner));
-function lockReason(u: MerchantUserRow, action: 'delete' | 'toggle' | 'reset' | 'rename'): string | null {
+function lockReason(u: MerchantUserRow, action: 'delete' | 'toggle' | 'reset' | 'rename' | 'features'): string | null {
   const self = isSelf(u);
   if (u.isOwner) {
     if (action === 'delete') return '這是場館的擁有者（第一位管理員），無法刪除';
     if (action === 'toggle') return '這是場館的擁有者（第一位管理員），無法停用';
+    if (action === 'features') return '這是場館的擁有者（第一位管理員），永遠擁有全部功能，無法調整';
     return self ? null : '這是場館的擁有者（第一位管理員），只有本人可以變更';
   }
   if (!isMerchantAdmin(u) || callerIsOwner.value) return null;
   if (self && (action === 'reset' || action === 'rename')) return null;
-  const verb = { delete: '刪除', toggle: '停用／啟用', reset: '重設密碼', rename: '修改' }[action];
+  const verb = { delete: '刪除', toggle: '停用／啟用', reset: '重設密碼', rename: '修改', features: '調整權限' }[action];
   return `這是場館管理員的帳號，只有場館擁有者可以${verb}`;
 }
 
 async function openPanel(u: MerchantUserRow) {
-  if (isMerchantAdmin(u)) return;
+  if (lockReason(u, 'features')) return;
   activeUser.value = u;
   form.isActive = u.isActive;
   saveError.value = '';
@@ -310,21 +289,25 @@ async function confirmDelete() {
 const addOpen = ref(false);
 const adding = createUserMutation.isPending;
 const addError = ref('');
-const addForm = reactive({ username: '', displayName: '', email: '', password: '', roleId: null as number | null });
+const addForm = reactive({ username: '', displayName: '', email: '', password: '', features: [] as string[] });
 
 function openAdd() {
   addForm.username = '';
   addForm.displayName = '';
   addForm.email = '';
   addForm.password = '';
-  addForm.roleId = roles.value[0]?.id ?? null;
+  addForm.features = [];
   addError.value = '';
   addOpen.value = true;
 }
 async function submitAdd() {
   if (adding.value) return;
-  if (!addForm.username.trim() || !addForm.displayName.trim() || !addForm.password.trim() || !addForm.roleId) {
-    addError.value = '帳號、使用者名稱、密碼與角色為必填。';
+  if (!addForm.username.trim() || !addForm.displayName.trim() || !addForm.password.trim()) {
+    addError.value = '帳號、使用者名稱與密碼為必填。';
+    return;
+  }
+  if (addForm.features.length === 0) {
+    addError.value = '請至少勾選一項這個使用者可以使用的功能。';
     return;
   }
   if (addForm.password.length < 6) {
@@ -338,7 +321,7 @@ async function submitAdd() {
       displayName: addForm.displayName.trim(),
       email: addForm.email.trim(),
       password: addForm.password,
-      roleId: addForm.roleId,
+      features: addForm.features,
     });
     addOpen.value = false;
   } catch (err) {
@@ -351,7 +334,6 @@ async function submitAdd() {
   <AdminLayout page-title="使用者管理" current-path="/admin/users">
     <div class="flex flex-col gap-4">
       <div v-if="loadError" class="p-3 rounded-lg bg-[#FFF5F5] text-[#FF4757] text-sm">{{ loadError }}</div>
-      <div v-else-if="rolesLoadError" class="p-3 rounded-lg bg-[#FFFBEB] text-[#B45309] text-sm">{{ rolesLoadError }}</div>
 
       <!-- 搜尋 -->
       <div class="bg-white rounded-xl border border-[#E2E8F0] p-4 flex items-center gap-3">
@@ -372,7 +354,7 @@ async function submitAdd() {
       <!-- 表格 -->
       <div class="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden">
         <div class="flex justify-end px-4 pt-4">
-          <AdminButton variant="primary" size="sm" :disabled="loading || !!loadError || !!rolesLoadError" @click="openAdd">
+          <AdminButton variant="primary" size="sm" :disabled="loading || !!loadError" @click="openAdd">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
             </svg>
@@ -386,7 +368,7 @@ async function submitAdd() {
               <tr>
                 <th class="px-4 py-3 font-semibold">使用者名稱</th>
                 <th class="px-4 py-3 font-semibold">帳號</th>
-                <th class="px-4 py-3 font-semibold">角色</th>
+                <th class="px-4 py-3 font-semibold">身分</th>
                 <th class="px-4 py-3 font-semibold">信箱</th>
                 <th class="px-4 py-3 font-semibold whitespace-nowrap">最後登入時間</th>
                 <th class="px-4 py-3 font-semibold">啟用否</th>
@@ -416,9 +398,9 @@ async function submitAdd() {
                   <div class="flex items-center gap-1.5">
                     <span
                       class="px-2 py-0.5 rounded text-xs font-semibold"
-                      :class="u.roleCode === 'merchant-admin' ? 'bg-[#E6FBF7] text-[#10B981]' : 'bg-[#F1F5F9] text-[#64748B]'"
+                      :class="isMerchantAdmin(u) ? 'bg-[#E6FBF7] text-[#10B981]' : 'bg-[#F1F5F9] text-[#64748B]'"
                     >
-                      {{ roleLabel(u) }}
+                      {{ identityLabel(u) }}
                     </span>
                     <span v-if="u.isLocked" class="px-2 py-0.5 rounded text-xs font-semibold bg-[#FFF5F5] text-[#FF4757]" title="連續登入失敗次數過多，暫時鎖定中">
                       已鎖定
@@ -443,11 +425,7 @@ async function submitAdd() {
                 </td>
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-3">
-                    <span
-                      v-if="isMerchantAdmin(u)"
-                      class="text-[#CBD5E1] cursor-not-allowed"
-                      title="場館管理員的權限由角色本身決定，請到角色管理調整，不能用此面板編輯"
-                    >設定</span>
+                    <span v-if="lockReason(u, 'features')" class="text-[#CBD5E1] cursor-not-allowed" :title="lockReason(u, 'features') ?? undefined">設定</span>
                     <button v-else type="button" class="link-action" @click="openPanel(u)">設定</button>
                     <span v-if="lockReason(u, 'reset')" class="text-[#CBD5E1] cursor-not-allowed" :title="lockReason(u, 'reset') ?? undefined">重設密碼</span>
                     <button v-else type="button" class="link-action" @click="openReset(u)">重設密碼</button>
@@ -469,7 +447,7 @@ async function submitAdd() {
       </div>
     </div>
 
-    <!-- 編輯成員：角色與啟用狀態 -->
+    <!-- 編輯成員：可使用的功能與啟用狀態 -->
     <AdminRightPanel
       :open="panelOpen"
       title="編輯成員"
@@ -486,30 +464,14 @@ async function submitAdd() {
           <div class="rounded-lg border border-[#E2E8F0] divide-y divide-[#E2E8F0] text-sm">
             <div class="flex justify-between px-3 py-2.5"><span class="text-[#64748B]">使用者名稱</span><span class="font-medium text-[#334155]">{{ activeUser.displayName }}</span></div>
             <div class="flex justify-between px-3 py-2.5"><span class="text-[#64748B]">帳號</span><span class="font-medium text-[#334155]">{{ activeUser.username }}</span></div>
-            <div class="flex justify-between px-3 py-2.5"><span class="text-[#64748B]">角色</span><span class="font-medium text-[#334155]">{{ roleLabel(activeUser) }}</span></div>
+            <div class="flex justify-between px-3 py-2.5"><span class="text-[#64748B]">身分</span><span class="font-medium text-[#334155]">{{ identityLabel(activeUser) }}</span></div>
             <div class="flex justify-between px-3 py-2.5"><span class="text-[#64748B]">信箱</span><span class="font-medium text-[#334155]">{{ activeUser.email ?? '—' }}</span></div>
           </div>
         </section>
 
         <section>
-          <div class="flex items-center justify-between mb-2">
-            <h4 class="text-sm font-bold text-[#1A202C]">權限</h4>
-            <span class="text-xs text-[#94A3B8]">啟用否</span>
-          </div>
           <div v-if="panelLoading" class="text-xs text-[#94A3B8] py-4 text-center">載入中…</div>
-          <div v-else class="rounded-lg border border-[#E2E8F0] divide-y divide-[#E2E8F0]">
-            <label
-              v-for="opt in MEMBER_FEATURE_OPTIONS"
-              :key="opt.code"
-              class="flex items-center justify-between px-3 py-2.5 text-sm cursor-pointer"
-            >
-              <span class="text-[#334155]">{{ opt.name }}</span>
-              <input type="checkbox" :value="opt.code" v-model="form.features" class="w-4 h-4 rounded accent-[#4C7DF0]" />
-            </label>
-          </div>
-          <p class="text-xs text-[#94A3B8] mt-1.5">
-            勾選這個人能看到的頁面；實際能不能新增/修改/刪除，由後端依場館目前的權限模式統一計算。
-          </p>
+          <MemberFeatureChecklist v-else v-model="form.features" />
         </section>
 
         <section>
@@ -616,7 +578,7 @@ async function submitAdd() {
 
     <!-- 新增使用者 -->
     <div v-if="addOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40" @click.self="addOpen = false">
-      <div class="bg-white rounded-xl shadow-2xl border border-[#E2E8F0] w-full max-w-[440px] overflow-hidden">
+      <div class="bg-white rounded-xl shadow-2xl border border-[#E2E8F0] w-full max-w-[440px] max-h-[92vh] overflow-y-auto">
         <div class="px-6 pt-6 pb-4 border-b border-[#E2E8F0] flex items-center justify-between">
           <h3 class="text-base font-bold text-[#1A202C]">新增使用者</h3>
           <button type="button" class="text-[#94A3B8] hover:text-[#334155]" @click="addOpen = false">
@@ -646,12 +608,7 @@ async function submitAdd() {
             <input v-model="addForm.password" autocomplete="new-password" name="new-user-initial-password" data-lpignore="true" data-1p-ignore type="text" placeholder="請告知使用者，日後可自行修改"
               class="w-full px-3 py-2.5 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2] placeholder-[#94A3B8]" />
           </div>
-          <div>
-            <label class="block text-xs font-bold text-[#334155] mb-1.5">角色 <span class="text-[#FF4757]">*</span></label>
-            <select v-model="addForm.roleId" class="w-full px-3 py-2.5 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2]">
-              <option v-for="r in roles" :key="r.id" :value="r.id">{{ r.name }}</option>
-            </select>
-          </div>
+          <MemberFeatureChecklist v-model="addForm.features" />
 
           <div class="flex justify-end gap-3 pt-2">
             <AdminButton type="button" variant="tertiary" @click="addOpen = false">取消</AdminButton>

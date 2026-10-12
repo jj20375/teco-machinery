@@ -131,6 +131,9 @@ backend/
   由 `MerchantMembershipGuard` 在刪除、停用／啟用、改角色、重設密碼、改名時檢查：擁有者不能被刪除、停用、改角色，
   別人也不能幫他重設密碼或改名；其他場館管理員只有擁有者能刪除、停用、改角色、重設密碼、改名；本人改自己的名字與密碼不受限。
   違規回 403＋中文原因。平台管理員走 `/api/v1/platform`，仍可重設擁有者的密碼。擁有者換人目前沒有畫面，要直接改資料庫。
+- **使用者權限＝勾選功能**（2026-10-12）：`POST /merchant/users` 可直接帶 `features`（取代 `roleId`，舊寫法保留相容），`PUT /merchant/users/{id}/features` 儲存。
+  9 個功能（`MemberFeatures`）勾選＝授予 read（簡化模式展開成完整 CRUD）；**全部勾選就指到 `merchant-admin` 系統角色**，否則給個人專屬角色 `member-{id}`。
+  授予的功能必須是操作者本身也有的（防提權）；升級／降級管理員經 `MerchantMembershipGuard`，且不能降級最後一位在職管理員；勾選沒變就不處理。需 `merchant.users:update` ＋ `assign_role` 子功能。
 - **場館自訂角色代碼不可重複**（2026-10-12）：新增角色時 `CreateRole` 會檢查代碼，同場館的自訂角色、全平台共用的系統範本（`editor`／`merchant-admin`…，
   `merchant_id` 為 NULL，資料庫唯一鍵擋不住）都算占用，大小寫視為相同；`member-` 開頭是「編輯成員」個人專屬角色用的，一律保留。重複回 409＋中文原因。
   `GET /api/v1/merchant/roles/code-availability?code=` 給畫面輸入時即時檢查用（需 `merchant.roles:create`），回 `{ available, message }`。代碼建立後不可修改。

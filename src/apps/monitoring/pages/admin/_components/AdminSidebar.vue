@@ -6,45 +6,9 @@
  */
 import { ref, computed } from 'vue';
 import { getSessionApi } from '../_services/auth-service';
+import { ADMIN_MENU_ITEMS as ALL_MENU_ITEMS, type MenuItem } from '../_services/admin-menu';
 
 const props = defineProps<{ currentPath: string }>();
-
-type IconType = 'dashboard' | 'floor' | 'chiller' | 'fcu' | 'report' | 'user' | 'role' | 'log';
-
-interface Child {
-  title: string;
-  path: string;
-}
-interface MenuItem {
-  title: string;
-  path: string;
-  iconType: IconType;
-  /** 對應後端 MerchantEndpoints.MemberFeatureCodes 的資源代碼，跟側邊欄七個項目 1:1 對應
-   *（見該陣列上的註解）；沒有這個代碼的帳號看不到這個項目，不是只擋 API 卻選單照樣顯示。 */
-  permissionCode: string;
-  children?: Child[];
-}
-
-const ALL_MENU_ITEMS: MenuItem[] = [
-  { title: '監控中心', path: '/admin', iconType: 'dashboard', permissionCode: 'hvac.overview' },
-  { title: '空間設備配置', path: '/admin/floor-plan', iconType: 'floor', permissionCode: 'hvac.floor_plan' },
-  { title: '冰水主機管理', path: '/admin/chiller', iconType: 'chiller', permissionCode: 'hvac.chillers' },
-  { title: 'FCU管理', path: '/admin/fcu', iconType: 'fcu', permissionCode: 'hvac.fcus' },
-  {
-    title: '統計報表',
-    path: '/admin/reports',
-    iconType: 'report',
-    permissionCode: 'hvac.reports',
-    children: [
-      { title: '冰水主機運轉報表', path: '/admin/reports/chiller' },
-      { title: 'FCU運轉報表', path: '/admin/reports/fcu' },
-      { title: '異常告警報表', path: '/admin/reports/alarms' },
-    ],
-  },
-  { title: '使用者管理', path: '/admin/users', iconType: 'user', permissionCode: 'merchant.users' },
-  { title: '角色管理', path: '/admin/roles', iconType: 'role', permissionCode: 'merchant.roles' },
-  { title: '操作紀錄', path: '/admin/operation-log', iconType: 'log', permissionCode: 'merchant.operation_log' },
-];
 
 /**
  * 場館範圍的帳號才看權限清單過濾選單；平台範圍（目前沒有對應的前台頁面，理論上不會走到這裡）

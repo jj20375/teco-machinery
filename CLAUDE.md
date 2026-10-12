@@ -180,8 +180,15 @@
   只擋「刪除」不夠——能重設密碼、改角色、停用就能接管或癱瘓帳號，所以這幾條路都要擋。前端只是讓按鈕點不到，
   真正的防線在後端，且要先用 `membership.MerchantId == scope.MerchantId` 確認屬於自己的場館。
   平台建立場館的第一位管理員時自動成為擁有者（`PlatformEndpoints.CreateMerchantMembership`）。
+- **使用者權限改成直接勾選功能，角色機制在畫面上隱藏**（2026-10-12）：新增／編輯使用者是 9 個功能核取方塊（`MemberFeatures`，後端與
+  `user-service.ts` 的 `MEMBER_FEATURE_OPTIONS` 要同步），**全部勾選＝場館管理員**（指到 `merchant-admin` 系統角色，全權限且未來新增的功能自動涵蓋），
+  否則是個人專屬角色 `member-{membershipId}`。側邊欄的「角色管理」已隱藏（`AdminSidebar.vue` 註解掉一行即可恢復），頁面與後端角色 API 都保留。
+  授予的每個功能都必須是操作者自己也有的（`NormalizeFeatures`，否則「使用者管理」權限就能把全部勾給自己升級成管理員）；升級／降級管理員走
+  `MerchantMembershipGuard`，並擋「降級最後一位在職管理員」。勾選結果沒變就不寫資料、不讓對方登入失效。
+  功能之間有依賴（監控中心需要冰水主機管理＋FCU管理等），規則集中在 `member-feature-rules.ts`：監控中心自動帶入、報表只提示；新增功能或頁面時要同步更新這份規則。
+  場館角色管理（`merchant.roles`）不在核取清單內，只有管理員擁有；既有的自訂角色（如 tony_role1）維持原狀，那些人要改權限會轉成個人專屬角色。
 - **角色清單查詢一律要排除 `member-%` 個人專屬角色**（`WHERE code NOT LIKE 'member-%'`）：
-  「編輯成員」六個核取方塊面板會自動幫每個成員建立一個 `Code = "member-{membershipId}"`、
+  「編輯成員」功能核取方塊面板會自動幫每個成員建立一個 `Code = "member-{membershipId}"`、
   `Name = "自訂權限"` 的專屬角色，這是內部實作細節，不該出現在給人挑選的一般角色下拉選單裡。
   2026-09-23 修過的真實 bug：`RoleRepository.ListAsync` 漏了這條 WHERE，導致多個成員都設定過
   個人權限後，新增使用者的角色選單出現好幾筆同名「自訂權限」。日後任何新寫的角色清單查詢
