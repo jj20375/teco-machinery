@@ -151,6 +151,9 @@
   `meta.dirty`/`meta.valid` 取代手寫的 dirty-check。日後任何新的「最低 ~ 最高」數值表單
   都比照這個模式，不要每頁重新手刻一套比大小的邏輯。細節見 `backend/CHANGELOG.md`
   「告警門檻設定補上前端防呆驗證」一節。
+- **數字輸入框一律加 `v-numeric-input`**（2026-10-08，`pages/admin/_services/numeric-input.ts`）：`type="number"` 放行 `e`/`+`/`-`，
+  內容不合法時 `value` 會變空字串、被當成「不設定」存進去。指令在輸入當下擋掉非數字字元；整數欄位用 `v-numeric-input="{ integer: true, negative: false }"`。
+  不要改成 `type="text"` 自己處理，會失去上下調整鈕與手機數字鍵盤。
 - **`backend/deploy/` 有 4 支 demo 用腳本**：`seed-demo-data.sh`/`clear-demo-data.sh`
   （歷史報表資料）、`simulate-live-data.sh`/`stop-live-simulation.sh`（監控中心／前台
   戰情室的即時卡片）。**手動測試 `/internal/ingest/*` 之前，一定要先 `docker compose

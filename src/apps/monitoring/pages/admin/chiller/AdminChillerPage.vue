@@ -10,6 +10,7 @@ import AdminPagination from '../_components/AdminPagination.vue';
 import AdminRightPanel from '../_components/AdminRightPanel.vue';
 import ChillerMaintenanceModal from './_components/ChillerMaintenanceModal.vue';
 import { ApiError } from '../_services/auth-service';
+import { vNumericInput } from '../_services/numeric-input';
 import {
   listChillersApi, listAlarmsApi, deriveChillerStatus, isDataQualityOnline, isMaintenanceAlarm,
   updateChillerDisplayNameApi, AlarmDeviceType,
@@ -273,9 +274,9 @@ const save = handleSubmit(async (values) => {
           <h4 class="text-sm font-bold text-[#1A202C]">出水溫度 (°C)</h4>
           <p class="text-xs text-[#94A3B8] mt-0.5 mb-2">當出水溫度不在設定範圍時將觸發出水異常告警；留空代表不設定該側門檻</p>
           <div class="flex items-center gap-2">
-            <input v-model="supplyTempMin" v-bind="supplyTempMinAttrs" type="number" step="0.1" placeholder="最低溫度" class="flex-1 min-w-0 px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2] placeholder-[#94A3B8]" />
+            <input v-model="supplyTempMin" v-bind="supplyTempMinAttrs" v-numeric-input type="number" step="0.1" placeholder="最低溫度" class="flex-1 min-w-0 px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2] placeholder-[#94A3B8]" />
             <span class="text-[#94A3B8]">~</span>
-            <input v-model="supplyTempMax" v-bind="supplyTempMaxAttrs" type="number" step="0.1" placeholder="最高溫度" class="flex-1 min-w-0 px-3 py-2 text-sm text-black border rounded-lg focus:outline-none placeholder-[#94A3B8]" :class="errors.supplyTempMax ? 'border-[#FF4757] text-[#FF4757] focus:border-[#FF4757]' : 'border-[#CBD5E1] text-black focus:border-[#00D1B2]'" />
+            <input v-model="supplyTempMax" v-bind="supplyTempMaxAttrs" v-numeric-input type="number" step="0.1" placeholder="最高溫度" class="flex-1 min-w-0 px-3 py-2 text-sm text-black border rounded-lg focus:outline-none placeholder-[#94A3B8]" :class="errors.supplyTempMax ? 'border-[#FF4757] text-[#FF4757] focus:border-[#FF4757]' : 'border-[#CBD5E1] text-black focus:border-[#00D1B2]'" />
           </div>
           <p v-if="errors.supplyTempMax" class="text-xs text-[#FF4757] mt-1">{{ errors.supplyTempMax }}</p>
         </section>
@@ -284,9 +285,9 @@ const save = handleSubmit(async (values) => {
           <h4 class="text-sm font-bold text-[#1A202C]">回水溫度 (°C)</h4>
           <p class="text-xs text-[#94A3B8] mt-0.5 mb-2">當回水溫度不在設定範圍時將觸發回水異常告警</p>
           <div class="flex items-center gap-2">
-            <input v-model="returnTempMin" v-bind="returnTempMinAttrs" type="number" step="0.1" placeholder="最低溫度" class="flex-1 min-w-0 px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2] placeholder-[#94A3B8]" />
+            <input v-model="returnTempMin" v-bind="returnTempMinAttrs" v-numeric-input type="number" step="0.1" placeholder="最低溫度" class="flex-1 min-w-0 px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2] placeholder-[#94A3B8]" />
             <span class="text-[#94A3B8]">~</span>
-            <input v-model="returnTempMax" v-bind="returnTempMaxAttrs" type="number" step="0.1" placeholder="最高溫度" class="flex-1 min-w-0 px-3 py-2 text-sm border rounded-lg focus:outline-none placeholder-[#94A3B8]" :class="errors.returnTempMax ? 'border-[#FF4757] text-[#FF4757] focus:border-[#FF4757]' : 'border-[#CBD5E1] text-black focus:border-[#00D1B2]'" />
+            <input v-model="returnTempMax" v-bind="returnTempMaxAttrs" v-numeric-input type="number" step="0.1" placeholder="最高溫度" class="flex-1 min-w-0 px-3 py-2 text-sm border rounded-lg focus:outline-none placeholder-[#94A3B8]" :class="errors.returnTempMax ? 'border-[#FF4757] text-[#FF4757] focus:border-[#FF4757]' : 'border-[#CBD5E1] text-black focus:border-[#00D1B2]'" />
           </div>
           <p v-if="errors.returnTempMax" class="text-xs text-[#FF4757] mt-1">{{ errors.returnTempMax }}</p>
         </section>
@@ -295,9 +296,9 @@ const save = handleSubmit(async (values) => {
           <h4 class="text-sm font-bold text-[#1A202C]">溫度差 ΔT (°C)</h4>
           <p class="text-xs text-[#94A3B8] mt-0.5 mb-2">當溫度差不在設定範圍時將觸發溫度差異常告警</p>
           <div class="flex items-center gap-2">
-            <input v-model="tempDiffMin" v-bind="tempDiffMinAttrs" type="number" step="0.1" placeholder="最低溫度差" class="flex-1 min-w-0 px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2] placeholder-[#94A3B8]" />
+            <input v-model="tempDiffMin" v-bind="tempDiffMinAttrs" v-numeric-input type="number" step="0.1" placeholder="最低溫度差" class="flex-1 min-w-0 px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2] placeholder-[#94A3B8]" />
             <span class="text-[#94A3B8]">~</span>
-            <input v-model="tempDiffMax" v-bind="tempDiffMaxAttrs" type="number" step="0.1" placeholder="最高溫度差" class="flex-1 min-w-0 px-3 py-2 text-sm border rounded-lg focus:outline-none placeholder-[#94A3B8]" :class="errors.tempDiffMax ? 'border-[#FF4757] text-[#FF4757] focus:border-[#FF4757]' : 'border-[#CBD5E1] text-black focus:border-[#00D1B2]'" />
+            <input v-model="tempDiffMax" v-bind="tempDiffMaxAttrs" v-numeric-input type="number" step="0.1" placeholder="最高溫度差" class="flex-1 min-w-0 px-3 py-2 text-sm border rounded-lg focus:outline-none placeholder-[#94A3B8]" :class="errors.tempDiffMax ? 'border-[#FF4757] text-[#FF4757] focus:border-[#FF4757]' : 'border-[#CBD5E1] text-black focus:border-[#00D1B2]'" />
           </div>
           <p v-if="errors.tempDiffMax" class="text-xs text-[#FF4757] mt-1">{{ errors.tempDiffMax }}</p>
         </section>
@@ -307,7 +308,7 @@ const save = handleSubmit(async (values) => {
           <p class="text-xs text-[#94A3B8] mt-0.5 mb-2">
             每運轉多少小時保養一次。距上次保養達到此時數會通知一次並顯示「待保養」，直到在「保養」按下保養完成才解除並重新計算；留空代表不提醒
           </p>
-          <input v-model="maintenanceHoursLimit" v-bind="maintenanceHoursLimitAttrs" type="number" step="100" min="1" placeholder="不設定" class="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none placeholder-[#94A3B8]" :class="errors.maintenanceHoursLimit ? 'border-[#FF4757] text-[#FF4757] focus:border-[#FF4757]' : 'border-[#CBD5E1] text-black focus:border-[#00D1B2]'" />
+          <input v-model="maintenanceHoursLimit" v-bind="maintenanceHoursLimitAttrs" v-numeric-input="{ integer: true, negative: false }" type="number" step="100" min="1" placeholder="不設定" class="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none placeholder-[#94A3B8]" :class="errors.maintenanceHoursLimit ? 'border-[#FF4757] text-[#FF4757] focus:border-[#FF4757]' : 'border-[#CBD5E1] text-black focus:border-[#00D1B2]'" />
           <p v-if="errors.maintenanceHoursLimit" class="text-xs text-[#FF4757] mt-1">{{ errors.maintenanceHoursLimit }}</p>
         </section>
 

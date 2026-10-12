@@ -10,6 +10,7 @@ import AdminPagination from '../_components/AdminPagination.vue';
 import AdminRightPanel from '../_components/AdminRightPanel.vue';
 import EmptyState from '../_components/EmptyState.vue';
 import { ApiError } from '../_services/auth-service';
+import { vNumericInput } from '../_services/numeric-input';
 import {
   listFcusApi, listAlarmsApi, deriveFcuStatus, alarmingFcuIdsOf, isDataQualityOnline,
   fcuModeLabel, fcuFanSpeedLabel, fcuVendorLabel, updateFcuDisplayNameApi,
@@ -237,9 +238,9 @@ const save = handleSubmit(async (values) => {
             當室內溫度不在設定範圍時將觸發異常告警；適用於全廠所有 FCU
           </p>
           <div class="flex items-center gap-2">
-            <input v-model="roomTempMin" v-bind="roomTempMinAttrs" type="number" step="0.1" placeholder="最低溫度" class="flex-1 min-w-0 px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2] placeholder-[#94A3B8]" />
+            <input v-model="roomTempMin" v-bind="roomTempMinAttrs" v-numeric-input type="number" step="0.1" placeholder="最低溫度" class="flex-1 min-w-0 px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2] placeholder-[#94A3B8]" />
             <span class="text-[#94A3B8]">~</span>
-            <input v-model="roomTempMax" v-bind="roomTempMaxAttrs" type="number" step="0.1" placeholder="最高溫度" class="flex-1 min-w-0 px-3 py-2 text-sm border rounded-lg focus:outline-none placeholder-[#94A3B8]" :class="errors.roomTempMax ? 'border-[#FF4757] text-[#FF4757] focus:border-[#FF4757]' : 'border-[#CBD5E1] text-black focus:border-[#00D1B2]'" />
+            <input v-model="roomTempMax" v-bind="roomTempMaxAttrs" v-numeric-input type="number" step="0.1" placeholder="最高溫度" class="flex-1 min-w-0 px-3 py-2 text-sm border rounded-lg focus:outline-none placeholder-[#94A3B8]" :class="errors.roomTempMax ? 'border-[#FF4757] text-[#FF4757] focus:border-[#FF4757]' : 'border-[#CBD5E1] text-black focus:border-[#00D1B2]'" />
           </div>
           <p v-if="errors.roomTempMax" class="text-xs text-[#FF4757] mt-1">{{ errors.roomTempMax }}</p>
         </section>
