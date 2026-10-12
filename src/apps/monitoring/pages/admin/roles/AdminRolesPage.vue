@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue';
+import { ref, reactive, computed, watch, onBeforeUnmount } from 'vue';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
 import AdminLayout from '../_components/AdminLayout.vue';
 import AdminButton from '../_components/AdminButton.vue';
@@ -12,6 +12,7 @@ import {
   getRolePermissionsApi,
   setRolePermissionsApi,
   createMerchantRoleApi,
+  checkRoleCodeApi,
   renameMerchantRoleApi,
   deleteMerchantRoleApi,
   parseSubFeatures,
@@ -72,16 +73,61 @@ const createRoleMutation = useMutation({
   mutationFn: () => createMerchantRoleApi(addForm.code.trim(), addForm.name.trim()),
   onSuccess: () => invalidateRoles(),
 });
+// 代碼即時檢查：停止輸入 400ms 後（或離開欄位時）問後端一次。用序號丟掉過期的回應，
+// 避免快速連打時較慢的舊回應蓋掉最新結果。後端新增時還會再查一次，這裡只是讓人早點看到提示。
+const codeCheck = reactive<{ state: 'idle' | 'checking' | 'ok' | 'taken' | 'error'; message: string }>({ state: 'idle', message: '' });
+let codeCheckSeq = 0;
+let codeCheckTimer: ReturnType<typeof setTimeout> | undefined;
+
+async function runCodeCheck() {
+  clearTimeout(codeCheckTimer);
+  const code = addForm.code.trim();
+  if (!code) {
+    codeCheckSeq++;
+    codeCheck.state = 'idle';
+    return;
+  }
+  const seq = ++codeCheckSeq;
+  codeCheck.state = 'checking';
+  try {
+    const result = await checkRoleCodeApi(code);
+    if (seq !== codeCheckSeq) return;
+    codeCheck.state = result.available ? 'ok' : 'taken';
+    codeCheck.message = result.message ?? '';
+  } catch (err) {
+    if (seq !== codeCheckSeq) return;
+    // 檢查本身失敗（網路、權限）不擋新增，後端送出時仍會檢查。
+    codeCheck.state = 'error';
+    codeCheck.message = err instanceof Error ? err.message : '無法確認代碼是否重複。';
+  }
+}
+watch(() => addForm.code, () => {
+  clearTimeout(codeCheckTimer);
+  codeCheckSeq++;
+  if (!addForm.code.trim()) {
+    codeCheck.state = 'idle';
+    return;
+  }
+  codeCheck.state = 'checking';
+  codeCheckTimer = setTimeout(runCodeCheck, 400);
+});
+onBeforeUnmount(() => clearTimeout(codeCheckTimer));
+
 function openAdd() {
   addForm.code = '';
   addForm.name = '';
   addError.value = '';
+  codeCheck.state = 'idle';
   addOpen.value = true;
 }
 async function submitAdd() {
   if (createRoleMutation.isPending.value) return;
   if (!addForm.code.trim() || !addForm.name.trim()) {
     addError.value = '代碼與名稱為必填。';
+    return;
+  }
+  if (codeCheck.state === 'taken') {
+    addError.value = codeCheck.message || '這個角色代碼已經存在，請換一個。';
     return;
   }
   addError.value = '';
@@ -407,7 +453,18 @@ async function savePermissions() {
           <div v-if="addError" class="p-2.5 rounded-lg bg-[#FFF5F5] text-[#FF4757] text-xs">{{ addError }}</div>
           <label class="flex flex-col gap-1.5 text-xs text-[#64748B]">
             角色代碼
-            <input v-model="addForm.code" type="text" placeholder="例如 supervisor" class="px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2] placeholder-[#94A3B8]" />
+            <input
+              v-model="addForm.code"
+              type="text"
+              placeholder="例如 supervisor"
+              class="px-3 py-2 text-sm text-black border rounded-lg focus:outline-none placeholder-[#94A3B8]"
+              :class="codeCheck.state === 'taken' ? 'border-[#FF4757] focus:border-[#FF4757]' : 'border-[#CBD5E1] focus:border-[#00D1B2]'"
+              @blur="runCodeCheck"
+            />
+            <span v-if="codeCheck.state === 'checking'" class="text-[#94A3B8]">檢查代碼中…</span>
+            <span v-else-if="codeCheck.state === 'taken'" class="text-[#FF4757]">{{ codeCheck.message }}</span>
+            <span v-else-if="codeCheck.state === 'ok'" class="text-[#10B981]">這個代碼可以使用</span>
+            <span v-else-if="codeCheck.state === 'error'" class="text-[#B45309]">{{ codeCheck.message }}（送出時仍會再檢查一次）</span>
           </label>
           <label class="flex flex-col gap-1.5 text-xs text-[#64748B]">
             角色名稱
@@ -416,7 +473,7 @@ async function savePermissions() {
           <p class="text-xs text-[#94A3B8]">新角色一開始沒有任何權限，建立後要另外開啟「編輯權限」勾選。</p>
           <div class="flex justify-end gap-3 pt-1">
             <AdminButton variant="tertiary" :disabled="createRoleMutation.isPending.value" type="button" @click="addOpen = false">取消</AdminButton>
-            <AdminButton variant="primary" :disabled="createRoleMutation.isPending.value" type="submit">
+            <AdminButton variant="primary" :disabled="createRoleMutation.isPending.value || codeCheck.state === 'taken'" type="submit">
               {{ createRoleMutation.isPending.value ? '新增中…' : '新增' }}
             </AdminButton>
           </div>

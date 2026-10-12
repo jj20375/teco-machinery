@@ -60,6 +60,20 @@ public sealed class RoleRepository(TecoDbConnectionFactory factory)
         return row is null ? null : ToEntity(row);
     }
 
+    /// <summary>
+    /// 場館新增自訂角色時，代碼是否已被占用：同場館的自訂角色與全平台共用的系統範本（merchant_id IS NULL，
+    /// 例如 editor／merchant-admin）都算。資料庫唯一鍵 (scope, code, merchant_id) 擋不住後者——
+    /// NULL 在唯一鍵裡互不相等——所以這裡要明確查。比對沿用欄位的 collation，大小寫視為相同。
+    /// </summary>
+    public async Task<bool> IsMerchantRoleCodeTakenAsync(string code, int? merchantId, CancellationToken ct = default)
+    {
+        using var conn = await factory.CreateOpenAsync(ct);
+        var count = await conn.ExecuteScalarAsync<long>(
+            "SELECT COUNT(1) FROM app_role WHERE scope = @scope AND code = @code AND (merchant_id <=> @merchantId OR merchant_id IS NULL)",
+            new { scope = (int)RoleScope.Merchant, code, merchantId });
+        return count > 0;
+    }
+
     public async Task<int> CreateAsync(AppRole role, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);

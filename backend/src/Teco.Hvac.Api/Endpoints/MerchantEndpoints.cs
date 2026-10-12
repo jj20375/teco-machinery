@@ -28,6 +28,7 @@ public static class MerchantEndpoints
         group.MapPut("/users/{membershipId:int}/features", SetUserFeatures);
 
         group.MapGet("/roles", ListRoles);
+        group.MapGet("/roles/code-availability", CheckRoleCodeAvailability);
         group.MapPost("/roles", CreateRole);
         group.MapPatch("/roles/{roleId:int}", RenameRole);
         group.MapDelete("/roles/{roleId:int}", DeleteRole);
@@ -460,18 +461,47 @@ public static class MerchantEndpoints
         return Results.Ok(await repo.ListAsync(RoleScope.Merchant, scope!.MerchantId, ct));
     }
 
+    /// <summary>
+    /// 回傳 null 表示這個代碼可以用；否則是要直接顯示給使用者的原因。`member-` 開頭是「編輯成員」面板
+    /// 自動建立的個人專屬角色用的（見 SetUserFeatures），而且不會出現在角色清單裡，使用者看不到、
+    /// 也就無從得知已經被占用，所以一律保留。
+    /// </summary>
+    private static async Task<string?> ValidateNewRoleCodeAsync(string code, int? merchantId, RoleRepository roles, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return "角色代碼為必填。";
+        if (code.StartsWith("member-", StringComparison.OrdinalIgnoreCase)) return "「member-」開頭是系統保留用途，請換一個代碼。";
+        if (await roles.IsMerchantRoleCodeTakenAsync(code, merchantId, ct)) return $"角色代碼「{code}」已經存在，請換一個。";
+        return null;
+    }
+
+    /// <summary>新增角色表單輸入代碼時即時檢查用；真正的防線仍在 CreateRole（送出時會再查一次）。</summary>
+    private static async Task<IResult> CheckRoleCodeAvailability(
+        ClaimsPrincipal principal, string? code, RoleRepository roles, CancellationToken ct)
+    {
+        if (!RequireMerchant(principal, "merchant.roles", "create", out var scope)) return Results.Forbid();
+        var message = await ValidateNewRoleCodeAsync((code ?? string.Empty).Trim(), scope!.MerchantId, roles, ct);
+        return Results.Ok(new { available = message is null, message });
+    }
+
     private static async Task<IResult> CreateRole(
         ClaimsPrincipal principal, CreateMerchantRoleRequest request, RoleRepository repo, OperationLogger opLog, CancellationToken ct)
     {
         if (!RequireMerchant(principal, "merchant.roles", "create", out var scope)) return Results.Forbid();
+
+        var code = (request.Code ?? string.Empty).Trim();
+        var name = (request.Name ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(name)) return Results.BadRequest(new { message = "角色名稱為必填。" });
+        var codeProblem = await ValidateNewRoleCodeAsync(code, scope!.MerchantId, repo, ct);
+        if (codeProblem is not null) return Results.Conflict(new { message = codeProblem });
+
         var id = await repo.CreateAsync(new AppRole
         {
-            Code = request.Code.Trim(), Name = request.Name.Trim(), Scope = RoleScope.Merchant, MerchantId = scope!.MerchantId,
+            Code = code, Name = name, Scope = RoleScope.Merchant, MerchantId = scope.MerchantId,
         }, ct);
 
         await opLog.LogAsync(scope, "merchant.role.create", "app_role", id.ToString(),
-            $"建立場館自訂角色「{request.Name.Trim()}」（{request.Code.Trim()}）",
-            after: new { request.Code, request.Name }, ct: ct);
+            $"建立場館自訂角色「{name}」（{code}）",
+            after: new { Code = code, Name = name }, ct: ct);
         return Results.Created($"/api/v1/merchant/roles/{id}", new { id });
     }
 

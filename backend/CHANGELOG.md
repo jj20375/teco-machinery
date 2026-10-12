@@ -1756,3 +1756,19 @@ migration 016 套用到本機後，`merchant_admin`（場館 1）與 `kym_leader
 - 兩個請求是依序送的、不是同一個交易：改名成功但權限儲存失敗時，面板停在原處顯示錯誤、清單已是新名稱，重試只會重送權限，不會再改一次名。
 
 **驗證**（`merchant_admin`＋Tony測試角色1，驗完已還原名稱與權限）：只改名、同時改名＋改權限（請求依序為 PATCH、POST，清單即時更新、面板自動關閉）、名稱留空被擋、重新輸入後錯誤立刻消失。
+
+## 角色代碼重複檢查（2026-10-12）
+
+**起因**：討論「角色代碼可否修改」時發現新增角色其實完全沒檢查代碼重複——系統範本角色的 `merchant_id` 是 NULL，資料庫唯一鍵 `(scope, code, merchant_id)` 擋不住，
+自訂角色可以建出跟 `editor`／`merchant-admin` 同代碼的角色，而 `MerchantMembershipGuard`、使用者管理頁等地方是只看代碼字串判斷「是不是場館管理員」，會把該角色成員誤判成管理員。
+（代碼建立後仍不開放修改，原因見上述討論：權限綁 `role_id` 不受代碼影響，但這幾處字串判斷與 `member-` 保留前綴會出問題。）
+
+**做法**
+- 後端 `RoleRepository.IsMerchantRoleCodeTakenAsync`：同場館自訂角色＋系統範本都算占用。`MerchantEndpoints.ValidateNewRoleCodeAsync` 另外保留 `member-` 開頭、擋空白。
+- `CreateRole` 在伺服器端檢查：重複／保留回 409＋`message`，名稱空白回 400（以前重複會直接 500）。
+- 新增 `GET /api/v1/merchant/roles/code-availability?code=`：回 `{ available, message }`，前端輸入時即時檢查。
+- 前端新增角色視窗：停止輸入 0.4 秒或離開欄位時檢查，重複顯示紅字與原因並停用「新增」；可用顯示綠字；檢查本身失敗只提示、不擋新增（送出時後端仍會查）。用序號丟掉過期回應。
+
+**驗證**（重建 api 容器後，`merchant_admin`）：可用代碼、自訂角色重複、大小寫不同（`TONY_ROLE1`）、系統範本（`editor`、`merchant-admin`）、`member-99`、空白，檢查端點回應皆正確；
+直接 POST 重複與保留代碼回 409、空名稱回 400，皆未建立資料；畫面上輸入 `editor` 顯示紅字且「新增」停用、改成未使用代碼顯示綠字。
+**沒處理**：平台管理層級的角色新增（`/api/v1/platform/roles`，平台角色管理頁也有「新增角色」按鈕）尚未加這個檢查，仍可能建出重複代碼。

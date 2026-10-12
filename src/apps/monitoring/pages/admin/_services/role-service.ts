@@ -52,6 +52,17 @@ export function listMerchantRolesApi(): Promise<MerchantRoleOption[]> {
   return authorizedJsonApi('/api/v1/merchant/roles');
 }
 
+export interface RoleCodeAvailability {
+  available: boolean;
+  /** 不能用的原因（已經存在、系統保留等），可直接顯示給使用者。 */
+  message: string | null;
+}
+
+/** 新增角色前即時檢查代碼是否可用；送出新增時後端會再檢查一次，這支只是讓使用者早點看到提示。 */
+export function checkRoleCodeApi(code: string): Promise<RoleCodeAvailability> {
+  return authorizedJsonApi(`/api/v1/merchant/roles/code-availability?code=${encodeURIComponent(code)}`);
+}
+
 export function createMerchantRoleApi(code: string, name: string): Promise<{ id: number }> {
   return authorizedJsonApi('/api/v1/merchant/roles', { method: 'POST', body: JSON.stringify({ code, name }) });
 }
