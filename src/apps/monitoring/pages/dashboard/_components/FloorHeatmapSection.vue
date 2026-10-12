@@ -141,7 +141,7 @@ function alarmStatus(text: string) {
         <thead>
           <tr class="text-xs text-[#8B949E] bg-[#0D1117]">
             <th class="text-left font-normal py-2 px-2 rounded-l-md">時間</th>
-            <th class="text-left font-normal py-2 px-2">設備名稱</th>
+            <th class="text-left font-normal py-2 px-2 min-w-[188px]">設備名稱</th>
             <th class="text-left font-normal py-2 px-2">設備編號</th>
             <th class="text-left font-normal py-2 px-2">安裝位置</th>
             <th class="text-left font-normal py-2 px-2 rounded-r-md">狀態</th>
