@@ -65,6 +65,12 @@ public sealed class ChannelWatchdog(
         return false;
     }
 
+    /// <summary>
+    /// 重建 Collector 時呼叫：重新計時。沒有這一步的話，一旦曾經超過門檻沒有事件（例如主機睡眠），
+    /// 重建後 ShouldRestart 仍然是 true，監督迴圈會每秒重建好幾十次、永遠收不到資料。
+    /// </summary>
+    public void ResetEventClock(DateTimeOffset nowUtc) => _lastAnyEventUtc = nowUtc;
+
     /// <summary>完全沒有收到任何事件（含失敗）超過門檻，代表 Collector 本身可能卡死，需要重建。</summary>
     public bool ShouldRestart(DateTimeOffset nowUtc) =>
         (nowUtc - _lastAnyEventUtc).TotalSeconds > _options.WatchdogRestartAfterSeconds;

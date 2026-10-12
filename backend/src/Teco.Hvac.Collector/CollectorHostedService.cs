@@ -112,6 +112,7 @@ public sealed class CollectorHostedService : BackgroundService
         int restartCount = 0;
         while (!ct.IsCancellationRequested)
         {
+            _watchdog.ResetEventClock(DateTimeOffset.UtcNow);
             using var collector = CreateAndStartCollector();
             _logger.LogInformation("Collector 已啟動（第 {Count} 次）", restartCount + 1);
 

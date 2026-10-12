@@ -1816,3 +1816,16 @@ migration 016 套用到本機後，`merchant_admin`（場館 1）與 `kym_leader
 - 選單定義抽到 `_services/admin-menu.ts`（側邊欄與落地頁共用）；`AdminLayout.vue` 在 `/admin` 發現沒有「監控中心」權限時，導去第一個有權限的選單頁（登入後一律先到 `/admin` 的問題）。
 
 **驗證**：畫面實測新增視窗的連動與提示；建只有「使用者管理」的暫時帳號，登入後直接落在 `/admin/users`、側邊欄只有一項（驗完已刪除）。
+
+## 修正：Collector 無限重建迴圈（2026-10-12）
+
+**現象**：本機用模擬器測畫面時，冰水主機與 FCU 全部離線、沒有資料。Collector 日誌每秒重複「超過 300 秒未收到任何事件，重建 Collector」，累計次數已到兩億多。
+模擬器與網路本身都正常（三台設備都連得到）。
+
+**原因**：`ChannelWatchdog.ShouldRestart` 比的是「最後一次收到任何事件的時間」，重建 Collector 時沒有把它歸零。一旦曾經超過 300 秒沒事件（這次是 Mac 睡眠），
+重建後馬上又判定逾時，監督迴圈每次都在 `while` 條件就跳出、立刻再重建，新建的 DLL collector 還沒收到任何事件就被拆掉，變成永遠收不到資料的緊密迴圈。
+
+**修正**：`ChannelWatchdog.ResetEventClock`，`RunSupervisorLoopAsync` 每次（重新）建立 collector 前呼叫。
+
+**驗證**：重建 collector 容器、`simctl.py connect` 後 CH-1／CH-2 與 95 台 FCU 皆有讀值，2 分鐘內重建次數為 0。
+**注意**：只有「連 ConnectFailed 之類的事件都沒有」的情況才會觸發；現場通常設備斷線也會有失敗事件，但主機睡眠、網路卡死這類情況理論上一樣會遇到。
