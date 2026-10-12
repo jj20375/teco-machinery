@@ -8,6 +8,7 @@ import AdminStatusBadge from '../_components/AdminStatusBadge.vue';
 import AdminPagination from '../_components/AdminPagination.vue';
 import EmptyState from '../_components/EmptyState.vue';
 import { ApiError } from '../_services/auth-service';
+import { downloadReportXlsx, reportFileName, useReportExport, type ExportColumn } from '../_services/report-export';
 import { listAlarmsApi } from '../_services/hvac-service';
 
 /** 預設區間「近 3 個月」要用當下時間算，不能寫死日期字串——寫死的日期一過就會讓使用者
@@ -92,8 +93,24 @@ function reset() {
   page.value = 1;
 }
 
+type AlarmReportRow = (typeof rows.value)[number];
+const { exporting, exportError, run: runExport } = useReportExport();
+const EXPORT_COLUMNS: ExportColumn<AlarmReportRow>[] = [
+  { header: '通報日期時間', width: 22, value: (r) => r.triggeredAt },
+  { header: '設備名稱', width: 18, value: (r) => r.deviceName },
+  { header: '設備編號', width: 14, value: (r) => r.deviceCode },
+  { header: '安裝位置', width: 10, value: (r) => r.location },
+  { header: '告警項目', width: 28, value: (r) => r.alarmItem },
+  { header: '狀態', width: 10, value: (r) => (r.isResolved ? '已排除' : '異常') },
+];
+/** 匯出目前日期區間與搜尋條件下的全部告警（含其他頁），不是只有畫面上這一頁。 */
 function exportExcel() {
-  window.alert('已匯出異常告警報表 (Excel)');
+  return runExport(() => downloadReportXlsx({
+    fileName: reportFileName('異常告警報表', `${appliedFrom.value}_${appliedTo.value}`),
+    sheet: '異常告警報表',
+    columns: EXPORT_COLUMNS,
+    rows: filtered.value,
+  }));
 }
 </script>
 
@@ -123,15 +140,16 @@ function exportExcel() {
       </div>
 
       <div v-if="loadError" class="p-3 rounded-lg bg-[#FFF5F5] text-[#FF4757] text-sm">{{ loadError }}</div>
+      <div v-if="exportError" class="p-3 rounded-lg bg-[#FFF5F5] text-[#FF4757] text-sm">{{ exportError }}</div>
 
       <!-- 表格 -->
       <div v-else class="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden">
         <div class="flex justify-end px-4 pt-4">
-          <AdminButton variant="primary" size="sm" @click="exportExcel">
+          <AdminButton variant="primary" size="sm" :disabled="exporting" @click="exportExcel">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
-            匯出 Excel
+            {{ exporting ? '匯出中…' : '匯出 Excel' }}
           </AdminButton>
         </div>
 

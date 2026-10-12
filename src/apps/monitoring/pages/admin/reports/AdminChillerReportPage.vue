@@ -9,6 +9,7 @@ import AdminStatusBadge from '../_components/AdminStatusBadge.vue';
 import AdminPagination from '../_components/AdminPagination.vue';
 import EmptyState from '../_components/EmptyState.vue';
 import { ApiError } from '../_services/auth-service';
+import { downloadReportXlsx, reportFileName, useReportExport, type ExportColumn } from '../_services/report-export';
 import { listChillersApi, listAlarmsApi, getChillerHistoryApi } from '../_services/hvac-service';
 import { chillerExceededFlagsInWindow } from '../_services/threshold-service';
 import type { ChillerReportRow } from '../_types/admin-types';
@@ -147,6 +148,13 @@ function renderChart() {
   const returnMarks = chartRows.value
     .map((r, i) => (r.isReturnTempExceeded ? { coord: [i, r.returnTemp], value: r.returnTemp } : null))
     .filter(Boolean) as echarts.MarkPointComponentOption['data'];
+  // 異常的點已經有紅色三角形標記＋紅色數字，線本身的數字要隱藏，否則兩個一模一樣的數字會疊在同一個位置。
+  const supplySeries = chartRows.value.map((r) =>
+    r.isSupplyTempExceeded ? { value: r.supplyTemp, label: { show: false } } : r.supplyTemp,
+  );
+  const returnSeries = chartRows.value.map((r) =>
+    r.isReturnTempExceeded ? { value: r.returnTemp, label: { show: false } } : r.returnTemp,
+  );
 
   chart.setOption(
     {
@@ -176,11 +184,11 @@ function renderChart() {
           name: '出水溫度',
           type: 'line',
           smooth: true,
-          data: supply,
+          data: supplySeries,
           symbolSize: 5,
           lineStyle: { color: '#4C7DF0', width: 2 },
           itemStyle: { color: '#4C7DF0' },
-          label: { show: showPointLabel, fontSize: 10, color: '#4C7DF0', formatter: '{c}°C' },
+          label: { show: showPointLabel, fontSize: 10, color: '#4C7DF0', formatter: '{c}°C', position: 'bottom' },
           markPoint: {
             symbol: 'triangle',
             symbolSize: 12,
@@ -193,11 +201,11 @@ function renderChart() {
           name: '回水溫度',
           type: 'line',
           smooth: true,
-          data: ret,
+          data: returnSeries,
           symbolSize: 5,
           lineStyle: { color: '#F5A623', width: 2 },
           itemStyle: { color: '#F5A623' },
-          label: { show: showPointLabel, fontSize: 10, color: '#F5A623', formatter: '{c}°C' },
+          label: { show: showPointLabel, fontSize: 10, color: '#F5A623', formatter: '{c}°C', position: 'top' },
           markPoint: {
             symbol: 'triangle',
             symbolSize: 12,
@@ -234,8 +242,31 @@ function reset() {
   selectedDate.value = new Date().toISOString().slice(0, 10);
   page.value = 1;
 }
+const { exporting, exportError, run: runExport } = useReportExport();
+const STATUS_TEXT: Record<string, string> = { RUNNING: '運轉中', STOPPED: '停止' };
+const EXPORT_COLUMNS: ExportColumn<ChillerReportRow>[] = [
+  { header: '日期時間', width: 18, value: (r) => r.timestamp },
+  { header: '設備名稱', width: 16, value: () => selectedChiller.value?.displayName },
+  { header: '設備編號', width: 12, value: () => selectedChiller.value?.code },
+  { header: '出水溫度 (°C)', width: 14, format: '0.0', value: (r) => r.supplyTemp },
+  { header: '回水溫度 (°C)', width: 14, format: '0.0', value: (r) => r.returnTemp },
+  { header: '溫度差 ΔT (°C)', width: 15, format: '0.0', value: (r) => r.tempDiff },
+  { header: '負載率 (%)', width: 12, format: '0', value: (r) => r.loadRate },
+  { header: '累積運轉時數 (hrs)', width: 18, format: '#,##0', value: (r) => r.cumulativeHours },
+  {
+    header: '運轉狀態',
+    width: 20,
+    value: (r) => (r.status === 'ABNORMAL' ? `異常：${abnormalReason(r)}` : (STATUS_TEXT[r.status] ?? r.status)),
+  },
+];
+/** 匯出目前選擇的設備與日期區間的全部資料（含其他頁），不是只有畫面上這一頁。 */
 function exportExcel() {
-  window.alert('已匯出冰水主機運轉報表 (Excel)');
+  return runExport(() => downloadReportXlsx({
+    fileName: reportFileName('冰水主機運轉報表', selectedChiller.value?.displayName ?? '', dateRangeText.value),
+    sheet: '冰水主機運轉報表',
+    columns: EXPORT_COLUMNS,
+    rows: rows.value,
+  }));
 }
 </script>
 
@@ -289,15 +320,16 @@ function exportExcel() {
         <span>設備編號：<strong class="text-[#334155]">{{ selectedChiller.code }}</strong></span>
         <span>安裝位置：<strong class="text-[#334155]">機房</strong></span>
         <span>日期區間：<strong class="text-[#334155]">{{ dateRangeText }}</strong></span>
-        <AdminButton variant="primary" size="sm" class="ml-auto" @click="exportExcel">
+        <AdminButton variant="primary" size="sm" class="ml-auto" :disabled="exporting" @click="exportExcel">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
           </svg>
-          匯出 Excel
+          {{ exporting ? '匯出中…' : '匯出 Excel' }}
         </AdminButton>
       </div>
 
       <div v-if="loadError" class="p-3 rounded-lg bg-[#FFF5F5] text-[#FF4757] text-sm">{{ loadError }}</div>
+      <div v-if="exportError" class="p-3 rounded-lg bg-[#FFF5F5] text-[#FF4757] text-sm">{{ exportError }}</div>
       <div v-else-if="alarmWarning" class="p-3 rounded-lg bg-[#FFFBEB] text-[#B45309] text-sm">{{ alarmWarning }}</div>
 
       <!-- 內容 -->

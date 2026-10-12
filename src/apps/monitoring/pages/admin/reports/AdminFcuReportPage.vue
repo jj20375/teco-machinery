@@ -12,6 +12,7 @@ import EmptyState from '../_components/EmptyState.vue';
 import { ApiError } from '../_services/auth-service';
 import { listFcusApi, listAlarmsApi, getFcuHistoryApi, fcuFanSpeedLabel, fcuModeLabel } from '../_services/hvac-service';
 import { fcuExceededInWindow } from '../_services/threshold-service';
+import { downloadReportXlsx, reportFileName, useReportExport, type ExportColumn } from '../_services/report-export';
 import type { FcuReportRow } from '../_types/admin-types';
 
 const floor = ref<'ALL' | 'B1' | 'B2'>('ALL');
@@ -158,6 +159,10 @@ function renderChart() {
   const markPoints = chartRows.value
     .map((r, i) => (r.isExceeded && r.roomTemp !== null ? { coord: [i, r.roomTemp], value: r.roomTemp } : null))
     .filter(Boolean) as echarts.MarkPointComponentOption['data'];
+  // 異常的點已經有紅色三角形標記＋紅色數字，線本身的藍色數字要隱藏，否則兩個一模一樣的數字會疊在同一個位置。
+  const roomSeries = chartRows.value.map((r) =>
+    r.isExceeded && r.roomTemp !== null ? { value: r.roomTemp, label: { show: false } } : r.roomTemp,
+  );
 
   chart.setOption(
     {
@@ -186,7 +191,7 @@ function renderChart() {
           name: '室內溫度',
           type: 'line',
           smooth: true,
-          data: room,
+          data: roomSeries,
           connectNulls: true,
           symbolSize: 5,
           lineStyle: { color: '#4C7DF0', width: 2 },
@@ -230,8 +235,26 @@ function reset() {
   statusFilter.value = ['ALL'];
   page.value = 1;
 }
+const { exporting, exportError, run: runExport } = useReportExport();
+const STATUS_TEXT: Record<string, string> = { RUNNING: '運轉中', STOPPED: '停止', ABNORMAL: '異常：室內溫度異常' };
+const EXPORT_COLUMNS: ExportColumn<FcuReportRow>[] = [
+  { header: '日期時間', width: 18, value: (r) => r.timestamp },
+  { header: '設備名稱', width: 16, value: (r) => r.deviceName },
+  { header: '設備編號', width: 12, value: (r) => r.deviceCode },
+  { header: '安裝位置', width: 10, value: (r) => r.location },
+  { header: '室內溫度 (°C)', width: 14, format: '0.0', value: (r) => r.roomTemp },
+  { header: '風速', width: 8, value: (r) => r.fanSpeed },
+  { header: '運轉模式', width: 10, value: (r) => r.mode },
+  { header: '狀態', width: 20, value: (r) => STATUS_TEXT[r.status] ?? r.status },
+];
+/** 匯出目前篩選條件下的全部資料（含其他頁），不是只有畫面上這一頁。 */
 function exportExcel() {
-  window.alert('已匯出 FCU 運轉報表 (Excel)');
+  return runExport(() => downloadReportXlsx({
+    fileName: reportFileName('FCU運轉報表', selectedDevice.value?.name ?? '', dateRangeText.value),
+    sheet: 'FCU運轉報表',
+    columns: EXPORT_COLUMNS,
+    rows: filteredRows.value,
+  }));
 }
 </script>
 
@@ -281,15 +304,16 @@ function exportExcel() {
         <span>設備編號：<strong class="text-[#334155]">{{ selectedDevice.code }}</strong></span>
         <span>安裝位置：<strong class="text-[#334155]">{{ selectedDevice.floor }}</strong></span>
         <span>日期區間：<strong class="text-[#334155]">{{ dateRangeText }}</strong></span>
-        <AdminButton variant="primary" size="sm" class="ml-auto" @click="exportExcel">
+        <AdminButton variant="primary" size="sm" class="ml-auto" :disabled="exporting" @click="exportExcel">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
           </svg>
-          匯出 Excel
+          {{ exporting ? '匯出中…' : '匯出 Excel' }}
         </AdminButton>
       </div>
 
       <div v-if="loadError" class="p-3 rounded-lg bg-[#FFF5F5] text-[#FF4757] text-sm">{{ loadError }}</div>
+      <div v-if="exportError" class="p-3 rounded-lg bg-[#FFF5F5] text-[#FF4757] text-sm">{{ exportError }}</div>
       <div v-else-if="alarmWarning" class="p-3 rounded-lg bg-[#FFFBEB] text-[#B45309] text-sm">{{ alarmWarning }}</div>
 
       <!-- 內容 -->
