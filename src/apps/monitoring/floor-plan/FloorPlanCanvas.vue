@@ -100,15 +100,36 @@ function onWheel(event: WheelEvent) {
     y: view.value.y + event.deltaY * perPixel,
   });
 }
-/** 中鍵拖曳平移；滑鼠使用者不必按 Ctrl 也能移動畫面 */
+/**
+ * 拖曳平移：中鍵按下就開始；左鍵在「放大後的空白處／分區」按住拖曳超過 PAN_THRESHOLD 像素才開始。
+ * 設備圖示自己的 pointerdown 會 stop 掉，所以不會跟「拖曳設備」搶；沒移動就放開仍是原本的點選分區。
+ */
+const PAN_THRESHOLD = 5;
 const panning = ref<{ pointer: number; clientX: number; clientY: number } | null>(null);
-function startPan(event: PointerEvent) {
-  if (!props.zoomable || event.button !== 1) return;
+let pendingPan: { pointer: number; clientX: number; clientY: number } | null = null;
+// 左鍵拖曳平移之後瀏覽器仍會送出 click，要擋掉，不然放開時會誤選到分區。
+let suppressAreaClick = false;
+function beginPan(event: PointerEvent) {
   panning.value = { pointer: event.pointerId, clientX: event.clientX, clientY: event.clientY };
   svg.value?.setPointerCapture(event.pointerId);
-  event.preventDefault();
+}
+function startPan(event: PointerEvent) {
+  if (!props.zoomable) return;
+  if (event.button === 1) {
+    beginPan(event);
+    event.preventDefault();
+  } else if (event.button === 0 && scale.value > 1.001) {
+    pendingPan = { pointer: event.pointerId, clientX: event.clientX, clientY: event.clientY };
+  }
 }
 function panTo(event: PointerEvent) {
+  if (pendingPan && pendingPan.pointer === event.pointerId) {
+    if (Math.hypot(event.clientX - pendingPan.clientX, event.clientY - pendingPan.clientY) < PAN_THRESHOLD) return;
+    suppressAreaClick = true;
+    beginPan(event);
+    panning.value = { pointer: event.pointerId, clientX: pendingPan.clientX, clientY: pendingPan.clientY };
+    pendingPan = null;
+  }
   if (!panning.value || panning.value.pointer !== event.pointerId) return;
   const perPixel = unitsPerPixel();
   view.value = clampView({
@@ -121,6 +142,9 @@ function panTo(event: PointerEvent) {
 function endPan() {
   if (panning.value && svg.value?.hasPointerCapture(panning.value.pointer)) svg.value.releasePointerCapture(panning.value.pointer);
   panning.value = null;
+  pendingPan = null;
+  // click 在 pointerup 之後才送出，等它過了再解除。
+  if (suppressAreaClick) setTimeout(() => { suppressAreaClick = false; }, 0);
 }
 watch([scale, atDefault], () => emit('view-change', { scale: scale.value, atDefault: atDefault.value }), { immediate: true });
 watch(() => props.floor, resetView);
@@ -148,11 +172,13 @@ function coordinates(event: PointerEvent | MouseEvent): Point | undefined {
   return [Math.round(point.x), Math.round(point.y)];
 }
 function selectArea(id: string, event?: MouseEvent) {
-  if (!props.editable) return;
+  if (!props.editable || suppressAreaClick) return;
   const area = areas.value.find((a) => a.id === id)!;
   emit('select-area', id, event ? coordinates(event) ?? area.label : area.label);
 }
 function startDrag(event: PointerEvent, placement: Placement) {
+  // 設備圖示上按中鍵也要能平移（這個 handler 有 stop，svg 的 startPan 收不到）。
+  if (event.button === 1) return startPan(event);
   if (event.button !== 0) return;
   emit('select-device', placement.deviceId);
   if (!props.editable) return;
@@ -191,10 +217,10 @@ function onKey(event: KeyboardEvent, p: Placement) {
 
 <template>
   <svg ref="svg" :viewBox="`${view.x} ${view.y} ${view.width} ${view.height}`" class="floor-svg" :style="{ '--u': u }"
-    :class="{ editable, compact, zoomable, panning: !!panning }"
+    :class="{ editable, compact, zoomable, panning: !!panning, pannable: zoomable && scale > 1.001 }"
     preserveAspectRatio="xMidYMid meet" role="group" :aria-label="`${floor} 空間配置圖；藍色光暈為正常設備區域，紅色光暈為異常設備區域`"
     @pointerdown="startPan" @pointermove="move" @pointerup="endDrag" @pointercancel="endDrag"
-    @lostpointercapture="drag = null; panning = null">
+    @lostpointercapture="drag = null; panning = null; pendingPan = null">
     <title>{{ floor }} 空間分區；藍色光暈為正常設備區域，紅色光暈為異常設備區域</title>
     <defs>
       <filter id="heat-blur" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur :stdDeviation="20 * u" /></filter>
@@ -247,7 +273,9 @@ function onKey(event: KeyboardEvent, p: Placement) {
 .floor-svg { display: block; width: 100%; height: 100%; min-height: 200px; user-select: none; }
 .editable, .zoomable { touch-action: none; }
 .zoomable { cursor: default; }
-.zoomable.panning { cursor: grabbing; }
+/* 編輯模式的分區要維持 pointer（點選用），所以只有唯讀檢視才把空白處顯示成可抓取 */
+.zoomable.pannable:not(.editable) { cursor: grab; }
+.zoomable.panning, .zoomable.panning .area, .zoomable.panning .device { cursor: grabbing; }
 .area-code { fill: #d7e7ef; font-family: ui-monospace, monospace; font-size: calc(7px * var(--u, 1)); font-weight: 600; pointer-events: none; paint-order: stroke; stroke: #0b1926; stroke-width: calc(2.5px * var(--u, 1)); }
 .area-name { fill: #b6cfdf; font-size: calc(6px * var(--u, 1)); pointer-events: none; paint-order: stroke; stroke: #0b1926; stroke-width: calc(2px * var(--u, 1)); }
 .selectable { cursor: pointer; }

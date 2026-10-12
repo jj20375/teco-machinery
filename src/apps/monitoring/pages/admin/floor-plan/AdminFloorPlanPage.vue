@@ -232,7 +232,7 @@ onUnmounted(() => window.removeEventListener('beforeunload', beforeLeave));
           <FloorPlan3D v-else :key="floor" :floor="floor" :placements="placements" :equipment="equipment" :selected-device-id="selectedDeviceId" @fallback="view = '2d'" />
           <div class="map-bottom"><div class="legend"><span><i class="blue" />正常</span><span><i class="red" />異常</span><span><i class="yellow" />待保養</span><span><i class="gray" />離線／停止</span></div>
             <div v-if="view === '2d'" class="zoom-controls">
-              <span class="zoom-hint">滾輪平移 · Ctrl+滾輪或雙指縮放</span>
+              <span class="zoom-hint">放大後按住左鍵或中鍵拖曳平移 · 滾輪平移 · Ctrl+滾輪或雙指縮放</span>
               <button type="button" aria-label="縮小平面圖" :disabled="zoomView.atDefault" @click="canvasRef?.zoomBy(1 / 1.4)">−</button>
               <button type="button" aria-label="重設平面圖縮放" :disabled="zoomView.atDefault" @click="canvasRef?.resetView()">{{ Math.round(zoomView.scale * 100) }}%</button>
               <button type="button" aria-label="放大平面圖" :disabled="zoomView.scale >= 8" @click="canvasRef?.zoomBy(1.4)">＋</button>
