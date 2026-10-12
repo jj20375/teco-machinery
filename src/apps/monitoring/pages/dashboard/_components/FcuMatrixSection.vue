@@ -32,9 +32,23 @@ const runRate = computed(() => (total.value ? Math.round((overall.value.running 
 
 // 設備總覽分頁
 const PAGE_SIZE = 9;
+const MAX_VISIBLE_DOTS = 5;
 const page = ref(0);
 const pageCount = computed(() => Math.max(1, Math.ceil(allFcus.value.length / PAGE_SIZE)));
 const pageRows = computed(() => allFcus.value.slice(page.value * PAGE_SIZE, page.value * PAGE_SIZE + PAGE_SIZE));
+const visiblePages = computed(() => {
+  const count = pageCount.value;
+  if (count <= MAX_VISIBLE_DOTS) {
+    return Array.from({ length: count }, (_, i) => i);
+  }
+  let start = page.value - Math.floor(MAX_VISIBLE_DOTS / 2);
+  if (start < 0) {
+    start = 0;
+  } else if (start + MAX_VISIBLE_DOTS > count) {
+    start = count - MAX_VISIBLE_DOTS;
+  }
+  return Array.from({ length: MAX_VISIBLE_DOTS }, (_, i) => start + i);
+});
 function go(p: number) { page.value = (p + pageCount.value) % pageCount.value; }
 
 function reading(f: FcuItem): string {
@@ -123,16 +137,43 @@ function readingColor(f: FcuItem): string {
         </div>
       </div>
 
-      <div class="flex items-center justify-center gap-3 pt-2 shrink-0">
-        <button type="button" aria-label="上一頁" class="text-[#8B949E] hover:text-white text-xs" @click="go(page - 1)">‹</button>
-        <div class="flex gap-1.5">
-          <span
-            v-for="p in pageCount" :key="p"
-            class="w-1.5 h-1.5 rounded-full transition-colors"
-            :class="p - 1 === page ? 'bg-[#00D1B2]' : 'bg-[#30363D]'"
-          />
+      <div class="flex items-center justify-center gap-2 pt-2 shrink-0">
+        <button
+          type="button"
+          aria-label="上一頁"
+          class="w-6 h-6 flex items-center justify-center text-[#8B949E] hover:text-white hover:bg-[#21262D] rounded transition-colors cursor-pointer"
+          @click="go(page - 1)"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <div class="flex items-center gap-1">
+          <button
+            v-for="p in visiblePages"
+            :key="p"
+            type="button"
+            :aria-label="`第 ${p + 1} 頁`"
+            :title="`第 ${p + 1} 頁`"
+            class="w-5 h-5 flex items-center justify-center rounded-full transition-colors cursor-pointer group"
+            @click="go(p)"
+          >
+            <span
+              class="w-2.5 h-2.5 rounded-full transition-all"
+              :class="p === page ? 'bg-[#00D1B2] scale-110' : 'bg-[#30363D] group-hover:bg-[#8B949E]'"
+            />
+          </button>
         </div>
-        <button type="button" aria-label="下一頁" class="text-[#8B949E] hover:text-white text-xs" @click="go(page + 1)">›</button>
+        <button
+          type="button"
+          aria-label="下一頁"
+          class="w-6 h-6 flex items-center justify-center text-[#8B949E] hover:text-white hover:bg-[#21262D] rounded transition-colors cursor-pointer"
+          @click="go(page + 1)"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
         <span class="text-[11px] text-[#8B949E] font-tabular ml-1">{{ page + 1 }} / {{ pageCount }}</span>
       </div>
     </div>
