@@ -93,36 +93,6 @@ async function submitAdd() {
   }
 }
 
-// ── 改名 ──────────────────────────────
-const renameOpen = ref(false);
-const renameError = ref('');
-const renameTarget = ref<MerchantRoleOption | null>(null);
-const renameForm = reactive({ name: '' });
-const renameRoleMutation = useMutation({
-  mutationFn: (input: { roleId: number; name: string }) => renameMerchantRoleApi(input.roleId, input.name),
-  onSuccess: () => invalidateRoles(),
-});
-function openRename(role: MerchantRoleOption) {
-  renameTarget.value = role;
-  renameForm.name = role.name;
-  renameError.value = '';
-  renameOpen.value = true;
-}
-async function confirmRename() {
-  if (!renameTarget.value || renameRoleMutation.isPending.value) return;
-  if (!renameForm.name.trim()) {
-    renameError.value = '角色名稱不能是空白。';
-    return;
-  }
-  renameError.value = '';
-  try {
-    await renameRoleMutation.mutateAsync({ roleId: renameTarget.value.id, name: renameForm.name.trim() });
-    renameOpen.value = false;
-  } catch (err) {
-    renameError.value = err instanceof Error ? err.message : '改名失敗，請稍後再試。';
-  }
-}
-
 // ── 刪除 ──────────────────────────────
 const deleteOpen = ref(false);
 const deleteError = ref('');
@@ -163,6 +133,11 @@ const saveError = ref('');
 const activeRole = ref<MerchantRoleOption | null>(null);
 const rowsByCode = reactive<Record<string, PermissionRow>>({});
 const originalSnapshot = ref('');
+// 角色名稱跟權限在同一個面板編輯、同一個「儲存」送出；originalName 是最後一次成功存下的名稱，
+// 改名成功但權限儲存失敗時，重試只需要重送權限，不會再改一次名。
+const roleName = ref('');
+const originalName = ref('');
+const nameError = ref('');
 /** merchant-admin 的實際授予——編輯其他角色時的上限，跟後端 SetRolePermissions 的
  * ceiling 檢查是同一份邏輯，這裡先在前端擋掉不可能過關的勾選，不用等後端 400 才知道。 */
 const ceilingByCode = ref<Record<string, PermissionRow>>({});
@@ -217,6 +192,9 @@ const isSystemRole = computed(() => activeRole.value?.isSystem ?? false);
 async function openPanel(role: MerchantRoleOption) {
   activeRole.value = role;
   saveError.value = '';
+  nameError.value = '';
+  roleName.value = role.name;
+  originalName.value = role.name;
   panelOpen.value = true;
   panelLoading.value = true;
   try {
@@ -242,7 +220,9 @@ async function openPanel(role: MerchantRoleOption) {
     panelLoading.value = false;
   }
 }
-const changed = computed(() => JSON.stringify(rowsByCode) !== originalSnapshot.value);
+const permissionsChanged = computed(() => JSON.stringify(rowsByCode) !== originalSnapshot.value);
+const nameChanged = computed(() => roleName.value.trim() !== originalName.value);
+const changed = computed(() => permissionsChanged.value || nameChanged.value);
 
 function toggleOption(code: string, key: string) {
   const row = rowsByCode[code];
@@ -253,16 +233,32 @@ function toggleOption(code: string, key: string) {
 const savingPermissions = ref(false);
 async function savePermissions() {
   if (!activeRole.value || !changed.value || savingPermissions.value) return;
+  const name = roleName.value.trim();
+  if (nameChanged.value && !name) {
+    nameError.value = '角色名稱不能是空白。';
+    return;
+  }
   savingPermissions.value = true;
   saveError.value = '';
+  nameError.value = '';
   try {
-    const items: SetRolePermissionItem[] = Object.values(rowsByCode).map((r) => ({
-      permissionCode: r.code, perCreate: r.create, perRead: r.read, perUpdate: r.update, perDelete: r.delete, options: r.options,
-    }));
-    await setRolePermissionsApi(activeRole.value.id, items);
+    if (nameChanged.value) {
+      await renameMerchantRoleApi(activeRole.value.id, name);
+      originalName.value = name;
+      activeRole.value = { ...activeRole.value, name };
+    }
+    if (permissionsChanged.value) {
+      const items: SetRolePermissionItem[] = Object.values(rowsByCode).map((r) => ({
+        permissionCode: r.code, perCreate: r.create, perRead: r.read, perUpdate: r.update, perDelete: r.delete, options: r.options,
+      }));
+      await setRolePermissionsApi(activeRole.value.id, items);
+    }
+    await invalidateRoles();
     panelOpen.value = false;
   } catch (err) {
     saveError.value = err instanceof Error ? err.message : '儲存失敗，請稍後再試。';
+    // 改名可能已經成功，清單要跟上，不然畫面上還是舊名稱。
+    await invalidateRoles();
   } finally {
     savingPermissions.value = false;
   }
@@ -310,7 +306,6 @@ async function savePermissions() {
                       {{ r.isSystem ? '檢視權限' : '編輯權限' }}
                     </button>
                     <template v-if="!r.isSystem">
-                      <button type="button" class="link-action" @click="openRename(r)">改名</button>
                       <button type="button" class="link-action" style="color: #FF4757" @click="openDelete(r)">刪除</button>
                     </template>
                   </div>
@@ -334,6 +329,19 @@ async function savePermissions() {
       <div v-if="panelLoading" class="text-xs text-[#94A3B8] py-4 text-center">載入中…</div>
       <div v-else class="flex flex-col gap-5">
         <div v-if="saveError" class="p-2.5 rounded-lg bg-[#FFF5F5] text-[#FF4757] text-xs">{{ saveError }}</div>
+        <label class="flex flex-col gap-1.5 text-xs text-[#64748B]">
+          角色名稱
+          <input
+            v-model="roleName"
+            type="text"
+            maxlength="64"
+            :disabled="isSystemRole"
+            @input="nameError = ''"
+            class="px-3 py-2 text-sm text-black border rounded-lg focus:outline-none disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]"
+            :class="nameError ? 'border-[#FF4757] focus:border-[#FF4757]' : 'border-[#CBD5E1] focus:border-[#00D1B2]'"
+          />
+          <span v-if="nameError" class="text-[#FF4757]">{{ nameError }}</span>
+        </label>
         <p v-if="isSystemRole" class="text-xs text-[#94A3B8]">
           系統範本角色（場館管理員／編輯者／檢視者）只能檢視，僅平台管理員可以調整。
         </p>
@@ -410,26 +418,6 @@ async function savePermissions() {
             <AdminButton variant="tertiary" :disabled="createRoleMutation.isPending.value" type="button" @click="addOpen = false">取消</AdminButton>
             <AdminButton variant="primary" :disabled="createRoleMutation.isPending.value" type="submit">
               {{ createRoleMutation.isPending.value ? '新增中…' : '新增' }}
-            </AdminButton>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <!-- 改名 -->
-    <div v-if="renameOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40" @click.self="renameOpen = false">
-      <div class="bg-white rounded-xl shadow-2xl border border-[#E2E8F0] w-full max-w-[420px] overflow-hidden">
-        <div class="px-6 pt-6 pb-4 border-b border-[#E2E8F0]"><h3 class="text-base font-bold text-[#1A202C]">角色改名</h3></div>
-        <form class="px-6 py-5 flex flex-col gap-4" @submit.prevent="confirmRename">
-          <div v-if="renameError" class="p-2.5 rounded-lg bg-[#FFF5F5] text-[#FF4757] text-xs">{{ renameError }}</div>
-          <label class="flex flex-col gap-1.5 text-xs text-[#64748B]">
-            角色名稱
-            <input v-model="renameForm.name" type="text" class="px-3 py-2 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2]" />
-          </label>
-          <div class="flex justify-end gap-3 pt-1">
-            <AdminButton variant="tertiary" :disabled="renameRoleMutation.isPending.value" type="button" @click="renameOpen = false">取消</AdminButton>
-            <AdminButton variant="primary" :disabled="renameRoleMutation.isPending.value" type="submit">
-              {{ renameRoleMutation.isPending.value ? '儲存中…' : '儲存' }}
             </AdminButton>
           </div>
         </form>
