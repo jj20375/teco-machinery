@@ -191,11 +191,11 @@ function dashArray(pct: number) {
         </div>
 
         <!-- 右：冰水主機卡 -->
-        <div class="flex flex-col gap-4">
+        <div class="flex flex-col lg:flex-row gap-4">
           <div
             v-for="c in chillerCards"
             :key="c.id"
-            class="bg-white rounded-xl border border-[#E2E8F0] p-4"
+            class="bg-white rounded-xl border border-[#E2E8F0] p-4 lg:flex-1 min-w-0"
           >
             <div class="flex items-start justify-between">
               <div>
