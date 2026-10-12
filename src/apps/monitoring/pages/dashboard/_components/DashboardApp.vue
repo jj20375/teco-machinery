@@ -22,18 +22,18 @@ const ROTATE_SECONDS = 30;
 
 // 戰情室設計稿基準為 1920×1080；小螢幕（筆電、平板）改用「整版縮放」而非裁切，
 // 確保下方圖表在任何視窗尺寸都看得到，不會被 overflow-hidden 吃掉。
+// 縮放比例仍取 min(寬比, 高比)（內容才不會超出視窗），但版面本身的邏輯尺寸改成「視窗尺寸 ÷ 縮放比例」：
+// 長寬比不是 16:9 時，多出來的寬度／高度由彈性區塊（中間的樓層圖、各卡片）吃掉，不再留空白邊。
 const DESIGN_WIDTH = 1920;
 const DESIGN_HEIGHT = 1080;
 const scale = ref(1);
-// 置中用的位移：不靠 flex 置中，因為未縮放的 1920px 版面比視窗寬時，
-// flex 對溢出項目的對齊行為會把整塊往左推。自己算 offset 才是確定的。
-const offsetX = ref(0);
-const offsetY = ref(0);
+const layoutWidth = ref(DESIGN_WIDTH);
+const layoutHeight = ref(DESIGN_HEIGHT);
 function updateScale() {
   const { innerWidth: vw, innerHeight: vh } = window;
   scale.value = Math.min(vw / DESIGN_WIDTH, vh / DESIGN_HEIGHT);
-  offsetX.value = (vw - DESIGN_WIDTH * scale.value) / 2;
-  offsetY.value = (vh - DESIGN_HEIGHT * scale.value) / 2;
+  layoutWidth.value = vw / scale.value;
+  layoutHeight.value = vh / scale.value;
 }
 
 const currentFloor = ref<FloorId>('B1');
@@ -166,9 +166,9 @@ onUnmounted(() => {
     <div
       class="absolute top-0 left-0 origin-top-left z-10"
       :style="{
-        width: `${DESIGN_WIDTH}px`,
-        height: `${DESIGN_HEIGHT}px`,
-        transform: `translate(${offsetX}px, ${offsetY}px) scale(${scale})`,
+        width: `${layoutWidth}px`,
+        height: `${layoutHeight}px`,
+        transform: `scale(${scale})`,
       }"
     >
       <!-- 這層本來鋪滿 1920×1080 的不透明底色，會把背景動畫整個蓋住；
@@ -177,7 +177,7 @@ onUnmounted(() => {
       <div class="w-full h-full text-[#F0F6FC] flex flex-col font-sans select-none overflow-hidden">
         <DashboardHeader />
 
-        <!-- 固定三欄：450 / 中間彈性 / 480（1920×1080 看板設計基準） -->
+        <!-- 三欄：兩側固定 450 / 480，中間彈性（1920×1080 看板設計基準；視窗比 16:9 寬時多出來的寬度全給中間） -->
         <main class="flex-1 min-h-0 p-5 grid gap-4 overflow-hidden" style="grid-template-columns: 450px minmax(0, 1fr) 480px;">
           <section class="h-full min-h-0 overflow-hidden">
             <ChillerMonitorSection :chillers="chillers" :usage-trend="usageTrend" :temp-trend="tempTrend" />
