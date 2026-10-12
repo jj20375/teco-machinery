@@ -34,6 +34,7 @@ public sealed class CollectorHostedService : BackgroundService
     private readonly ChannelWatchdog _watchdog;
     private readonly ThrottlePolicy _throttle;
     private readonly IngestHttpClient _ingestClient;
+    private readonly IHostApplicationLifetime _lifetime;
 
     private readonly Channel<EventArgsDataReceived> _dataChannel = Channel.CreateBounded<EventArgsDataReceived>(
         new BoundedChannelOptions(16) { FullMode = BoundedChannelFullMode.DropOldest });
@@ -60,7 +61,8 @@ public sealed class CollectorHostedService : BackgroundService
         ChannelWatchdog watchdog,
         ThrottlePolicy throttle,
         IngestHttpClient ingestClient,
-        AlarmEngine alarmEngine)
+        AlarmEngine alarmEngine,
+        IHostApplicationLifetime lifetime)
     {
         _options = options.Value;
         _logger = logger;
@@ -70,6 +72,7 @@ public sealed class CollectorHostedService : BackgroundService
         _throttle = throttle;
         _ingestClient = ingestClient;
         _alarmEngine = alarmEngine;
+        _lifetime = lifetime;
     }
 
     /// <summary>供 /healthz 使用。</summary>
@@ -110,9 +113,11 @@ public sealed class CollectorHostedService : BackgroundService
     private async Task RunSupervisorLoopAsync(CancellationToken ct)
     {
         int restartCount = 0;
+        int consecutiveTimeouts = 0;
         while (!ct.IsCancellationRequested)
         {
-            _watchdog.ResetEventClock(DateTimeOffset.UtcNow);
+            var startedAtUtc = DateTimeOffset.UtcNow;
+            _watchdog.ResetEventClock(startedAtUtc);
             using var collector = CreateAndStartCollector();
             _logger.LogInformation("Collector 已啟動（第 {Count} 次）", restartCount + 1);
 
@@ -140,9 +145,24 @@ public sealed class CollectorHostedService : BackgroundService
             if (ct.IsCancellationRequested) break;
 
             restartCount++;
+            // 這一輪曾經收到過資料事件，代表重建有效（之後才又卡住），連續逾時從頭算。
+            consecutiveTimeouts = _watchdog.LastDataEventUtc > startedAtUtc ? 1 : consecutiveTimeouts + 1;
+
+            if (consecutiveTimeouts >= Math.Max(1, _options.WatchdogExitAfterConsecutiveTimeouts))
+            {
+                // DLL 卡住時，只在程式內重建物件救不回來（實測兩次都要重啟容器才恢復）。結束程序，由 Docker 重啟。
+                // 兩次重啟之間至少隔 門檻秒數 × 連續次數，設備真的整個沒回應時也不會變成無限快速重啟。
+                _logger.LogCritical(
+                    "連續 {Count} 次共超過 {Seconds} 秒收不到任何資料事件，重建 Collector 無效，結束程序交給 Docker 重啟",
+                    consecutiveTimeouts, _options.WatchdogRestartAfterSeconds);
+                Environment.ExitCode = 1;
+                _lifetime.StopApplication();
+                break;
+            }
+
             _logger.LogWarning(
-                "超過 {Seconds} 秒未收到任何事件，重建 Collector（累計第 {Count} 次）",
-                _options.WatchdogRestartAfterSeconds, restartCount);
+                "超過 {Seconds} 秒未收到任何資料事件，重建 Collector（累計第 {Count} 次，連續第 {Consecutive} 次）",
+                _options.WatchdogRestartAfterSeconds, restartCount, consecutiveTimeouts);
         }
     }
 
@@ -167,8 +187,11 @@ public sealed class CollectorHostedService : BackgroundService
     }
 
     // 事件處理器：絕不做 I/O，只丟進 Channel 立刻返回（說明書 §7.1）。
-    private void OnEventDataReceived(object? sender, EventArgsDataReceived e) =>
+    private void OnEventDataReceived(object? sender, EventArgsDataReceived e)
+    {
+        if (_options.DebugDropDataEvents) return;
         _dataChannel.Writer.TryWrite(e);
+    }
 
     private void OnEventConnectionStatusChanged(object? sender, EventArgsConnectStatus e) =>
         _connectionChannel.Writer.TryWrite(e);

@@ -24,6 +24,16 @@ public sealed class CollectorOptions
     public int WatchdogStaleSeconds { get; init; } = 60;
     /// <summary>完全沒有收到任何 EventDataReceived 超過此秒數，觸發 Collector 自我重建。</summary>
     public int WatchdogRestartAfterSeconds { get; init; } = 300;
+    /// <summary>
+    /// 連續幾次逾時（重建後仍收不到資料事件）就結束程序，交給 Docker（restart: unless-stopped）重啟容器。
+    /// 實測 DLL 卡住時只在程式內重建物件救不回來，要整個程序重啟才會恢復。下限 1（逾時就直接結束，不先重建）。
+    /// </summary>
+    public int WatchdogExitAfterConsecutiveTimeouts { get; init; } = 2;
+    /// <summary>
+    /// 僅供測試自我保護機制：丟棄所有資料事件，模擬 DLL 卡住（設備斷線時 DLL 仍會送資料事件，沒辦法用模擬器製造這種情況）。
+    /// 正式環境一律保持 false。
+    /// </summary>
+    public bool DebugDropDataEvents { get; init; }
 
     public sealed class HanbellOptions
     {

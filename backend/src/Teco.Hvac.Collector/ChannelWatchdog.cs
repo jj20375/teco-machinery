@@ -20,11 +20,14 @@ public sealed class ChannelWatchdog(
     private readonly ConcurrentDictionary<Channel, DateTimeOffset> _lastSuccessUtc = new();
     private readonly ConcurrentDictionary<Channel, ConnectionState> _lastConnectionState = new();
     private readonly ConcurrentDictionary<Channel, ReadStatus> _lastReadStatus = new();
-    private DateTimeOffset _lastAnyEventUtc = DateTimeOffset.UtcNow;
+    private DateTimeOffset _lastDataEventUtc = DateTimeOffset.UtcNow;
+
+    /// <summary>最後一次收到「資料事件」的時間（含讀取失敗的資料事件）。</summary>
+    public DateTimeOffset LastDataEventUtc => _lastDataEventUtc;
 
     public void OnDataReceived(Channel channel, ReadStatus readStatus, DateTimeOffset nowUtc)
     {
-        _lastAnyEventUtc = nowUtc;
+        _lastDataEventUtc = nowUtc;
         _lastReadStatus[channel] = readStatus;
         if (readStatus == ReadStatus.Success)
         {
@@ -39,7 +42,6 @@ public sealed class ChannelWatchdog(
     public async Task OnConnectionStatusChangedAsync(
         Channel channel, ConnectionState state, DateTimeOffset changedAtUtc, CancellationToken ct)
     {
-        _lastAnyEventUtc = changedAtUtc;
         bool isNewState = !_lastConnectionState.TryGetValue(channel, out var prev) || prev != state;
         _lastConnectionState[channel] = state;
 
@@ -66,12 +68,17 @@ public sealed class ChannelWatchdog(
     }
 
     /// <summary>
-    /// 重建 Collector 時呼叫：重新計時。沒有這一步的話，一旦曾經超過門檻沒有事件（例如主機睡眠），
+    /// 重建 Collector 時呼叫：重新計時。沒有這一步的話，一旦曾經超過門檻沒有資料事件（例如主機睡眠），
     /// 重建後 ShouldRestart 仍然是 true，監督迴圈會每秒重建好幾十次、永遠收不到資料。
     /// </summary>
-    public void ResetEventClock(DateTimeOffset nowUtc) => _lastAnyEventUtc = nowUtc;
+    public void ResetEventClock(DateTimeOffset nowUtc) => _lastDataEventUtc = nowUtc;
 
-    /// <summary>完全沒有收到任何事件（含失敗）超過門檻，代表 Collector 本身可能卡死，需要重建。</summary>
+    /// <summary>
+    /// 超過門檻沒有收到「資料事件」，代表 Collector 本身可能卡死，需要重建。
+    /// 只看資料事件、不看連線狀態變化：DLL 正常時就算設備全部斷線，仍然每 5 秒送一次資料事件（讀取狀態為失敗），
+    /// 所以設備斷電不會被誤判；反過來，DLL 卡住時連線狀態可能一直在抖動（斷線、重連），
+    /// 那些事件不能算「還活著」，不然自我保護永遠不會觸發。
+    /// </summary>
     public bool ShouldRestart(DateTimeOffset nowUtc) =>
-        (nowUtc - _lastAnyEventUtc).TotalSeconds > _options.WatchdogRestartAfterSeconds;
+        (nowUtc - _lastDataEventUtc).TotalSeconds > _options.WatchdogRestartAfterSeconds;
 }

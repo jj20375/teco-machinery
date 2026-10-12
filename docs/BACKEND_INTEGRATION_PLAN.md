@@ -291,7 +291,8 @@ public sealed class CollectorHostedService : BackgroundService
 
 - 記錄每個通道最後一次 `IsReadSuccess=true` 的 UTC 時間。
 - 超過 60 秒（= 12 個週期）沒有任何成功 → 寫 `channel_health` + 發告警。
-- 超過 5 分鐘完全沒收到 `EventDataReceived` → `Stop()` + `Dispose()` + 重建 Collector。
+- 超過 5 分鐘完全沒收到 `EventDataReceived`（**只看資料事件，不看連線狀態變化**；設備全部斷線時 DLL 仍每 5 秒送一次讀取失敗的資料事件，所以斷電不會被誤判）→ `Stop()` + `Dispose()` + 重建 Collector。
+- 重建後仍連續逾時（預設第 2 次，`WatchdogExitAfterConsecutiveTimeouts`）→ 結束程序，由 Docker（`restart: unless-stopped`）重啟容器：實測 DLL 卡住時只在程式內重建物件救不回來。兩次重啟之間至少隔 5 分鐘 × 連續次數，不會無限快速重啟。
 - 這些指標同時透過 `/healthz` 曝露，讓 Docker healthcheck 能重啟容器。
 
 ### 5.3 時間處理

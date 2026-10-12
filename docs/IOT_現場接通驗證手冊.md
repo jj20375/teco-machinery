@@ -137,7 +137,8 @@ docker compose logs -f --tail=200 collector
 | `通道 … ConnectFailed` 或 `Disconnected` 反覆出現 | 連不上。回頭查第 1 層 |
 | `找不到 Channel=… StationId=… Position=… 對應的 device_fcu` | 現場有這台 FCU，但資料庫沒有對照，這台的資料不會寫入資料庫 |
 | `找不到 ModbusId=… 對應的 device_chiller` | 冰水主機的站號跟資料庫對不上 |
-| `超過 300 秒未收到任何事件，重建 Collector` | DLL 卡住，已自動重建。偶爾一次可以接受，頻繁出現要回報供應商 |
+| `超過 300 秒未收到任何資料事件，重建 Collector` | DLL 卡住，已自動重建。偶爾一次可以接受，頻繁出現要回報供應商 |
+| `連續 2 次共超過 300 秒收不到任何資料事件，重建 Collector 無效，結束程序交給 Docker 重啟` | 重建沒救回來，Collector 容器會自動重啟（`docker compose ps` 的重啟次數會增加）。重啟後仍反覆出現要回報供應商 |
 
 Collector 自己的健康狀態（`healthy` 表示三條通道最近都有成功讀取，`degraded` 表示至少一條逾時）：
 
