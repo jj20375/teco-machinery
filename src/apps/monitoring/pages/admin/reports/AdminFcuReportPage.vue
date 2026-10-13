@@ -49,6 +49,10 @@ const selectedDevice = computed(() => deviceOptions.value.find((o) => o.id === s
 
 const page = ref(1);
 const pageSize = ref(20);
+// 任何篩選條件（樓層、設備、日／週、日期、狀態）一變動，分頁就回到第一頁，不然停在第 7 頁換條件後可能整頁空白。
+watch([floor, selectedId, period, selectedDate, () => statusFilter.value.join(',')], () => {
+  page.value = 1;
+});
 
 function rangeUtc(dateStr: string, days: number): [string, string] {
   const start = new Date(`${dateStr}T00:00:00`);

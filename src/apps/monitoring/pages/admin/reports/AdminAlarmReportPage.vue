@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useQuery } from '@tanstack/vue-query';
 import AdminLayout from '../_components/AdminLayout.vue';
 import AdminButton from '../_components/AdminButton.vue';
@@ -32,6 +32,10 @@ const appliedTo = ref(dateTo.value);
 
 const page = ref(1);
 const pageSize = ref(20);
+// 搜尋關鍵字或套用後的日期區間一變動，分頁就回到第一頁，不然停在第 7 頁換條件後可能整頁空白。
+watch([keyword, appliedFrom, appliedTo], () => {
+  page.value = 1;
+});
 
 /**
  * 日期區間查詢用 useQuery（不是 onMounted 手動 fetch），這樣「查詢」按鈕改變

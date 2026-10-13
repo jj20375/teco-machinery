@@ -24,6 +24,10 @@ const pageSize = ref(20);
 const chillersQuery = useQuery({ queryKey: ['chiller-report-devices'], queryFn: listChillersApi });
 const chillerList = computed(() => chillersQuery.data.value ?? []);
 const selectedCode = ref('');
+// 任何篩選條件（設備、日／週、日期）一變動，分頁就回到第一頁，不然停在第 7 頁換條件後可能整頁空白。
+watch([selectedCode, period, selectedDate], () => {
+  page.value = 1;
+});
 watch(chillerList, (list) => {
   if (!selectedCode.value && list.length > 0) selectedCode.value = list[0].code;
 });
