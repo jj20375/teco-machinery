@@ -98,7 +98,7 @@ function alarmStatus(text: string) {
       </div>
 
       <!-- 地圖（沿用設備配置圖 component） -->
-      <div class="relative flex-1 min-h-0 bg-[#0C1925]">
+      <div class="heatmap-wrap relative flex-1 min-h-0 bg-[#0C1925]">
         <FloorPlanViewer :floor="currentFloor" embedded zoomable />
         <span class="absolute top-3 left-3 text-sm font-semibold text-[#5EEAD4] pointer-events-none">
           目前顯示：{{ currentFloor }} 樓層<span v-if="floorLocked" class="text-[#8B949E] font-normal">（已鎖定，點選均溫可解除）</span>
@@ -165,16 +165,18 @@ function alarmStatus(text: string) {
 </template>
 
 <style scoped>
-/* 圖例本體在共用的 FloorPlanViewer（後台監控中心也用），大屏要放大加粗只在這裡覆寫，不動後台。 */
-:deep(.heatmap-note) {
-  font-size: 14px;
+/* 圖例本體在共用的 FloorPlanViewer（後台監控中心也用），大屏要放大加粗只在這裡覆寫，不動後台。
+   要多包一層 .heatmap-wrap 拉高優先權：建置後這段 CSS 會排在 FloorPlanViewer 的原規則前面，
+   優先權相同時後面的贏，只寫 :deep(.heatmap-note) 會被原本的 11px 蓋掉（開發環境順序不同，看不出來）。 */
+.heatmap-wrap :deep(.heatmap-note) {
+  font-size: 16px;
   font-weight: 700;
-  gap: 8px;
-  padding: 8px 14px;
+  gap: 10px;
+  padding: 9px 16px;
 }
-:deep(.heatmap-note i) {
-  width: 10px;
-  height: 10px;
+.heatmap-wrap :deep(.heatmap-note i) {
+  width: 12px;
+  height: 12px;
 }
 
 /*
