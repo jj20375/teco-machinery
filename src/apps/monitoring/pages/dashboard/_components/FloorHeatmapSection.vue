@@ -105,12 +105,12 @@ function alarmStatus(text: string) {
         </span>
         <div v-if="heatmapData" class="absolute bottom-3 left-3 flex gap-2 pointer-events-none">
           <div class="px-2.5 py-1.5 rounded-md bg-[#0d1117cc] border border-[#30363D] leading-tight">
-            <div class="text-[10px] text-[#8B949E]">{{ currentFloor }} FCU 總數</div>
-            <div class="text-xs font-bold text-[#F0F6FC]">{{ heatmapData.fcuTotal }}台 (運轉{{ heatmapData.fcuRunning }}台)</div>
+            <div class="text-xs font-bold text-[#8B949E]">{{ currentFloor }} FCU 總數</div>
+            <div class="text-sm font-bold text-[#F0F6FC]">{{ heatmapData.fcuTotal }}台 (運轉{{ heatmapData.fcuRunning }}台)</div>
           </div>
           <div class="px-2.5 py-1.5 rounded-md bg-[#0d1117cc] border border-[#30363D] leading-tight">
-            <div class="text-[10px] text-[#8B949E]">當前運轉率</div>
-            <div class="text-xs font-bold text-[#5EEAD4]">{{ heatmapData.runRate }}%</div>
+            <div class="text-xs font-bold text-[#8B949E]">當前運轉率</div>
+            <div class="text-sm font-bold text-[#5EEAD4]">{{ heatmapData.runRate }}%</div>
           </div>
         </div>
       </div>
@@ -139,12 +139,12 @@ function alarmStatus(text: string) {
 
       <table class="w-full text-sm border-collapse">
         <thead>
-          <tr class="text-xs text-[#8B949E] bg-[#0D1117]">
-            <th class="text-left font-normal py-2 px-2 rounded-l-md">時間</th>
-            <th class="text-left font-normal py-2 px-2 min-w-[188px]">設備名稱</th>
-            <th class="text-left font-normal py-2 px-2">設備編號</th>
-            <th class="text-left font-normal py-2 px-2">安裝位置</th>
-            <th class="text-left font-normal py-2 px-2 rounded-r-md">狀態</th>
+          <tr class="text-sm text-[#8B949E] bg-[#0D1117]">
+            <th class="text-left font-bold py-2 px-2 rounded-l-md">時間</th>
+            <th class="text-left font-bold py-2 px-2 min-w-[188px]">設備名稱</th>
+            <th class="text-left font-bold py-2 px-2">設備編號</th>
+            <th class="text-left font-bold py-2 px-2">安裝位置</th>
+            <th class="text-left font-bold py-2 px-2 rounded-r-md">狀態</th>
           </tr>
         </thead>
         <tbody>
@@ -165,6 +165,18 @@ function alarmStatus(text: string) {
 </template>
 
 <style scoped>
+/* 圖例本體在共用的 FloorPlanViewer（後台監控中心也用），大屏要放大加粗只在這裡覆寫，不動後台。 */
+:deep(.heatmap-note) {
+  font-size: 14px;
+  font-weight: 700;
+  gap: 8px;
+  padding: 8px 14px;
+}
+:deep(.heatmap-note i) {
+  width: 10px;
+  height: 10px;
+}
+
 /*
  * 流動漸層光暈邊框：純 CSS，不用 three.js。
  * ::before 是貼著卡片邊緣的一圈細光（用 mask-composite: exclude 把 conic-gradient

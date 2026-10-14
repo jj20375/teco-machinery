@@ -36,8 +36,8 @@ function initBar() {
   barChart.setOption({
     backgroundColor: 'transparent',
     tooltip: { trigger: 'axis', backgroundColor: '#161B22', borderColor: '#30363D', textStyle: { color: '#F0F6FC', fontSize: 12 }, axisPointer: { type: 'shadow' } },
-    legend: { data: ['B1 樓', 'B2 樓'], textStyle: { color: '#8B949E', fontSize: 11 }, top: 0, right: 0, itemWidth: 10, itemHeight: 10 },
-    grid: { left: 2, right: 8, bottom: 2, top: 26, containLabel: true },
+    legend: { data: ['B1 樓', 'B2 樓'], textStyle: { color: '#C9D1D9', fontSize: 14, fontWeight: 'bold' }, top: 0, right: 0, itemWidth: 12, itemHeight: 12 },
+    grid: { left: 2, right: 8, bottom: 2, top: 32, containLabel: true },
     xAxis: {
       type: 'category',
       data: props.usageTrend.hours.map((h, i) => (i % 3 === 0 ? h.slice(0, 2) : '')),
@@ -64,8 +64,8 @@ function initLine() {
   lineChart.setOption({
     backgroundColor: 'transparent',
     tooltip: { trigger: 'axis', backgroundColor: '#161B22', borderColor: '#30363D', textStyle: { color: '#F0F6FC', fontSize: 12 }, valueFormatter: (v) => `${v} °C` },
-    legend: { data: ['B1 溫度', 'B2 溫度'], textStyle: { color: '#8B949E', fontSize: 11 }, top: 0, right: 0, itemWidth: 12, itemHeight: 3 },
-    grid: { left: 2, right: 8, bottom: 2, top: 26, containLabel: true },
+    legend: { data: ['B1 溫度', 'B2 溫度'], textStyle: { color: '#C9D1D9', fontSize: 14, fontWeight: 'bold' }, top: 0, right: 0, itemWidth: 16, itemHeight: 4 },
+    grid: { left: 2, right: 8, bottom: 2, top: 32, containLabel: true },
     xAxis: {
       type: 'category', boundaryGap: false,
       data: props.tempTrend.hours.map((h, i) => (i % 3 === 0 ? h.slice(0, 2) : '')),

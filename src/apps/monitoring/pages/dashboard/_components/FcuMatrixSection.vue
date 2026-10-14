@@ -72,7 +72,7 @@ function readingColor(f: FcuItem): string {
           </svg>
           FCU 即時運轉狀態
         </h2>
-        <div class="relative w-[62px] h-[62px] grid place-items-center shrink-0">
+        <div class="relative w-[76px] h-[76px] grid place-items-center shrink-0">
           <svg class="w-full h-full -rotate-90" viewBox="0 0 36 36">
             <path class="text-[#30363D]" stroke-width="3.5" stroke="currentColor" fill="none"
               d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
@@ -80,28 +80,28 @@ function readingColor(f: FcuItem): string {
               d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
           </svg>
           <div class="absolute inset-0 flex flex-col items-center justify-center leading-none">
-            <span class="text-sm font-extrabold font-tabular text-[#F0F6FC]">{{ runRate }}%</span>
-            <span class="text-[9px] text-[#8B949E] mt-0.5">運轉率</span>
+            <span class="text-xl font-extrabold font-tabular text-[#F0F6FC]">{{ runRate }}%</span>
+            <span class="text-xs font-bold text-[#8B949E] mt-0.5">運轉率</span>
           </div>
         </div>
       </div>
 
-      <p class="text-sm text-[#8B949E] mt-2">
+      <p class="text-base font-bold text-[#8B949E] mt-2">
         總數量 <b class="text-[#F0F6FC] font-tabular">{{ total }}</b> 台
       </p>
-      <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-[#C9D1D9] mt-1">
-        <span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-[2px] bg-[#5EEAD4]" />運轉 {{ overall.running }}</span>
-        <span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-[2px] bg-[#F87171]" />異常 {{ overall.abnormal }}</span>
-        <span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-[2px] bg-[#3B5BDB]" />離線 {{ overall.offline }}</span>
-        <span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-[2px] bg-[#9CA3AF]" />停止 {{ overall.stopped }}</span>
+      <div class="flex flex-wrap gap-x-4 gap-y-1 text-base font-bold text-[#C9D1D9] mt-1">
+        <span class="flex items-center gap-1.5"><i class="w-3 h-3 rounded-[2px] bg-[#5EEAD4]" />運轉 {{ overall.running }}</span>
+        <span class="flex items-center gap-1.5"><i class="w-3 h-3 rounded-[2px] bg-[#F87171]" />異常 {{ overall.abnormal }}</span>
+        <span class="flex items-center gap-1.5"><i class="w-3 h-3 rounded-[2px] bg-[#3B5BDB]" />離線 {{ overall.offline }}</span>
+        <span class="flex items-center gap-1.5"><i class="w-3 h-3 rounded-[2px] bg-[#9CA3AF]" />停止 {{ overall.stopped }}</span>
       </div>
 
       <!-- 分樓層點陣 -->
       <div v-for="floor in FLOORS" :key="floor" class="mt-2.5 pt-2.5 border-t border-[#21262D]">
-        <p class="text-sm font-bold text-[#F0F6FC]">
+        <p class="text-base font-bold text-[#F0F6FC]">
           {{ floor }} 樓層 <span class="text-[#8B949E] font-normal">({{ fcuByFloor[floor].length }}台)</span>
         </p>
-        <p class="text-xs text-[#8B949E] mt-0.5 mb-2">
+        <p class="text-sm font-bold text-[#8B949E] mt-0.5 mb-2">
           <template v-for="(v, k, idx) in tally(fcuByFloor[floor])" :key="k">
             <span v-if="idx" class="mx-1.5 text-[#30363D]">｜</span>{{ ({ running: '運轉', abnormal: '異常', offline: '離線', stopped: '停止' } as Record<string, string>)[k] }} {{ v }}台
           </template>
@@ -131,7 +131,7 @@ function readingColor(f: FcuItem): string {
           <span class="font-bold text-[#F0F6FC] font-tabular w-[92px] shrink-0">{{ f.code }}</span>
           <StatusPill :status="f.status" class="shrink-0" />
           <div class="ml-auto text-center leading-tight">
-            <div class="text-[10px] text-[#8B949E]">室溫</div>
+            <div class="text-xs font-bold text-[#8B949E]">室溫</div>
             <div class="text-sm font-bold font-tabular" :class="readingColor(f)">{{ reading(f) }}</div>
           </div>
         </div>
