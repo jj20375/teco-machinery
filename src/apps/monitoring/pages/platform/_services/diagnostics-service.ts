@@ -126,6 +126,8 @@ export interface ConnectionHistoryItem {
   connectionState: number;
   readStatus: number;
   changedAtUtc: string;
+  /** 這段狀態持續的秒數，下一段開始時才回填；null＝仍在持續中，或回填機制上線（2026-10-15）前的舊資料。 */
+  durationSeconds: number | null;
 }
 
 export interface DiagnosticsReport {
@@ -193,6 +195,13 @@ export const FCU_FAN_LABEL: Record<number, string> = { [-1]: '未知', 0: '高',
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) return '—';
   return new Date(value).toLocaleString('zh-TW', { hour12: false });
+}
+
+export function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds} 秒`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} 分鐘`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} 小時 ${Math.floor((seconds % 3600) / 60)} 分`;
+  return `${Math.floor(seconds / 86400)} 天 ${Math.floor((seconds % 86400) / 3600)} 小時`;
 }
 
 export function formatAgo(value: string | null | undefined, nowMs: number): string {

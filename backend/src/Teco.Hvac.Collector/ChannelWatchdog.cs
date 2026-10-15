@@ -8,7 +8,7 @@ namespace Teco.Hvac.Collector;
 
 /// <summary>
 /// DLL 沒有提供「整體健康」API（無原始碼、無法修改），這裡自己補一層：
-/// 追蹤每個通道最後一次成功讀取的時間、連線狀態變化就寫 channel_health，
+/// 追蹤每個通道最後一次成功讀取的時間、連線狀態進入新區段就寫 channel_health，
 /// 並曝露判斷結果給 /healthz（Docker healthcheck 用）與「完全沒事件太久要不要自我重建」的判斷。
 /// </summary>
 public sealed class ChannelWatchdog(
@@ -18,7 +18,7 @@ public sealed class ChannelWatchdog(
 {
     private readonly CollectorOptions _options = options.Value;
     private readonly ConcurrentDictionary<Channel, DateTimeOffset> _lastSuccessUtc = new();
-    private readonly ConcurrentDictionary<Channel, ConnectionState> _lastConnectionState = new();
+    private readonly ConcurrentDictionary<Channel, RecordedSegment?> _recorded = new();
     private readonly ConcurrentDictionary<Channel, ReadStatus> _lastReadStatus = new();
     private DateTimeOffset _lastDataEventUtc = DateTimeOffset.UtcNow;
 
@@ -36,22 +36,60 @@ public sealed class ChannelWatchdog(
     }
 
     /// <summary>
-    /// 連線事件本身不帶 ReadStatus（那是資料事件才有的概念），這裡用該通道
-    /// 最後一次資料事件回報的 ReadStatus 補上，讓 channel_health 兩欄都有意義的值。
+    /// channel_health 只記「區段」：進入連線失敗（含從已連線斷線）、恢復已連線，各寫一列。
+    /// 供應商 DLL 連不上時每約 5 秒會 Connecting → ConnectFailed → Connecting 來回切換，
+    /// 以前每次切換都寫一列，設備沒接上的 13 天在正式機累積了 57 萬筆；現在「連線中」視為過程不記錄，
+    /// 斷線／連線失敗／已停止都算同一段「沒連上」，直到恢復已連線才開新的一段。
+    /// 連線事件本身不帶 ReadStatus（那是資料事件才有的概念），這裡用該通道最後一次資料事件回報的 ReadStatus 補上。
     /// </summary>
     public async Task OnConnectionStatusChangedAsync(
         Channel channel, ConnectionState state, DateTimeOffset changedAtUtc, CancellationToken ct)
     {
-        bool isNewState = !_lastConnectionState.TryGetValue(channel, out var prev) || prev != state;
-        _lastConnectionState[channel] = state;
-
-        if (isNewState)
+        var phase = PhaseOf(state);
+        if (phase is null)
         {
+            logger.LogDebug("通道 {Channel} 連線狀態：{State}（過程狀態，不記錄）", channel, state);
+            return;
+        }
+
+        try
+        {
+            if (!_recorded.TryGetValue(channel, out var last))
+            {
+                // Collector 重啟後先接續資料庫裡最後一段，不然每次重啟都會多寫一列「連線失敗」。
+                var latest = await healthRepository.GetLatestAsync(channel, ct);
+                last = latest is null ? null : new RecordedSegment(latest.Id, PhaseOf((ConnectionState)latest.ConnectionState));
+            }
+
+            if (last?.Phase == phase)
+            {
+                _recorded[channel] = last;
+                logger.LogDebug("通道 {Channel} 連線狀態：{State}（與目前區段相同，不記錄）", channel, state);
+                return;
+            }
+
             logger.LogInformation("通道 {Channel} 連線狀態變化：{State}", channel, state);
             var readStatus = _lastReadStatus.GetValueOrDefault(channel, ReadStatus.NotRead);
-            await healthRepository.RecordAsync(channel, state, readStatus, changedAtUtc, ct);
+            var id = await healthRepository.StartSegmentAsync(channel, state, readStatus, changedAtUtc, last?.Id, ct);
+            _recorded[channel] = new RecordedSegment(id, phase);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // 不更新記憶體狀態，下一個事件會再試；也不讓例外中斷連線事件的消費迴圈。
+            logger.LogWarning(ex, "通道 {Channel} 連線狀態 {State} 寫入 channel_health 失敗", channel, state);
         }
     }
+
+    private enum Phase { Connected, NotConnected }
+
+    private sealed record RecordedSegment(long Id, Phase? Phase);
+
+    private static Phase? PhaseOf(ConnectionState state) => state switch
+    {
+        ConnectionState.Connected => Phase.Connected,
+        ConnectionState.Connecting => null,
+        _ => Phase.NotConnected,
+    };
 
     /// <summary>供 /healthz 使用：任一通道超過門檻沒有成功讀取，視為降級（但服務仍存活）。</summary>
     public bool IsDegraded(DateTimeOffset nowUtc)

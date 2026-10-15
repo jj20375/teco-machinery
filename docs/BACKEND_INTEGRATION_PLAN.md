@@ -294,6 +294,9 @@ public sealed class CollectorHostedService : BackgroundService
 - 超過 5 分鐘完全沒收到 `EventDataReceived`（**只看資料事件，不看連線狀態變化**；設備全部斷線時 DLL 仍每 5 秒送一次讀取失敗的資料事件，所以斷電不會被誤判）→ `Stop()` + `Dispose()` + 重建 Collector。
 - 重建後仍連續逾時（預設第 2 次，`WatchdogExitAfterConsecutiveTimeouts`）→ 結束程序，由 Docker（`restart: unless-stopped`）重啟容器：實測 DLL 卡住時只在程式內重建物件救不回來。兩次重啟之間至少隔 5 分鐘 × 連續次數，不會無限快速重啟。
 - 這些指標同時透過 `/healthz` 曝露，讓 Docker healthcheck 能重啟容器。
+- `channel_health` 只記「連線區段」：進入沒連上（`ConnectFailed`／`Disconnected`／`Stopped`，含從已連線斷線）寫一列、恢復 `Connected` 寫一列，
+  上一列的 `duration_seconds` 在新區段開始時回填（NULL＝仍在持續）。`Connecting` 是重試過程，不記錄：DLL 連不上時每約 5 秒就會
+  `Connecting ↔ ConnectFailed` 來回一次，以前逐次記錄，設備沒接上的 13 天在正式機累積了 57 萬筆（2026-10-15 修正）。
 
 ### 5.3 時間處理
 
@@ -394,13 +397,15 @@ operation_log(id, user_id, action, target_type, target_id,
 |---|---|---|
 | `fcu_reading` | 90 天 | 只留 `rollup_fcu_1h`（永久） |
 | `chiller_reading` | 180 天 | 只留 `rollup_chiller_1h`（永久） |
+| `channel_health` | 180 天 | 刪除（逐筆分批 DELETE，量少不需分割表） |
 | `alarm_event` / `operation_log` | 永久 | — |
 
 用 MariaDB Event Scheduler 或 collector 的每日排程執行 `ALTER TABLE ... DROP PARTITION`。
 
 實作在 API 的 `PartitionMaintenanceHostedService`（每 24 小時一次）。保留天數可用 `.env` 的
-`RETENTION_FCU_DAYS`（預設 90）、`RETENTION_CHILLER_DAYS`（預設 180）調整；下限 30 天，低於下限或不是整數
-會退回預設值並在 log 寫警告（縮短天數不可逆，避免打錯字誤刪歷史資料）。
+`RETENTION_FCU_DAYS`（預設 90）、`RETENTION_CHILLER_DAYS`（預設 180）、`RETENTION_CHANNEL_HEALTH_DAYS`（預設 180）調整；
+下限 30 天，低於下限或不是整數會退回預設值並在 log 寫警告（縮短天數不可逆，避免打錯字誤刪歷史資料）。
+`channel_health` 在 Collector 只記連線區段後一年也只有幾百筆，保留期限是防線：擋現場網路長期時好時壞（每次斷線／恢復各一列）時無限累積。
 
 ---
 

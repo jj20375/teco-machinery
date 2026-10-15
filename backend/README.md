@@ -62,7 +62,7 @@ backend/
 - Collector → `POST /internal/ingest/data` → Api 202 → `CurrentStateStore` 更新 →
   `GET /api/v1/realtime/snapshot` 正確回傳含 95 台 FCU 的完整快照與逐通道 `dataQuality`
 - 節流落地生效：`fcu_reading` 有 95 筆（每台至少一筆）、`chiller_reading` 持續累積、
-  `channel_health` 正確記錄 `ConnectFailed→Connecting` 的狀態轉換
+  `channel_health` 只記連線區段（見下方「連線紀錄」）
 - 告警抑制生效：`ReadStatus=Disconnected` 時 `alarm_event` 維持 0 筆（沒有因為斷線就誤報）
 - JWT 登入（PBKDF2 驗證）→ `/api/v1/alarms` 無 token 回 401、帶 token 回 200
 - `/api/v1/chillers`、`/api/v1/fcus?floor=B1`（正確回傳 64 筆）都能正確合併 DB 主檔與即時快照
@@ -81,6 +81,12 @@ backend/
 - 冰水主機超過後台門檻時狀態判為「異常」；冰水主機報表有負載率欄；FCU 報表的模式／風速有值
 - 每小時彙總補齊冰水主機電氣、壓力、冷卻水、警報與 FCU 模式／風速（migration `013`，既有資料庫要手動套用）
 - Collector 讀取不成功時不再寫入時序表（斷線紀錄只在 `channel_health`）
+
+**連線紀錄 `channel_health`**（2026-10-15，細節見 `CHANGELOG.md`「channel_health 暴量」一節）：
+- 只在進入「沒連上」（連線失敗／斷線／停止）與恢復「已連線」時各寫一列，`Connecting` 重試過程不記錄；設備長期連不上時只有一列，
+  不再每 5 秒兩列。上一列的 `duration_seconds` 在新區段開始時回填，NULL＝仍在持續；Collector 重啟會先接續資料庫最後一段，不重複寫入
+- 系統診斷頁「連線變化紀錄」多一欄「持續時間」，每個通道最新一列顯示「持續中・N 天 N 小時」
+- API 的 `PartitionMaintenanceHostedService` 每天順便刪除 180 天前的紀錄（`.env` 的 `RETENTION_CHANNEL_HEALTH_DAYS`，下限 30）
 - 重讀供應商說明書全文逐欄對照：說明書的欄位全部都有接進來。`GET /api/v1/fcus` 新增 `vendorCode`（供應商 FCU 編號，
   例如 `FC_MC1_01`，DDC 之間會重複）與 `address`（暫存器文件位址），FCU 管理頁與空間設備配置顯示成「DDC1 · FC_MC1_01」
 

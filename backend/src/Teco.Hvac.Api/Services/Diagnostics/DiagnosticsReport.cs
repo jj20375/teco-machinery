@@ -79,7 +79,9 @@ public sealed record PersistenceStatus(
     DateTimeOffset? RollupFcuLatestBucketUtc,
     string? Error);
 
-public sealed record ConnectionHistoryItem(int Channel, string Name, int ConnectionState, int ReadStatus, DateTimeOffset ChangedAtUtc);
+/// <summary>DurationSeconds：這段狀態持續多久，下一段開始時才回填；null＝仍在持續中（或回填機制上線前的舊資料）。</summary>
+public sealed record ConnectionHistoryItem(
+    int Channel, string Name, int ConnectionState, int ReadStatus, DateTimeOffset ChangedAtUtc, int? DurationSeconds);
 
 /// <summary>
 /// 排程狀態。LastRun/History 只存在 API 記憶體（重啟即清空）；EvidenceUtc 是資料庫裡的持久證據

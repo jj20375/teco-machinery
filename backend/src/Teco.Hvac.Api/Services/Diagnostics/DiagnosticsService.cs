@@ -405,7 +405,8 @@ public sealed class DiagnosticsService(
     {
         var rows = await TryAsync(() => channelHealth.ListRecentAsync(30, ct), "讀取 channel_health");
         return rows?.Select(r => new ConnectionHistoryItem(
-            r.Channel, ChannelName((Channel)r.Channel), r.ConnectionState, r.ReadStatus, r.ChangedAt.AsUtcOffset())).ToList() ?? [];
+            r.Channel, ChannelName((Channel)r.Channel), r.ConnectionState, r.ReadStatus, r.ChangedAt.AsUtcOffset(),
+            r.DurationSeconds)).ToList() ?? [];
     }
 
     private async Task<T?> TryAsync<T>(Func<Task<T>> action, string what) where T : class

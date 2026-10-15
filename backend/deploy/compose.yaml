@@ -105,9 +105,10 @@ services:
       Jwt__Audience: teco-hvac-clients
       Jwt__SigningKey: ${JWT_SIGNING_KEY:?請在 .env 設定 JWT_SIGNING_KEY（至少 32 字元）}
       Cors__AllowedOrigins__0: ${FRONTEND_ORIGIN:-http://localhost:4321}
-      # 原始讀值保留天數，留空用預設（FCU 90、冰水主機 180）；低於 30 會被 API 拒絕並退回預設值
+      # 保留天數，留空用預設（FCU 原始讀值 90、冰水主機原始讀值 180、連線紀錄 180）；低於 30 會被 API 拒絕並退回預設值
       Retention__FcuDays: ${RETENTION_FCU_DAYS:-}
       Retention__ChillerDays: ${RETENTION_CHILLER_DAYS:-}
+      Retention__ChannelHealthDays: ${RETENTION_CHANNEL_HEALTH_DAYS:-}
     depends_on:
       mariadb:
         condition: service_healthy

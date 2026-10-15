@@ -104,8 +104,8 @@ const checksByCategory = computed(() => {
           <JobStatusTable :jobs="report.jobs" :persistence="report.persistence" :now-ms="nowMs" />
         </DiagnosticsSection>
 
-        <DiagnosticsSection title="連線變化紀錄" hint="channel_health 最近 30 筆">
-          <ConnectionHistoryList :items="report.connectionHistory" />
+        <DiagnosticsSection title="連線變化紀錄" hint="channel_health 最近 30 筆；只記斷線與恢復，重試中的「連線中」不記錄">
+          <ConnectionHistoryList :items="report.connectionHistory" :now-ms="nowMs" />
         </DiagnosticsSection>
       </template>
     </div>

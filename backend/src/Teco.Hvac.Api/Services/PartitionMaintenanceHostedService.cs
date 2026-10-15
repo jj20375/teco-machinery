@@ -11,13 +11,17 @@ namespace Teco.Hvac.Api.Services;
 ///    `DROP PARTITION` 就失去零成本清除舊資料的意義。
 /// 2. 舊分割區清除——完全超出保留天數的月份分割區直接 `DROP PARTITION`（比逐筆 DELETE
 ///    快非常多，這也是原本設計選按月分割的理由）。
+/// 3. 連線紀錄清除——`channel_health` 預設保留 180 天（`RETENTION_CHANNEL_HEALTH_DAYS`）。
+///    Collector 只記連線區段後量很少，不值得做分割表，直接分批 DELETE；保留期限是防線，
+///    擋現場網路長期時好時壞（每次斷線／恢復都是一列）時無限累積。
 ///
 /// 一天跑一次就夠（不像 RollupHostedService 需要接近即時），跑在 API 專案內的
 /// BackgroundService，理由跟 RollupHostedService 一致：不用 MariaDB Event Scheduler，
 /// 排程邏輯留在 C# 端方便測試跟看 log。
 /// </summary>
 public sealed class PartitionMaintenanceHostedService(
-    PartitionMaintenanceRepository partitions, ScheduledJobStatusStore jobStatus, IConfiguration configuration,
+    PartitionMaintenanceRepository partitions, ChannelHealthRepository channelHealth, ScheduledJobStatusStore jobStatus,
+    IConfiguration configuration,
     ILogger<PartitionMaintenanceHostedService> logger) : BackgroundService
 {
     public const string JobKey = "partition-maintenance";
@@ -26,6 +30,7 @@ public sealed class PartitionMaintenanceHostedService(
     private const int MonthsAheadBuffer = 3;
     public const int DefaultChillerRetentionDays = 180;
     public const int DefaultFcuRetentionDays = 90;
+    public const int DefaultChannelHealthRetentionDays = 180;
     /// <summary>
     /// 縮短保留天數是不可逆的（下次排程就把超過的月份分割區整個刪掉），設定值打錯（例如 90 少打一個 0）
     /// 會一次刪掉大半歷史資料。低於這個下限一律拒絕，退回預設值。
@@ -34,15 +39,17 @@ public sealed class PartitionMaintenanceHostedService(
 
     private int _chillerRetentionDays = DefaultChillerRetentionDays;
     private int _fcuRetentionDays = DefaultFcuRetentionDays;
+    private int _channelHealthRetentionDays = DefaultChannelHealthRetentionDays;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        jobStatus.Register(JobKey, "分割區維護（增補未來月份／清除過期月份）", TickInterval);
+        jobStatus.Register(JobKey, "分割區維護（增補未來月份／清除過期月份與連線紀錄）", TickInterval);
         _fcuRetentionDays = ResolveRetentionDays("Retention:FcuDays", DefaultFcuRetentionDays);
         _chillerRetentionDays = ResolveRetentionDays("Retention:ChillerDays", DefaultChillerRetentionDays);
+        _channelHealthRetentionDays = ResolveRetentionDays("Retention:ChannelHealthDays", DefaultChannelHealthRetentionDays);
         logger.LogInformation(
-            "原始讀值保留天數：FCU {FcuDays} 天、冰水主機 {ChillerDays} 天（超過的月份分割區每日排程清除）",
-            _fcuRetentionDays, _chillerRetentionDays);
+            "保留天數：FCU 原始讀值 {FcuDays} 天、冰水主機原始讀值 {ChillerDays} 天、連線紀錄 {ChannelHealthDays} 天（每日排程清除）",
+            _fcuRetentionDays, _chillerRetentionDays, _channelHealthRetentionDays);
         await RunOnceAsync(stoppingToken);
 
         using var timer = new PeriodicTimer(TickInterval);
@@ -61,7 +68,13 @@ public sealed class PartitionMaintenanceHostedService(
             added += await EnsureFuturePartitionsAsync("fcu_reading", ct);
             var dropped = await DropOldPartitionsAsync("chiller_reading", _chillerRetentionDays, ct);
             dropped += await DropOldPartitionsAsync("fcu_reading", _fcuRetentionDays, ct);
-            jobStatus.Succeed(JobKey, $"新增 {added} 個分割區、清除 {dropped} 個過期分割區");
+            var healthDeleted = await channelHealth.DeleteOlderThanAsync(
+                DateTime.UtcNow.Date.AddDays(-_channelHealthRetentionDays), ct);
+            if (healthDeleted > 0)
+            {
+                logger.LogInformation("連線紀錄清除：channel_health 刪除 {Count} 筆超過 {Days} 天的紀錄", healthDeleted, _channelHealthRetentionDays);
+            }
+            jobStatus.Succeed(JobKey, $"新增 {added} 個分割區、清除 {dropped} 個過期分割區、{healthDeleted} 筆過期連線紀錄");
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
