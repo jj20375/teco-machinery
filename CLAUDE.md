@@ -136,9 +136,9 @@
   （2026-10-15 修過的真實問題：Z20 放了兩台 FCU，畫面上出現兩個「B1-Z20」分不出是哪台）。
   供應商編號（例如 `FC_MC1_01`，說明書表 19）在 DDC1、DDC2 之間會重複：跨樓層的清單（FCU 管理頁、操作紀錄）
   一律用 `fcuVendorLabel()` →「DDC1 · FC_MC1_01」；**圖面一次只畫一層、B1 全是 DDC1、B2 全是 DDC2**，所以
-  圖面標籤、未配置設備下拉選單、此區域設備清單用短版 `fcuShortVendorCode()` →「MC1_01」（`Equipment.code`）。
+  圖面標籤、未配置設備下拉選單、此區域設備清單直接用不含 DDC 的「FC_MC1_01」（`Equipment.code`；2026-10-15 曾縮成「MC1_01」，使用者要求加回 `FC_`）。
   圖面上的分區文字維持短碼「Z50」。清單／詳情面板沒設定名稱時顯示「未設定」，不退回顯示編號；
-  **圖面標籤（2D／3D marker、hover title、aria-label、熱區圖的設備資訊）則是自訂名稱優先，沒設定才退回短版供應商編號**
+  **圖面標籤（2D／3D marker、hover title、aria-label、熱區圖的設備資訊）則是自訂名稱優先，沒設定才退回供應商編號**
   （`FloorPlanCanvas.vue` 的 `deviceLabel()`、`FloorPlan3D.vue`、`FloorPlanViewer.vue`），空間設備配置、監控中心熱區圖、前台戰情室一致。
   細節見 `backend/CHANGELOG.md`「設備自訂代碼／名稱」與「配置圖改用供應商編號辨識 FCU」兩節。
 - **數值範圍表單（上限/下限）一律用 `yup` + `vee-validate` 做防呆驗證，不要手刻**

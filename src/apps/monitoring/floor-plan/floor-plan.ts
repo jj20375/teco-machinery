@@ -1,7 +1,7 @@
 import {
   listChillersApi, listFcusApi, listAlarmsApi,
   listPublicChillersApi, listPublicFcusApi, listPublicAlarmsApi,
-  deriveChillerStatus, deriveFcuStatus, alarmingFcuIdsOf, isDataQualityOnline, fcuVendorLabel, fcuShortVendorCode,
+  deriveChillerStatus, deriveFcuStatus, alarmingFcuIdsOf, isDataQualityOnline, fcuVendorLabel,
 } from '../pages/admin/_services/hvac-service';
 import { PlacementDeviceType, type FloorPlacementDto } from '../pages/admin/_services/floor-plan-service';
 import type { FloorId } from '../pages/dashboard/_types/dashboard-types';
@@ -16,7 +16,8 @@ export interface Equipment {
   /** 資料表的 id（device_chiller.id／device_fcu.id），改名時打 API 用。 */
   dbId: number;
   /**
-   * 圖面上用來辨識設備的編號：冰水主機是 CH-1，FCU 是短版供應商編號（MC4_15）。
+   * 圖面上用來辨識設備的編號：冰水主機是 CH-1，FCU 是供應商編號（FC_MC4_15）。
+   * 省略 DDC 不會撞號：圖面一次只畫一層，B1 全是 DDC1、B2 全是 DDC2；跨樓層的清單仍要用 fcuVendorLabel()。
    * FCU 不用 zone_code——那是「放在哪個分區」推算出來的，同一區放兩台就會撞號。
    */
   code: string;
@@ -316,7 +317,7 @@ export async function getFloorEquipmentApi(floor: FloorId, publicApi = false): P
     ...fcus.map((f) => ({
       id: equipmentKey('fcu', f.id),
       dbId: f.id,
-      code: fcuShortVendorCode(f.vendorCode),
+      code: f.vendorCode,
       name: f.displayName,
       vendorLabel: fcuVendorLabel(f),
       kind: 'fcu' as const,
