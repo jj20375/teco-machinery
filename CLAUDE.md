@@ -126,22 +126,21 @@
   在送出前的驗證階段整層失敗，且完全沒有網路請求可查、只有一個容易被忽略的 toast，
   外觀上跟「按鈕壞了」一模一樣。塞完資料後務必開這個分頁做一次移動設備再存檔的操作，
   確認真的能存，不要只看 API 回 200。細節見 `backend/CHANGELOG.md` 對應章節。
-- **設備有「客戶自訂代碼」與「系統編號」兩組識別，兩者並存、不可互相覆蓋**（2026-09-22）：
+- **設備有「客戶自訂名稱」與「系統識別」兩組，兩者並存、不可互相覆蓋**（2026-09-22，2026-10-15 改）：
   客戶自訂的那組存在 `display_name`（FCU 可留空＝未設定，冰水主機是 NOT NULL 不可留空），
-  用 `PATCH /api/v1/fcus/{id}`／`PATCH /api/v1/chillers/{id}` 修改；系統這組
-  （FCU 的 `zone_code` 與 `(channel, station_id, position)`、冰水主機的 `code`／`modbus_id`）
-  是實體接線與 Modbus 位址決定的，**任何情況下都不開放後台修改**。「空間設備配置」頁面
-  的清單／詳情面板（新增設備下拉選單、設備詳情、此區域設備清單）一律兩欄並存，沒設定時
-  顯示「未設定」而不是退回顯示系統編號（否則兩欄一樣，使用者看不出哪欄可改）。
-  **圖面標籤（2D／3D 設備 marker 上的文字、hover title、aria-label）則是自訂代碼優先，
-  沒設定才退回顯示系統編號**——這條跟清單面板的「不退回」規則刻意不同：圖面 marker
-  空間有限、又要讓人一眼認出現場裝置，所以允許 fallback（見
-  `FloorPlanCanvas.vue` 的 `deviceLabel()`、`FloorPlan3D.vue` 的 `equipment?.name ?? equipment?.code`）。
-  另外還有第三組「**供應商編號**」（例如 `FC_MC1_01`，說明書表 19 的命名規則），現場技術人員與供應商溝通時用的是這組；
-  它在 DDC1、DDC2 之間會重複，**一律搭配 DDC 顯示**（`fcuVendorLabel()` →「DDC1 · FC_MC1_01」），不可單獨拿來當識別。
-  這條規則只套用到「空間設備配置」（`/admin/floor-plan`）；`FloorPlanViewer.vue`
-  （監控中心熱區圖、前台戰情室共用）目前仍只顯示系統編號，尚未套用這個規則。
-  細節見 `backend/CHANGELOG.md`「設備自訂代碼／名稱」一節。
+  用 `PATCH /api/v1/fcus/{id}`／`PATCH /api/v1/chillers/{id}` 修改（「FCU管理」的編輯，或「空間設備配置」設備面板的「編輯名稱」，
+  後者需要「FCU管理」的編輯權限，沒有就只能看）。系統這組（FCU 的 `(channel, station_id, position)`、冰水主機的
+  `code`／`modbus_id`）是實體接線與 Modbus 位址決定的，**任何情況下都不開放後台修改**。
+  **FCU 的 `zone_code` 不是識別**：它是儲存空間配置時依「放在哪個分區」回寫的（`SyncFcuZoneCodesAsync`），
+  同一區可以放多台、移出圖面就變 NULL，所以**圖面與配置清單一律用供應商編號辨識 FCU，`zone_code` 只用在分區**
+  （2026-10-15 修過的真實問題：Z20 放了兩台 FCU，畫面上出現兩個「B1-Z20」分不出是哪台）。
+  供應商編號（例如 `FC_MC1_01`，說明書表 19）在 DDC1、DDC2 之間會重複：跨樓層的清單（FCU 管理頁、操作紀錄）
+  一律用 `fcuVendorLabel()` →「DDC1 · FC_MC1_01」；**圖面一次只畫一層、B1 全是 DDC1、B2 全是 DDC2**，所以
+  圖面標籤、未配置設備下拉選單、此區域設備清單用短版 `fcuShortVendorCode()` →「MC1_01」（`Equipment.code`）。
+  圖面上的分區文字維持短碼「Z50」。清單／詳情面板沒設定名稱時顯示「未設定」，不退回顯示編號；
+  **圖面標籤（2D／3D marker、hover title、aria-label、熱區圖的設備資訊）則是自訂名稱優先，沒設定才退回短版供應商編號**
+  （`FloorPlanCanvas.vue` 的 `deviceLabel()`、`FloorPlan3D.vue`、`FloorPlanViewer.vue`），空間設備配置、監控中心熱區圖、前台戰情室一致。
+  細節見 `backend/CHANGELOG.md`「設備自訂代碼／名稱」與「配置圖改用供應商編號辨識 FCU」兩節。
 - **數值範圍表單（上限/下限）一律用 `yup` + `vee-validate` 做防呆驗證，不要手刻**
   （2026-09-21）：告警門檻設定原本前後端都沒檢查「下限不能大於上限」，DB 裡曾經存進
   `0.6 ~ 0.5` 這種語意錯誤但兩個數字各自合法的資料，畫面上也沒有任何提示。已建立共用的

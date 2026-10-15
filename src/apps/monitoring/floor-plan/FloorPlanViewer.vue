@@ -82,7 +82,7 @@ onUnmounted(() => {
       />
       <div v-if="!placements.length && !embedded" class="empty-note">尚未配置設備 <a :href="`/admin/floor-plan?floor=${floor}`">前往配置 →</a></div>
       <div v-else-if="placements.length" class="heatmap-note">區域熱力：<i class="blue" />正常 <i class="red" />異常 <i class="yellow" />待保養</div>
-      <div v-if="selected" class="equipment-popup" role="status"><button type="button" aria-label="關閉設備資訊" @click="selectedId = ''">×</button><strong>{{ selected.code }}</strong><span>{{ selectedArea }} · <b :style="{ color: equipmentColor(selected.status) }">{{ equipmentStatus(selected.status) }}</b></span><span>{{ selected.kind === 'chiller' ? '出水溫度' : '室內溫度' }} {{ selected.temperature === undefined ? '無資料' : `${selected.temperature.toFixed(1)} °C` }}</span></div>
+      <div v-if="selected" class="equipment-popup" role="status"><button type="button" aria-label="關閉設備資訊" @click="selectedId = ''">×</button><strong>{{ selected.name ?? selected.code }}</strong><span v-if="selected.name">{{ selected.code }}</span><span>{{ selectedArea }} · <b :style="{ color: equipmentColor(selected.status) }">{{ equipmentStatus(selected.status) }}</b></span><span>{{ selected.kind === 'chiller' ? '出水溫度' : '室內溫度' }} {{ selected.temperature === undefined ? '無資料' : `${selected.temperature.toFixed(1)} °C` }}</span></div>
       <div v-if="zoomable" class="zoom-controls">
         <button type="button" aria-label="縮小平面圖" :disabled="zoomView.atDefault" @click="canvasRef?.zoomBy(1 / 1.4)">−</button>
         <button type="button" aria-label="重設平面圖縮放" :disabled="zoomView.atDefault" @click="canvasRef?.resetView()">{{ Math.round(zoomView.scale * 100) }}%</button>

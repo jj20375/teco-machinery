@@ -156,7 +156,7 @@ onMounted(() => {
 onBeforeUnmount(() => svg.value?.removeEventListener('wheel', onWheel));
 defineExpose({ zoomBy, resetView });
 const catalog = computed(() => new Map(props.equipment.map((e) => [e.id, e])));
-/** 圖面標籤：自訂代碼優先，沒設定才退回系統編號。 */
+/** 圖面標籤：自訂名稱優先，沒設定才退回設備編號（FCU 是短版供應商編號）。 */
 function deviceLabel(id: string): string | undefined {
   const device = catalog.value.get(id);
   return device ? (device.name ?? device.code) : undefined;

@@ -10,7 +10,8 @@ import {
   type Equipment, type EquipmentKind, type Placement, type Point,
 } from '../../../floor-plan/floor-plan';
 import { getFloorPlacementsApi, saveFloorPlacementsApi } from '../_services/floor-plan-service';
-import { ApiError } from '../_services/auth-service';
+import { updateFcuDisplayNameApi } from '../_services/hvac-service';
+import { ApiError, getSessionApi } from '../_services/auth-service';
 import type { FloorId } from '../../dashboard/_types/dashboard-types';
 
 // 3D 檢視連同 three.js 一起動態載入，平面檢視就不用背這包。
@@ -108,6 +109,48 @@ function moveDevice(id: string, point: Point, rotation?: number) {
   Object.assign(p, updated);
   selectedAreaId.value = p.areaId;
   notify('位置已調整，尚未儲存。');
+}
+// 改名打的是 FCU 管理的 API（PATCH /api/v1/fcus/{id}），要有「FCU管理」的編輯權限；
+// 只有「空間設備配置」權限的人看得到名稱但不能改。後端也會擋，這裡只是不讓按鈕出現。
+const canRenameFcu = computed(() =>
+  getSessionApi()?.user.grants.some((g) => g.code === 'hvac.fcus' && g.actions.includes('update')) ?? false);
+const nameEditing = ref(false);
+const nameDraft = ref('');
+const nameSaving = ref(false);
+const nameError = ref('');
+watch(selectedDeviceId, () => { nameEditing.value = false; nameError.value = ''; });
+function startRename() {
+  nameDraft.value = selectedEquipment.value?.name ?? '';
+  nameError.value = '';
+  nameEditing.value = true;
+}
+async function saveRename() {
+  const device = selectedEquipment.value;
+  if (!device || device.kind !== 'fcu' || nameSaving.value) return;
+  const value = nameDraft.value.trim();
+  if (value.length > 64) {
+    nameError.value = '設備名稱最多 64 個字。';
+    return;
+  }
+  // 沒改就不打 API，避免操作紀錄留下前後一樣的紀錄。
+  if (value === (device.name ?? '')) {
+    nameEditing.value = false;
+    return;
+  }
+  nameSaving.value = true;
+  nameError.value = '';
+  try {
+    await updateFcuDisplayNameApi(device.dbId, value);
+    device.name = value || null;
+    nameEditing.value = false;
+    notify(value ? `已將 ${device.code} 命名為「${value}」。` : `已清除 ${device.code} 的名稱。`);
+  } catch (err) {
+    nameError.value = err instanceof ApiError && err.status === 403
+      ? '目前登入的帳號沒有「FCU管理」的編輯權限。'
+      : err instanceof Error ? err.message : '儲存失敗，請稍後再試。';
+  } finally {
+    nameSaving.value = false;
+  }
 }
 function rotateDevice() {
   const p = selectedPlacement.value;
@@ -265,7 +308,18 @@ onUnmounted(() => window.removeEventListener('beforeunload', beforeLeave));
 
           <div v-if="selectedEquipment && selectedPlacement" class="device-detail">
             <div class="detail-heading"><h3>{{ selectedEquipment.kind === 'chiller' ? '冰水主機' : 'FCU' }} 設備位置</h3><span :style="{ color: equipmentColor(selectedEquipment.status) }">● {{ equipmentStatus(selectedEquipment.status) }}</span></div>
-            <strong class="device-code">{{ selectedEquipment.name ?? '未設定' }}</strong>
+            <template v-if="nameEditing">
+              <label class="field-label" for="device-name-input">設備名稱</label>
+              <input id="device-name-input" v-model="nameDraft" class="name-input" maxlength="64" placeholder="例如現場標籤上的編號；留空為未設定"
+                @keydown.enter.prevent="saveRename" @keydown.esc="nameEditing = false">
+              <p v-if="nameError" class="name-error" role="alert">{{ nameError }}</p>
+              <div class="device-actions"><AdminButton size="sm" :disabled="nameSaving" @click="saveRename">{{ nameSaving ? '儲存中…' : '儲存名稱' }}</AdminButton><button type="button" class="cancel" @click="nameEditing = false">取消</button></div>
+              <p class="hint">名稱會立即儲存，和「FCU管理」的設備名稱是同一個欄位，不需要按「儲存配置」。</p>
+            </template>
+            <div v-else class="name-row">
+              <strong class="device-code">{{ selectedEquipment.name ?? '未設定' }}</strong>
+              <button v-if="selectedEquipment.kind === 'fcu' && canRenameFcu" type="button" class="rename" @click="startRename">編輯名稱</button>
+            </div>
             <small class="device-system-code">{{ selectedEquipment.code }}</small>
             <div v-if="selectedEquipment.vendorLabel" class="device-metric"><span>供應商編號</span><b class="vendor-code">{{ selectedEquipment.vendorLabel }}</b></div>
             <div class="device-metric"><span>{{ selectedEquipment.kind === 'chiller' ? '出水溫度' : '室內溫度' }}</span><b>{{ selectedEquipment.temperature === undefined ? '無資料' : `${selectedEquipment.temperature.toFixed(1)} °C` }}</b></div>
@@ -312,6 +366,8 @@ h2 { font-size: 25px; font-weight: 750; color: #142b3b; margin: 4px 0; }
 .area-summary { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 16px 0 22px; }.area-summary span { font-size: 11px; color: #2d7d8a; background: #e9f6f6; padding: 3px 6px; border-radius: 4px; }.area-summary small { width: 100%; color: #64748b; }.area-note { width: 100%; font-size: 11px; color: #7c8fa0; line-height: 1.7; margin: 4px 0 0; }
 .kind-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }.kind-tabs button { border: 1px solid #dce4ec; padding: 10px; border-radius: 7px; font-size: 12px; }.kind-tabs button[aria-pressed=true] { color: #166c85; border-color: #409fb8; background: #eff9fb; }.add-button { width: 100%; margin-top: 12px; }
 .hint { font-size: 11px; line-height: 1.7; color: #64748b; margin: 10px 0 18px; }.device-detail { border-top: 1px solid #e2e8f0; padding-top: 18px; }.detail-heading { justify-content: space-between; gap: 5px; }.detail-heading span { font-size: 11px; font-weight: 700; }.device-code { display: block; font: 16px ui-monospace, monospace; margin: 12px 0 2px; color: #163344; }.device-system-code { display: block; font: 11px ui-monospace, monospace; margin: 0 0 12px; color: #94a3b8; }.device-metric { justify-content: space-between; font-size: 12px; margin: 8px 0; color: #64748b; }.device-metric b { color: #334155; }.device-metric b.vendor-code { font: 12px ui-monospace, monospace; }.device-actions { gap: 14px; margin-top: 14px; }.remove { font-size: 12px; color: #c2414a; }
+.name-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }.rename,.cancel { font-size: 12px; color: #1f7f94; white-space: nowrap; }.cancel { color: #64748b; }
+.name-input { width: 100%; border: 1px solid #cbd5e1; border-radius: 7px; padding: 9px 8px; font-size: 13px; color: #334155; }.name-input:focus-visible { outline: 2px solid #258ca6; outline-offset: 1px; }.name-error { font-size: 12px; color: #be123c; margin: 6px 0 0; }
 .placed-list { border-top: 1px solid #e2e8f0; padding-top: 15px; margin-top: 16px; }.placed-list h3 span { color: #94a3b8; margin-left: 6px; }.placed-list button { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 8px; padding: 10px 6px; border-radius: 6px; font-size: 11px; }.placed-list button.active { background: #edf7fa; }.placed-list small { margin-left: auto; color: #64748b; }
 .scope-note { margin-top: 20px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 11px; line-height: 1.8; color: #64748b; }.scope-note strong { color: #475569; }.scope-note p { margin: 6px 0 0; }
 .region-notice,.feedback { font-size: 12px; line-height: 1.8; padding: 12px; background: #edf8f8; color: #17626d; border-radius: 7px; margin-top: 14px; }.region-notice { background: #f1f5f9; color: #64748b; }.feedback.error,.error-banner { background: #fff1f2; color: #be123c; }.error-banner { padding: 14px; font-size: 13px; border-radius: 8px; margin-bottom: 16px; }.loading { min-height: 480px; display: grid; place-items: center; color: #b7cbd9; }

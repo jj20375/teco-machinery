@@ -1,7 +1,7 @@
 import {
   listChillersApi, listFcusApi, listAlarmsApi,
   listPublicChillersApi, listPublicFcusApi, listPublicAlarmsApi,
-  deriveChillerStatus, deriveFcuStatus, alarmingFcuIdsOf, isDataQualityOnline, fcuVendorLabel,
+  deriveChillerStatus, deriveFcuStatus, alarmingFcuIdsOf, isDataQualityOnline, fcuVendorLabel, fcuShortVendorCode,
 } from '../pages/admin/_services/hvac-service';
 import { PlacementDeviceType, type FloorPlacementDto } from '../pages/admin/_services/floor-plan-service';
 import type { FloorId } from '../pages/dashboard/_types/dashboard-types';
@@ -13,8 +13,14 @@ export type { Point, GeneratedArea };
 export type EquipmentKind = 'chiller' | 'fcu';
 export interface Equipment {
   id: string;
+  /** 資料表的 id（device_chiller.id／device_fcu.id），改名時打 API 用。 */
+  dbId: number;
+  /**
+   * 圖面上用來辨識設備的編號：冰水主機是 CH-1，FCU 是短版供應商編號（MC4_15）。
+   * FCU 不用 zone_code——那是「放在哪個分區」推算出來的，同一區放兩台就會撞號。
+   */
   code: string;
-  /** 客戶自訂代碼（display_name）；未設定時為 null，UI 要顯示「未設定」，不要退回顯示系統編號。 */
+  /** 客戶自訂代碼（display_name）；未設定時為 null，清單要顯示「未設定」，圖面標籤才退回顯示 code。 */
   name: string | null;
   kind: EquipmentKind;
   status: string;
@@ -297,6 +303,7 @@ export async function getFloorEquipmentApi(floor: FloorId, publicApi = false): P
           const status = deriveChillerStatus(c, alarms);
           return {
             id: equipmentKey('chiller', c.id),
+            dbId: c.id,
             code: c.code,
             name: c.displayName,
             kind: 'chiller' as const,
@@ -308,7 +315,8 @@ export async function getFloorEquipmentApi(floor: FloorId, publicApi = false): P
       : []),
     ...fcus.map((f) => ({
       id: equipmentKey('fcu', f.id),
-      code: f.zoneCode ?? `${f.floor}-${f.id}`,
+      dbId: f.id,
+      code: fcuShortVendorCode(f.vendorCode),
       name: f.displayName,
       vendorLabel: fcuVendorLabel(f),
       kind: 'fcu' as const,

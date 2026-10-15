@@ -147,6 +147,14 @@ export function fcuVendorLabel(fcu: Pick<FcuRow, 'channel' | 'vendorCode'>): str
   return `DDC${fcu.channel} · ${fcu.vendorCode}`;
 }
 
+/**
+ * 圖面用的短版供應商編號（FC_MC4_15 → MC4_15）。省略 DDC 不會撞號，是因為圖面一次只畫一層，
+ * 而 B1 全是 DDC1、B2 全是 DDC2；跨樓層的清單（例如 FCU 管理頁）仍要用 fcuVendorLabel()。
+ */
+export function fcuShortVendorCode(vendorCode: string): string {
+  return vendorCode.replace(/^FC_/, '');
+}
+
 /** MAINTENANCE（待保養）只會出現在冰水主機，FCU 沒有運轉時數（2026-09-30 依設計稿確認）。 */
 export type DeviceStatus = 'RUNNING' | 'STOPPED' | 'ABNORMAL' | 'OFFLINE' | 'MAINTENANCE';
 

@@ -42,10 +42,10 @@ public static class FcuEndpoints
     }
 
     /// <summary>
-    /// 讓場館自己填一組看得懂的代碼／名稱（例如現場設備標籤上的編號），跟系統自己的
-    /// zone_code、(channel, station_id, position) 並存——系統這組是實體接線決定的、有意義，
-    /// 不能被覆蓋掉，所以另外用 display_name 這個本來就存在但一直沒被使用的欄位放客戶的版本。
-    /// 留空代表清回「未設定」，畫面會退回顯示系統編號。
+    /// 讓場館自己填一組看得懂的代碼／名稱（例如現場設備標籤上的編號），跟系統的
+    /// (channel, station_id, position) 並存——這組是實體接線決定的，不能被覆蓋掉，所以另外用
+    /// display_name 這個欄位放客戶的版本。zone_code 不是識別：它是儲存空間配置時依「放在哪個分區」
+    /// 回寫的，同一區可以有多台。留空代表清回「未設定」，圖面會退回顯示供應商編號。
     /// </summary>
     private static async Task<IResult> UpdateDisplayName(
         ClaimsPrincipal principal, int id, UpdateFcuDisplayNameRequest request,
@@ -68,9 +68,11 @@ public static class FcuEndpoints
 
         await repo.UpdateDisplayNameAsync(id, displayName, ct);
 
-        var systemCode = device.ZoneCode ?? $"{device.Floor}-{device.Id}";
+        // 用供應商編號描述是哪一台：zone_code 會隨配置變動，同一區也可能有多台，事後對不回是哪台。
+        var vendorLabel = $"DDC{(int)device.Channel} · {VendorCodeOf(device.StationId, device.Position)}";
+        var where = device.ZoneCode is null ? "" : $"（{device.ZoneCode}）";
         await opLog.LogAsync(scope, "hvac.fcus.update", "fcu", id.ToString(),
-            $"更新了 FCU {systemCode} 的自訂代碼（{device.DisplayName ?? "未設定"} → {displayName ?? "未設定"}）",
+            $"更新了 FCU {vendorLabel}{where} 的自訂代碼（{device.DisplayName ?? "未設定"} → {displayName ?? "未設定"}）",
             before: new { DisplayName = device.DisplayName }, after: new { DisplayName = displayName }, ct: ct);
 
         return Results.NoContent();
