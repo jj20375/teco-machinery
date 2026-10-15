@@ -28,6 +28,8 @@ const FloorPlan3D = defineAsyncComponent({
   timeout: 15000,
 });
 const FLOOR_LABELS: Record<FloorId, string> = { B1: 'B1 地下一樓', B2: 'B2 地下二樓' };
+// 整張圖塞進畫布時，密集區的設備編號會疊在一起；預設先放大，要看整層再自己按「−」縮小。
+const DEFAULT_ZOOM = 2;
 
 function floorFromUrl(): FloorId {
   if (typeof window === 'undefined') return 'B1';
@@ -267,7 +269,7 @@ onUnmounted(() => window.removeEventListener('beforeunload', beforeLeave));
           <div class="map-caption"><span>CAD 分區圖 <span class="divider">/</span> {{ areas.length }} 個分區</span><span>{{ placements.length }} 台已配置 <span class="divider">·</span> {{ abnormalCount }} 台異常 <span class="divider">·</span> {{ maintenanceCount }} 台待保養</span></div>
           <div v-if="loading" class="loading" role="status">正在讀取配置…</div>
           <div v-else-if="view === '2d'" class="map-stage">
-            <FloorPlanCanvas ref="canvasRef" :floor="floor" :placements="placements" :equipment="equipment" :editable="!loadError"
+            <FloorPlanCanvas ref="canvasRef" :floor="floor" :placements="placements" :equipment="equipment" :editable="!loadError" :initial-scale="DEFAULT_ZOOM"
               zoomable :selected-area-id="selectedAreaId" :selected-device-id="selectedDeviceId"
               @select-area="chooseArea" @select-device="selectDevice" @move="moveDevice" @view-change="zoomView = $event" />
           </div>
@@ -276,7 +278,7 @@ onUnmounted(() => window.removeEventListener('beforeunload', beforeLeave));
           <div class="map-bottom"><div class="legend"><span><i class="blue" />正常</span><span><i class="red" />異常</span><span><i class="yellow" />待保養</span><span><i class="gray" />離線／停止</span></div>
             <div v-if="view === '2d'" class="zoom-controls">
               <span class="zoom-hint">放大後按住左鍵或中鍵拖曳平移 · 滾輪平移 · Ctrl+滾輪或雙指縮放</span>
-              <button type="button" aria-label="縮小平面圖" :disabled="zoomView.atDefault" @click="canvasRef?.zoomBy(1 / 1.4)">−</button>
+              <button type="button" aria-label="縮小平面圖" :disabled="zoomView.scale <= 1.001" @click="canvasRef?.zoomBy(1 / 1.4)">−</button>
               <button type="button" aria-label="重設平面圖縮放" :disabled="zoomView.atDefault" @click="canvasRef?.resetView()">{{ Math.round(zoomView.scale * 100) }}%</button>
               <button type="button" aria-label="放大平面圖" :disabled="zoomView.scale >= 8" @click="canvasRef?.zoomBy(1.4)">＋</button>
             </div>

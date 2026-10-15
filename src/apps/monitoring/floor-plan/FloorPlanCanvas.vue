@@ -17,7 +17,9 @@ const props = withDefaults(defineProps<{
   compact?: boolean;
   /** 開啟滾輪平移／縮放；未開啟時 viewBox 固定為整張圖 */
   zoomable?: boolean;
-}>(), { floor: 'B1', editable: false, compact: false, zoomable: false });
+  /** 一開始（與「重設」、換樓層後）的放大倍率，以圖面中心為準；1 是整張圖 */
+  initialScale?: number;
+}>(), { floor: 'B1', editable: false, compact: false, zoomable: false, initialScale: 1 });
 const emit = defineEmits<{
   'select-area': [id: string, point: Point];
   'select-device': [id: string];
@@ -41,14 +43,15 @@ function markerSize(kind: EquipmentKind): Point {
   const [width, height] = equipmentSize(kind, props.floor);
   return [width / u.value, height / u.value];
 }
-/** 標籤基線到圖示中心的距離：圖示半高＋選取外框 3＋字高約 6.5，讓字緊貼圖示下緣。轉 90° 時圖示的寬變成高。 */
+/**
+ * 標籤基線到圖示中心的距離：圖示半高＋選取外框 3＋字高約 6.5，讓字緊貼圖示下緣。轉 90° 時圖示的寬變成高。
+ * 字高要除以縮放倍率：文字放大時維持螢幕大小（見下方 --z），圖示卻會跟著變大。
+ */
 function labelOffset(p: Placement): number {
   const [width, height] = markerSize(p.kind);
-  return (p.rotation % 180 === 90 ? width : height) / 2 + 9.5;
+  return (p.rotation % 180 === 90 ? width : height) / 2 + 3 + 6.5 / scale.value;
 }
-const view = ref({ x: 0, y: 0, width: plan.value.width, height: plan.value.height });
 const scale = computed(() => plan.value.width / view.value.width);
-const atDefault = computed(() => view.value.width >= plan.value.width - .01 && !view.value.x && !view.value.y);
 
 /** 一個螢幕像素等於多少圖面單位；用 CTM 取才會把 preserveAspectRatio 的留白算進去 */
 function unitsPerPixel(): number {
@@ -66,6 +69,16 @@ function clampView(next: { x: number; y: number; width: number }) {
     y: Math.min(Math.max(next.y, 0), plan.value.height - height),
   };
 }
+function defaultView() {
+  const width = plan.value.width / Math.max(1, props.initialScale);
+  const height = width * plan.value.height / plan.value.width;
+  return clampView({ width, x: (plan.value.width - width) / 2, y: (plan.value.height - height) / 2 });
+}
+const view = ref(defaultView());
+const atDefault = computed(() => {
+  const d = defaultView();
+  return Math.abs(view.value.width - d.width) < .01 && Math.abs(view.value.x - d.x) < .01 && Math.abs(view.value.y - d.y) < .01;
+});
 /** 以某個螢幕座標為錨點縮放，讓游標底下的位置維持不動 */
 function zoomAt(factor: number, clientX: number, clientY: number) {
   const matrix = svg.value?.getScreenCTM();
@@ -87,7 +100,7 @@ function zoomBy(factor: number) {
   zoomAt(factor, rect.left + rect.width / 2, rect.top + rect.height / 2);
 }
 function resetView() {
-  view.value = { x: 0, y: 0, width: plan.value.width, height: plan.value.height };
+  view.value = defaultView();
 }
 function onWheel(event: WheelEvent) {
   if (!props.zoomable) return;
@@ -221,7 +234,7 @@ function onKey(event: KeyboardEvent, p: Placement) {
 </script>
 
 <template>
-  <svg ref="svg" :viewBox="`${view.x} ${view.y} ${view.width} ${view.height}`" class="floor-svg" :style="{ '--u': u }"
+  <svg ref="svg" :viewBox="`${view.x} ${view.y} ${view.width} ${view.height}`" class="floor-svg" :style="{ '--u': u, '--z': 1 / scale }"
     :class="{ editable, compact, zoomable, panning: !!panning, pannable: zoomable && scale > 1.001 }"
     preserveAspectRatio="xMidYMid meet" role="group" :aria-label="`${floor} 空間配置圖；藍色光暈為正常設備區域，紅色光暈為異常設備區域`"
     @pointerdown="startPan" @pointermove="move" @pointerup="endDrag" @pointercancel="endDrag"
@@ -283,8 +296,10 @@ function onKey(event: KeyboardEvent, p: Placement) {
 .zoomable.panning, .zoomable.panning .area, .zoomable.panning .device { cursor: grabbing; }
 /* 分區代碼刻意用青綠色、比設備標籤（白色 8px）小一號，兩者都是英數編號，靠顏色與大小一眼分出哪個是區域、哪個是設備。
    避開藍／紅／黃——那三色是熱區狀態色。 */
-.area-code { fill: #7fdccb; font-family: ui-monospace, monospace; font-size: calc(5.5px * var(--u, 1)); font-weight: 600; pointer-events: none; paint-order: stroke; stroke: #0b1926; stroke-width: calc(1.4px * var(--u, 1)); stroke-linejoin: round; }
-.area-name { fill: #b6cfdf; font-size: calc(6px * var(--u, 1)); pointer-events: none; paint-order: stroke; stroke: #0b1926; stroke-width: calc(1.4px * var(--u, 1)); stroke-linejoin: round; }
+/* 文字乘上 --z（＝1／縮放倍率）：放大時字維持螢幕上的大小、只有底圖變大，密集區的編號才會被拉開；
+   不乘的話字跟間距一起放大，怎麼放大都還是疊在一起。100% 時 --z＝1，跟原本完全一樣。 */
+.area-code { fill: #7fdccb; font-family: ui-monospace, monospace; font-size: calc(5.5px * var(--u, 1) * var(--z, 1)); font-weight: 600; pointer-events: none; paint-order: stroke; stroke: #0b1926; stroke-width: calc(1.4px * var(--u, 1) * var(--z, 1)); stroke-linejoin: round; }
+.area-name { fill: #b6cfdf; font-size: calc(6px * var(--u, 1) * var(--z, 1)); pointer-events: none; paint-order: stroke; stroke: #0b1926; stroke-width: calc(1.4px * var(--u, 1) * var(--z, 1)); stroke-linejoin: round; }
 .selectable { cursor: pointer; }
 .area > polygon:first-of-type { fill-opacity: .62; }
 .selectable:hover polygon:first-of-type, .area.selected polygon:first-of-type { fill: #24556a; fill-opacity: .85; stroke: #70d9ed; stroke-width: calc(1.5px * var(--u, 1)); }
@@ -297,7 +312,7 @@ function onKey(event: KeyboardEvent, p: Placement) {
 .editable .device { cursor: grab; }
 .device.dragging { cursor: grabbing; }
 .device:focus-visible > g > rect:first-child { stroke: white; stroke-width: calc(2px * var(--u, 1)); }
-.device-label { fill: #f8fafc; font-family: ui-monospace, monospace; font-size: calc(8px * var(--u, 1)); paint-order: stroke; stroke: #0b1926; stroke-width: calc(1.8px * var(--u, 1)); stroke-linejoin: round; pointer-events: none; }
+.device-label { fill: #f8fafc; font-family: ui-monospace, monospace; font-size: calc(8px * var(--u, 1) * var(--z, 1)); paint-order: stroke; stroke: #0b1926; stroke-width: calc(1.8px * var(--u, 1) * var(--z, 1)); stroke-linejoin: round; pointer-events: none; }
 .compact .area-code { font-size: calc(11px * var(--u, 1)); }
 .compact .footer-label, .compact .device-label { display: none; }
 </style>
