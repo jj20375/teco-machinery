@@ -214,7 +214,11 @@ function disposeObject(root: THREE.Object3D) {
     }
   });
 }
-function label(text: string, x: number, y: number, z: number, width: number) {
+// 跟 2D 平面一致：設備標籤白字、分區代碼青綠色且小一號；外框細一點並用圓角。
+// 用固定字高縮放（不是固定寬度），否則短的「Z20」會被放得比「MC3_20」還大。
+const DEVICE_TEXT = { height: 11, color: '#e2edf3', stroke: 5 };
+const AREA_TEXT = { height: 7.5, color: '#7fdccb', stroke: 4 };
+function label(text: string, x: number, y: number, z: number, style: { height: number; color: string; stroke: number }) {
   const canvas = document.createElement('canvas');
   const context = canvas.getContext('2d')!;
   context.font = '500 32px sans-serif';
@@ -223,14 +227,18 @@ function label(text: string, x: number, y: number, z: number, width: number) {
   context.font = '500 32px sans-serif';
   context.textAlign = 'center';
   context.textBaseline = 'middle';
-  context.lineWidth = 7;
+  context.lineWidth = style.stroke;
+  context.lineJoin = 'round';
   context.strokeStyle = '#0c1925';
   context.strokeText(text, canvas.width/2, 32);
-  context.fillStyle = '#e2edf3';
+  context.fillStyle = style.color;
   context.fillText(text, canvas.width/2, 32);
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), depthTest: false }));
+  // 沒標 sRGB 的話 three.js 會把畫布顏色當線性值再轉一次，青綠色會被洗成接近白色（白字看不出差別）。
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false }));
   sprite.position.set(x - plan().width/2, y, z - plan().height/2);
-  sprite.scale.set(width, width * canvas.height/canvas.width, 1);
+  sprite.scale.set(style.height * canvas.width/canvas.height, style.height, 1);
   return sprite;
 }
 function updateDevices() {
@@ -247,7 +255,7 @@ function updateDevices() {
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(block.geometry), new THREE.LineBasicMaterial({ color: p.deviceId === props.selectedDeviceId ? '#ffffff' : '#bfd5e4' }));
     edges.position.copy(block.position);
     edges.rotation.copy(block.rotation);
-    deviceGroup.add(edges, label(equipment?.name ?? equipment?.code ?? p.deviceId, p.x, height + 21, p.y, 24));
+    deviceGroup.add(edges, label(equipment?.name ?? equipment?.code ?? p.deviceId, p.x, height + 21, p.y, DEVICE_TEXT));
   }
   rebuildAlertRings();
   render();
@@ -342,7 +350,7 @@ onMounted(() => {
       areaMaterials.set(area.id, material);
       scene.add(mesh);
       const outline = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(area.points.map(([x,y]) => new THREE.Vector3(x-plan().width/2,height+.5,y-plan().height/2))), new THREE.LineBasicMaterial({ color: '#648797' }));
-      scene.add(outline, label(area.id, area.label[0], 12, area.label[1], 24));
+      scene.add(outline, label(area.id.replace(`${props.floor}-`, ''), area.label[0], 12, area.label[1], AREA_TEXT));
     }
     scene.add(deviceGroup, dataFlowGroup);
     buildParticles();

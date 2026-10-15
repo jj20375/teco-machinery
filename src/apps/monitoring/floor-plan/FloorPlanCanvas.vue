@@ -41,6 +41,11 @@ function markerSize(kind: EquipmentKind): Point {
   const [width, height] = equipmentSize(kind, props.floor);
   return [width / u.value, height / u.value];
 }
+/** 標籤基線到圖示中心的距離：圖示半高＋選取外框 3＋字高約 6.5，讓字緊貼圖示下緣。轉 90° 時圖示的寬變成高。 */
+function labelOffset(p: Placement): number {
+  const [width, height] = markerSize(p.kind);
+  return (p.rotation % 180 === 90 ? width : height) / 2 + 9.5;
+}
 const view = ref({ x: 0, y: 0, width: plan.value.width, height: plan.value.height });
 const scale = computed(() => plan.value.width / view.value.width);
 const atDefault = computed(() => view.value.width >= plan.value.width - .01 && !view.value.x && !view.value.y);
@@ -263,7 +268,7 @@ function onKey(event: KeyboardEvent, p: Placement) {
         </g>
         <path v-else d="M-5 -3h10M-5 0h10M-5 3h10" stroke="#102538" stroke-width="1.2" />
       </g>
-      <text x="0" :y="21 * u" text-anchor="middle" class="device-label">{{ deviceLabel(p.deviceId) }}</text>
+      <text x="0" :y="labelOffset(p) * u" text-anchor="middle" class="device-label">{{ deviceLabel(p.deviceId) }}</text>
     </g>
     <text :x="12 * u" :y="plan.height - 8 * u" class="footer-label">{{ floor }} / 空間示意 · 非施工尺寸</text>
   </svg>
@@ -276,8 +281,10 @@ function onKey(event: KeyboardEvent, p: Placement) {
 /* 編輯模式的分區要維持 pointer（點選用），所以只有唯讀檢視才把空白處顯示成可抓取 */
 .zoomable.pannable:not(.editable) { cursor: grab; }
 .zoomable.panning, .zoomable.panning .area, .zoomable.panning .device { cursor: grabbing; }
-.area-code { fill: #d7e7ef; font-family: ui-monospace, monospace; font-size: calc(7px * var(--u, 1)); font-weight: 600; pointer-events: none; paint-order: stroke; stroke: #0b1926; stroke-width: calc(2.5px * var(--u, 1)); }
-.area-name { fill: #b6cfdf; font-size: calc(6px * var(--u, 1)); pointer-events: none; paint-order: stroke; stroke: #0b1926; stroke-width: calc(2px * var(--u, 1)); }
+/* 分區代碼刻意用青綠色、比設備標籤（白色 8px）小一號，兩者都是英數編號，靠顏色與大小一眼分出哪個是區域、哪個是設備。
+   避開藍／紅／黃——那三色是熱區狀態色。 */
+.area-code { fill: #7fdccb; font-family: ui-monospace, monospace; font-size: calc(5.5px * var(--u, 1)); font-weight: 600; pointer-events: none; paint-order: stroke; stroke: #0b1926; stroke-width: calc(1.4px * var(--u, 1)); stroke-linejoin: round; }
+.area-name { fill: #b6cfdf; font-size: calc(6px * var(--u, 1)); pointer-events: none; paint-order: stroke; stroke: #0b1926; stroke-width: calc(1.4px * var(--u, 1)); stroke-linejoin: round; }
 .selectable { cursor: pointer; }
 .area > polygon:first-of-type { fill-opacity: .62; }
 .selectable:hover polygon:first-of-type, .area.selected polygon:first-of-type { fill: #24556a; fill-opacity: .85; stroke: #70d9ed; stroke-width: calc(1.5px * var(--u, 1)); }
@@ -290,7 +297,7 @@ function onKey(event: KeyboardEvent, p: Placement) {
 .editable .device { cursor: grab; }
 .device.dragging { cursor: grabbing; }
 .device:focus-visible > g > rect:first-child { stroke: white; stroke-width: calc(2px * var(--u, 1)); }
-.device-label { fill: #f8fafc; font-family: ui-monospace, monospace; font-size: calc(8px * var(--u, 1)); paint-order: stroke; stroke: #0b1926; stroke-width: calc(2.5px * var(--u, 1)); pointer-events: none; }
+.device-label { fill: #f8fafc; font-family: ui-monospace, monospace; font-size: calc(8px * var(--u, 1)); paint-order: stroke; stroke: #0b1926; stroke-width: calc(1.8px * var(--u, 1)); stroke-linejoin: round; pointer-events: none; }
 .compact .area-code { font-size: calc(11px * var(--u, 1)); }
 .compact .footer-label, .compact .device-label { display: none; }
 </style>
