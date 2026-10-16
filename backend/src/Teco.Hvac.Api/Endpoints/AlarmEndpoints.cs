@@ -6,6 +6,10 @@ using Teco.Hvac.Infrastructure.Repositories;
 
 namespace Teco.Hvac.Api.Endpoints;
 
+/// <summary>
+/// 告警事件與確認 API 端點群組。
+/// 提供告警事件清單查詢（支援未解除／歷史區間）以及操作者確認 (ACK) 功能。
+/// </summary>
 public static class AlarmEndpoints
 {
     /// <summary>漢鐘 14 個硬體旗標（RuleCode 就是旗標名稱本身）→ 人話標籤，供告警清單顯示。</summary>
@@ -39,6 +43,8 @@ public static class AlarmEndpoints
     /// RuleCode 的方向段：AlarmRule.RuleCode 寫的是列舉名稱（"Temperature.GreaterThan.28"），
     /// 更早期的資料是數字（"Temperature.0.28"）。原本只認數字，現行告警全部被翻成「過低」或原始代碼。
     /// </summary>
+    /// <param name="op">運算子字串。</param>
+    /// <returns>true 代表大於上限；false 代表小於下限；null 代表無法辨識。</returns>
     private static bool? IsUpperBound(string op) => op switch
     {
         "0" or nameof(AlarmMetricOperator.GreaterThan) => true,
@@ -46,7 +52,12 @@ public static class AlarmEndpoints
         _ => null,
     };
 
-    /// <summary>FCU 目前只有室溫門檻（見 AlarmEngine.EvaluateFcuAsync 的決策註解）。</summary>
+    /// <summary>
+    /// 解析並產生 FCU 告警規則之中文說明。
+    /// FCU 目前只有室溫門檻（見 AlarmEngine.EvaluateFcuAsync 的決策註解）。
+    /// </summary>
+    /// <param name="ruleCode">規則代碼。</param>
+    /// <returns>繁體中文規則說明。</returns>
     private static string DescribeFcuRule(string ruleCode)
     {
         var parts = ruleCode.Split('.', 3);
@@ -61,6 +72,8 @@ public static class AlarmEndpoints
     /// ChillerAlarmLabels 的 14 個硬體旗標鍵值，要另外解讀，不然告警清單只會顯示原始
     /// RuleCode 字串給使用者看。
     /// </summary>
+    /// <param name="ruleCode">規則代碼。</param>
+    /// <returns>繁體中文規則說明。</returns>
     private static string DescribeChillerThresholdRule(string ruleCode)
     {
         // 保養提醒的 rule_code 固定不帶後綴（見 ChillerMaintenanceRepository.MaintenanceRuleCode）。
@@ -78,10 +91,15 @@ public static class AlarmEndpoints
         };
     }
 
+    /// <summary>
+    /// 註冊告警相關 HTTP 端點路由。
+    /// </summary>
+    /// <param name="app">WebApplication 實體。</param>
     public static void MapAlarmEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/v1/alarms").RequireAuthorization();
 
+        // 查詢告警事件清單（支援狀態篩選與時間區間）
         group.MapGet("/", async (ClaimsPrincipal principal, string? status, DateTime? from, DateTime? to,
             AlarmRepository repo, ChillerRepository chillers, FcuRepository fcus, CancellationToken ct) =>
         {
@@ -91,6 +109,7 @@ public static class AlarmEndpoints
                 from?.ToUniversalTime(), to?.ToUniversalTime()));
         });
 
+        // 確認 (ACK) 特定告警事件
         group.MapPost("/{id:long}/ack", async (long id, AckRequest? body, ClaimsPrincipal principal,
             AlarmRepository repo, OperationLogger opLog, CancellationToken ct) =>
         {
@@ -111,6 +130,14 @@ public static class AlarmEndpoints
     /// `fromUtc`/`toUtc` 給告警歷史報表用；有給日期區間時放寬筆數上限（報表可能橫跨數天），
     /// 沒有給（即時告警清單／前台戰情室）維持原本 200 筆的上限。
     /// </summary>
+    /// <param name="status">狀態篩選（"active" 或 null）。</param>
+    /// <param name="repo">告警事件倉儲。</param>
+    /// <param name="chillers">冰水主機倉儲。</param>
+    /// <param name="fcus">FCU 倉儲。</param>
+    /// <param name="ct">非同步作業取消語彙基元。</param>
+    /// <param name="fromUtc">起算時間 (UTC)。</param>
+    /// <param name="toUtc">截止時間 (UTC)。</param>
+    /// <returns>豐富化後的告警事件資料列物件集合。</returns>
     internal static async Task<object> BuildListAsync(
         string? status, AlarmRepository repo, ChillerRepository chillers, FcuRepository fcus, CancellationToken ct,
         DateTime? fromUtc = null, DateTime? toUtc = null)
@@ -187,5 +214,9 @@ public static class AlarmEndpoints
         });
     }
 
+    /// <summary>
+    /// 確認告警請求之 JSON 載體模型。
+    /// </summary>
+    /// <param name="Memo">確認處理備註事項。</param>
     public sealed record AckRequest(string? Memo);
 }

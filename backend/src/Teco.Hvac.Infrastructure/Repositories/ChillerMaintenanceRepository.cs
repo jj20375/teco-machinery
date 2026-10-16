@@ -4,38 +4,74 @@ using Teco.Hvac.Domain.Entities;
 
 namespace Teco.Hvac.Infrastructure.Repositories;
 
+/// <summary>
+/// 冰水主機保養狀態物件 (<see cref="ChillerMaintenanceState"/>)。
+/// </summary>
 public sealed class ChillerMaintenanceState
 {
+    /// <summary>保養起算基準時數（上次保養時之累積運轉時數）；尚未初始化時為 null。</summary>
     public uint? BaselineHours { get; init; }
+
+    /// <summary>基準時數設定或上次保養之時間；尚未初始化時為 null。</summary>
     public DateTime? BaselineAt { get; init; }
 }
 
+/// <summary>
+/// 冰水主機保養履歷日誌 Row 物件 (<see cref="ChillerMaintenanceLogRow"/>)。
+/// </summary>
 public sealed class ChillerMaintenanceLogRow
 {
+    /// <summary>履歷紀錄主鍵 ID。</summary>
     public long Id { get; init; }
+
+    /// <summary>保養執行登記之標準 UTC 時間。</summary>
     public DateTime PerformedAt { get; init; }
+
+    /// <summary>執行保養登記之使用者 ID。</summary>
     public uint PerformedBy { get; init; }
+
+    /// <summary>執行保養登記之使用者中文顯示名稱。</summary>
     public string? PerformedByName { get; init; }
+
+    /// <summary>本次重置當下之主機累積運轉時數。</summary>
     public uint HoursAtReset { get; init; }
+
+    /// <summary>距離前一次保養所運轉的時間長度（小時數）。</summary>
     public uint? HoursSincePrevious { get; init; }
+
+    /// <summary>保養項目說明備註。</summary>
     public string? Memo { get; init; }
 }
 
+/// <summary>
+/// 冰水主機保養完成重置作業之執行結果記錄 (<see cref="ChillerMaintenanceResetResult"/>)。
+/// </summary>
+/// <param name="HoursSincePrevious">距前一次保養累積運轉之小時數。</param>
+/// <param name="ClosedAlarmEventId">因本次保養完成而一併自動解除結案的告警事件 ID。</param>
 public sealed record ChillerMaintenanceResetResult(int? HoursSincePrevious, long? ClosedAlarmEventId);
 
 /// <summary>
-/// 冰水主機保養提醒的「機車換機油」模式：記住上次保養時的累積運轉時數（基準點），
-/// 距上次保養 = 目前時數 − 基準點，達到保養間隔就亮燈（開一筆告警），直到按「保養完成」才熄燈並重新起算。
-/// Collector（評估、開告警）與 API（重置）共用這支 repository。
+/// 冰水主機保養提醒與履歷資料庫倉儲 (<see cref="ChillerMaintenanceRepository"/>)。
+/// 
+/// 【設計模式：機車里程保養模式】
+/// 記住上次保養完成時的累積運轉時數作為基準點 (BaselineHours)。
+/// 當目前累積時數與基準點之差額達到設定之保養週期（例如 1000 小時）時開立保養通知告警；
+/// 告警不會因數值微幅變動而自動熄滅，必須由值班人員於後台確認並點選「保養完成」後，
+/// 於單一不可部分完成之資料庫交易內寫入保養履歷、更新基準點並解除告警。
 /// </summary>
 public sealed class ChillerMaintenanceRepository(TecoDbConnectionFactory factory)
 {
     /// <summary>
-    /// 保養告警固定用這個 rule_code，不像其他門檻規則帶 ".{op}.{threshold}" 後綴——
-    /// 改保養間隔不該讓已經亮著的燈熄掉再重開一次。
+    /// 保養告警固定採用的規則代碼常數（不隨門檻數值動態改變代碼後綴，確保重置與結案精確對應）。
     /// </summary>
     public const string MaintenanceRuleCode = nameof(ChillerSnapshot.AccumulatedRunningHours);
 
+    /// <summary>
+    /// 查詢特定冰水主機當前的保養起算基準時數與設定時間。
+    /// </summary>
+    /// <param name="deviceId">冰水主機在資料庫中的主鍵 ID。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>包含基準時數與設定時間的 <see cref="ChillerMaintenanceState"/> 物件。</returns>
     public async Task<ChillerMaintenanceState> GetStateAsync(int deviceId, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
@@ -45,9 +81,13 @@ public sealed class ChillerMaintenanceRepository(TecoDbConnectionFactory factory
     }
 
     /// <summary>
-    /// 第一次開始計算時以當下時數當基準點。WHERE 條件限定基準點還是 NULL，
-    /// 已經有人按過重置的話不會被覆蓋。
+    /// 若主機尚未建立保養基準時數，以當前運轉時數作為初次起算點寫入資料庫。
     /// </summary>
+    /// <param name="deviceId">冰水主機 ID。</param>
+    /// <param name="hours">當前讀取到的運轉時數。</param>
+    /// <param name="atUtc">設定時間戳記 (UTC)。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>代表非同步作業的 <see cref="Task"/>。</returns>
     public async Task InitBaselineIfMissingAsync(int deviceId, int hours, DateTimeOffset atUtc, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
@@ -57,7 +97,15 @@ public sealed class ChillerMaintenanceRepository(TecoDbConnectionFactory factory
             new { deviceId, hours, at = atUtc.UtcDateTime });
     }
 
-    /// <summary>主機計數器倒退（換控制板或歸零）時，把基準點改成目前時數，避免算出負數。</summary>
+    /// <summary>
+    /// 當主機控制器計時器歸零或更換控制板導致時數倒退時，重新校正起算基準點。
+    /// </summary>
+    /// <param name="deviceId">冰水主機 ID。</param>
+    /// <param name="expectedBaseline">先前記錄的舊基準時數（作為樂觀鎖比對）。</param>
+    /// <param name="hours">新的起算基準時數。</param>
+    /// <param name="atUtc">重新校正的標準 UTC 時間戳記。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>代表非同步作業的 <see cref="Task"/>。</returns>
     public async Task RebaseAsync(int deviceId, uint expectedBaseline, int hours, DateTimeOffset atUtc, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
@@ -68,10 +116,15 @@ public sealed class ChillerMaintenanceRepository(TecoDbConnectionFactory factory
     }
 
     /// <summary>
-    /// 只在「基準點仍是剛才讀到的值，且沒有尚未結束的保養告警」時才開告警，用一條 INSERT…SELECT 完成。
-    /// 分成「先查再寫」兩步的話，Collector 讀完基準點後剛好有人按重置，就會在重置後馬上又開一筆告警。
-    /// 回傳 true 代表這次真的開了告警（也就是發出通知）。
+    /// 依據運轉時數差額條件性開立保養告警。
+    /// 透過單條 INSERT...SELECT 語法確保僅在「基準點未被他人修改」且「目前尚無未結案保養告警」時才新增告警，徹底杜絕競態條件。
     /// </summary>
+    /// <param name="deviceId">冰水主機 ID。</param>
+    /// <param name="expectedBaseline">期望比對的基準時數。</param>
+    /// <param name="hoursSinceService">自上次保養以來已運轉之小時數。</param>
+    /// <param name="nowUtc">當前計算時間戳記 (UTC)。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>若成功開立告警則回傳 true，否則回傳 false。</returns>
     public async Task<bool> OpenAlarmIfDueAsync(
         int deviceId, uint expectedBaseline, int hoursSinceService, DateTimeOffset nowUtc, CancellationToken ct = default)
     {
@@ -95,7 +148,12 @@ public sealed class ChillerMaintenanceRepository(TecoDbConnectionFactory factory
         return affected > 0;
     }
 
-    /// <summary>主機離線時，重置改用最後一筆讀取成功的時數。</summary>
+    /// <summary>
+    /// 查詢時序歷史資料表中該主機最後一筆讀取成功的累積運轉時數（供主機離線時人工保養登記參考）。
+    /// </summary>
+    /// <param name="deviceId">冰水主機 ID。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>最後記錄之運轉時數；若無資料則為 null。</returns>
     public async Task<int?> GetLatestRecordedHoursAsync(int deviceId, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
@@ -105,9 +163,16 @@ public sealed class ChillerMaintenanceRepository(TecoDbConnectionFactory factory
     }
 
     /// <summary>
-    /// 「保養完成」：在同一個交易裡寫履歷、更新基準點、關閉保養告警（記錄由誰確認），
-    /// 任何一步失敗就整個退回，不會出現燈熄了但基準點沒更新的狀態。
+    /// 執行「保養完成」重置事務：
+    /// 在單一資料庫交易內鎖定並讀取基準點、計算歷時、寫入保養履歷、更新主機基準點為當前時數，並將進行中的保養告警解除結案。
     /// </summary>
+    /// <param name="deviceId">冰水主機 ID。</param>
+    /// <param name="currentHours">本次保養當下的累積運轉時數。</param>
+    /// <param name="userId">執行確認登記的管理員 ID。</param>
+    /// <param name="nowUtc">作業執行時間戳記 (UTC)。</param>
+    /// <param name="memo">保養內容備註說明。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>包含距離上次保養時數與結案告警 ID 的重置結果。</returns>
     public async Task<ChillerMaintenanceResetResult> ResetAsync(
         int deviceId, int currentHours, int userId, DateTimeOffset nowUtc, string? memo, CancellationToken ct = default)
     {
@@ -143,6 +208,15 @@ public sealed class ChillerMaintenanceRepository(TecoDbConnectionFactory factory
         return new ChillerMaintenanceResetResult(sincePrevious, activeAlarmId);
     }
 
+    /// <summary>
+    /// 手動關閉解除進行中的主機保養告警並補填備註。
+    /// </summary>
+    /// <param name="deviceId">冰水主機 ID。</param>
+    /// <param name="userId">執行操作之管理員 ID。</param>
+    /// <param name="nowUtc">解除時間戳記 (UTC)。</param>
+    /// <param name="memo">解除說明備註。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>代表非同步作業的 <see cref="Task"/>。</returns>
     public async Task CloseActiveAlarmAsync(int deviceId, int userId, DateTimeOffset nowUtc, string memo, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
@@ -153,6 +227,13 @@ public sealed class ChillerMaintenanceRepository(TecoDbConnectionFactory factory
             new { deviceType = (int)AlarmDeviceType.Chiller, deviceId, ruleCode = MaintenanceRuleCode, at, userId, memo });
     }
 
+    /// <summary>
+    /// 依據冰水主機 ID 查詢其歷史保養紀錄履歷清單。
+    /// </summary>
+    /// <param name="deviceId">冰水主機 ID。</param>
+    /// <param name="limit">最大查詢筆數。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>保養履歷 Row 物件清單。</returns>
     public async Task<IReadOnlyList<ChillerMaintenanceLogRow>> ListLogsAsync(int deviceId, int limit, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);

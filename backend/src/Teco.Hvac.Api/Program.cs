@@ -11,12 +11,17 @@ using Teco.Hvac.Infrastructure;
 using Teco.Hvac.Infrastructure.Permissions;
 using Teco.Hvac.Infrastructure.Repositories;
 
+// 建立 Web 應用程式建構器實例
 var builder = WebApplication.CreateBuilder(args);
 
+// 綁定資料庫連線選項與 JWT 驗證組態
 builder.Services.Configure<TecoDbOptions>(builder.Configuration.GetSection(TecoDbOptions.SectionName));
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 
+// 註冊資料庫連線處理工廠（單例生命週期）
 builder.Services.AddSingleton<TecoDbConnectionFactory>();
+
+// 註冊基礎設施領域倉儲（單例生命週期）
 builder.Services.AddSingleton<DeviceRepository>();
 builder.Services.AddSingleton<ChillerRepository>();
 builder.Services.AddSingleton<FcuRepository>();
@@ -31,15 +36,22 @@ builder.Services.AddSingleton<OperationLogRepository>();
 builder.Services.AddSingleton<FloorPlanRepository>();
 builder.Services.AddSingleton<PartitionMaintenanceRepository>();
 builder.Services.AddSingleton<RefreshTokenRepository>();
+
+// 註冊角色權限計算服務與記憶體狀態快取
 builder.Services.AddSingleton<PermissionGrantService>();
 builder.Services.AddSingleton<CurrentStateStore>();
 builder.Services.AddSingleton<ChannelHealthRepository>();
 builder.Services.AddSingleton<DiagnosticsRepository>();
 builder.Services.AddSingleton<ScheduledJobStatusStore>();
 builder.Services.AddSingleton<DiagnosticsService>();
+
+// 註冊用於向 Collector 探詢狀態的 HttpClient
 builder.Services.AddHttpClient(DiagnosticsService.CollectorHttpClientName, c => c.Timeout = TimeSpan.FromSeconds(2));
+
+// 註冊 JWT 簽發服務
 builder.Services.AddSingleton<JwtTokenService>();
 
+// 註冊 HTTP 請求上下文存取器與作用域操作日誌記錄器
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<OperationLogger>();
 
@@ -53,15 +65,20 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new UtcNullableDateTimeConverter());
 });
 
+// 設定 SignalR 即時推播服務與其 JSON 序列化器
 builder.Services.AddSignalR().AddJsonProtocol(options =>
 {
     options.PayloadSerializerOptions.Converters.Add(new UtcDateTimeConverter());
     options.PayloadSerializerOptions.Converters.Add(new UtcNullableDateTimeConverter());
 });
+// 註冊即時遙測廣播服務
 builder.Services.AddScoped<TelemetryBroadcaster>();
+
+// 註冊背景託管排程服務：每分鐘時序資料聚合服務與資料表分區維護服務
 builder.Services.AddHostedService<RollupHostedService>();
 builder.Services.AddHostedService<PartitionMaintenanceHostedService>();
 
+// 設定 JWT Bearer 身分驗證機制
 var jwtSection = builder.Configuration.GetSection(JwtOptions.SectionName);
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -135,6 +152,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization();
 
+// 設定跨來源資源共享 (CORS) 政策
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
 builder.Services.AddCors(options =>
 {
@@ -147,14 +165,17 @@ builder.Services.AddCors(options =>
     });
 });
 
+// 建置 ASP.NET Core WebApplication 實例
 var app = builder.Build();
 
+// 設定 HTTP 請求處理管線中介軟體 (Middleware Pipeline)
 app.UseCors();
 app.UseAuthentication();
 // 放在 UseAuthorization 之前包住它：授權層回的 403 也要看得到
 app.UseDeniedRequestAudit();
 app.UseAuthorization();
 
+// 註冊各功能模組路由端點 (Minimal API Endpoints)
 app.MapHealthEndpoints();
 app.MapIngestEndpoints();
 app.MapRealtimeEndpoints();
@@ -169,6 +190,10 @@ app.MapMerchantEndpoints();
 app.MapFloorPlanEndpoints();
 app.MapThresholdEndpoints();
 app.MapPublicEndpoints();
+
+// 註冊 SignalR 即時推播中心路由
 app.MapHub<TelemetryHub>("/hubs/telemetry");
 
+// 啟動 Web 服務監聽
 app.Run();
+

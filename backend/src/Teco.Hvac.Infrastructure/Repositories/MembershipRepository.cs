@@ -4,30 +4,51 @@ using Teco.Hvac.Domain.Entities;
 namespace Teco.Hvac.Infrastructure.Repositories;
 
 /// <summary>
-/// 場館成員清單一列，已 JOIN 使用者與角色資料，供 /api/v1/merchant/users 直接回傳。
-/// 刻意用一般 class＋init 屬性，不用 positional record——Dapper 對 record 主建構式的型別比對
-/// 很嚴格（要跟底層 ADO.NET 回傳的原始型別如 uint/sbyte 完全一致），容易在執行期才炸開；
-/// class＋init 屬性走的是「建物件後用屬性名稱逐一賦值」這條路，跟本檔案其他 Row 類別一致。
+/// 場館成員列表查詢專用 Row 物件 (<see cref="MerchantUserRow"/>)。
+/// 結合了 app_user、merchant_membership 與 app_role 三張資料表，供前台成員列表介面直接渲染。
 /// </summary>
 public sealed class MerchantUserRow
 {
+    /// <summary>成員資格主鍵 ID (merchant_membership.id)。</summary>
     public int MembershipId { get; init; }
+    /// <summary>使用者主鍵 ID (app_user.id)。</summary>
     public int UserId { get; init; }
+    /// <summary>登入帳號名稱。</summary>
     public required string Username { get; init; }
+    /// <summary>使用者中文顯示名稱。</summary>
     public required string DisplayName { get; init; }
+    /// <summary>電子郵件信箱。</summary>
     public string? Email { get; init; }
+    /// <summary>成員資格在此場館中是否啟用。</summary>
     public bool IsActive { get; init; }
+    /// <summary>是否為場館擁有者 (Owner)。</summary>
     public bool IsOwner { get; init; }
+    /// <summary>指派的角色 ID。</summary>
     public int? RoleId { get; init; }
+    /// <summary>角色代碼（例如 "merchant-admin"）。</summary>
     public string? RoleCode { get; init; }
+    /// <summary>角色中文名稱（例如 "場館管理員"）。</summary>
     public string? RoleName { get; init; }
+    /// <summary>最後登入標準 UTC 時間戳記。</summary>
     public DateTimeOffset? LastLoginAt { get; init; }
+    /// <summary>帳號鎖定截止時間 (UTC)。</summary>
     public DateTimeOffset? LockedUntil { get; init; }
 }
 
+/// <summary>
+/// 場館成員資格資料庫倉儲 (<see cref="MembershipRepository"/>)。
+/// 
+/// 負責 merchant_membership 資料表之存取操作。
+/// 維護使用者與場館之間的歸屬關聯、角色指派、擁有者狀態與成員註銷。
+/// </summary>
 public sealed class MembershipRepository(TecoDbConnectionFactory factory)
 {
-    /// <summary>取得使用者所有生效中的場館成員資格（一人可掛多個場館）。</summary>
+    /// <summary>
+    /// 查詢指定使用者在所有場館中目前處於啟用狀態 (is_active = 1) 的成員資格清單。
+    /// </summary>
+    /// <param name="userId">使用者主鍵 ID。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>該使用者的有效成員資格實體清單。</returns>
     public async Task<IReadOnlyList<MerchantMembership>> ListActiveForUserAsync(int userId, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
@@ -40,6 +61,12 @@ public sealed class MembershipRepository(TecoDbConnectionFactory factory)
         return rows.Select(ToEntity).ToList();
     }
 
+    /// <summary>
+    /// 依據成員資格主鍵 ID 查詢單筆資格紀錄。
+    /// </summary>
+    /// <param name="membershipId">資格主鍵 ID。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>成員資格實體物件；若不存在則回傳 null。</returns>
     public async Task<MerchantMembership?> FindByIdAsync(int membershipId, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
@@ -51,6 +78,13 @@ public sealed class MembershipRepository(TecoDbConnectionFactory factory)
         return row is null ? null : ToEntity(row);
     }
 
+    /// <summary>
+    /// 依據場館 ID 與使用者 ID 查詢特定的成員資格紀錄。
+    /// </summary>
+    /// <param name="merchantId">場館 ID。</param>
+    /// <param name="userId">使用者 ID。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>成員資格實體物件；若無關聯則回傳 null。</returns>
     public async Task<MerchantMembership?> FindAsync(int merchantId, int userId, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
@@ -62,6 +96,12 @@ public sealed class MembershipRepository(TecoDbConnectionFactory factory)
         return row is null ? null : ToEntity(row);
     }
 
+    /// <summary>
+    /// 查詢指定場館轄下的所有成員詳細清單（包含個人資料與被賦予之角色名稱）。
+    /// </summary>
+    /// <param name="merchantId">目標場館 ID。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>場館成員 Row 物件集合。</returns>
     public async Task<IReadOnlyList<MerchantUserRow>> ListForMerchantAsync(
         int merchantId, CancellationToken ct = default)
     {
@@ -80,6 +120,12 @@ public sealed class MembershipRepository(TecoDbConnectionFactory factory)
         return rows.ToList();
     }
 
+    /// <summary>
+    /// 建立一筆全新的場館成員資格關聯。
+    /// </summary>
+    /// <param name="membership">欲建立之資格實體物件。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>建立後之資料庫自動遞增主鍵 ID。</returns>
     public async Task<int> CreateAsync(MerchantMembership membership, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
@@ -92,6 +138,15 @@ public sealed class MembershipRepository(TecoDbConnectionFactory factory)
         return (int)id;
     }
 
+    /// <summary>
+    /// 更新成員在此場館中的指派角色或啟用狀態。
+    /// 傳入 null 代表保留原有數值不予修改。
+    /// </summary>
+    /// <param name="membershipId">成員資格主鍵 ID。</param>
+    /// <param name="roleId">欲指派之新角色 ID。</param>
+    /// <param name="isActive">成員資格是否啟用。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>代表非同步作業的 <see cref="Task"/>。</returns>
     public async Task UpdateRoleAsync(int membershipId, int? roleId, bool? isActive, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
@@ -104,16 +159,23 @@ public sealed class MembershipRepository(TecoDbConnectionFactory factory)
     }
 
     /// <summary>
-    /// 刪掉的是「這個人在這個場館的成員資格」，不是 app_user 這個帳號本身——同一個人理論上
-    /// 可以是多個場館的成員（雖然目前場館端點都只處理自己場館），刪掉 membership 不影響
-    /// 這個人在其他場館的資格，也不影響帳號本身能不能登入（純平台帳號、其他場館成員資格）。
+    /// 刪除指定之場館成員資格（僅解除該使用者與此場館之關聯，不影響其帳號主檔與在其他場館的資格）。
     /// </summary>
+    /// <param name="membershipId">資格主鍵 ID。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>代表非同步刪除作業的 <see cref="Task"/>。</returns>
     public async Task DeleteAsync(int membershipId, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
         await conn.ExecuteAsync("DELETE FROM merchant_membership WHERE id = @membershipId", new { membershipId });
     }
 
+    /// <summary>
+    /// 檢查指定場館目前是否已經存在至少一位場館擁有者 (Owner)。
+    /// </summary>
+    /// <param name="merchantId">場館 ID。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>若已存在擁有者回傳 true，否則回傳 false。</returns>
     public async Task<bool> HasOwnerAsync(int merchantId, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
@@ -121,7 +183,12 @@ public sealed class MembershipRepository(TecoDbConnectionFactory factory)
             "SELECT COUNT(*) FROM merchant_membership WHERE merchant_id = @merchantId AND is_owner = 1", new { merchantId }) > 0;
     }
 
-    /// <summary>刪除角色前的擋板用——還有人在用這個角色就不給刪，避免這些成員突然失去所有權限。</summary>
+    /// <summary>
+    /// 計算目前指派特定角色之成員資格總人數（刪除自訂角色前進行安全檢查，防止成員瞬間遺失角色權限）。
+    /// </summary>
+    /// <param name="roleId">角色 ID。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>使用該角色的成員數量。</returns>
     public async Task<int> CountByRoleAsync(int roleId, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
@@ -129,12 +196,14 @@ public sealed class MembershipRepository(TecoDbConnectionFactory factory)
             "SELECT COUNT(*) FROM merchant_membership WHERE role_id = @roleId", new { roleId });
     }
 
+    /// <summary>內部資料映射轉換方法。</summary>
     private static MerchantMembership ToEntity(MembershipRow r) => new()
     {
         Id = r.Id, MerchantId = r.MerchantId, UserId = r.UserId, RoleId = r.RoleId,
         IsActive = r.IsActive, IsOwner = r.IsOwner, CreatedAt = r.CreatedAt,
     };
 
+    /// <summary>Dapper 內部查詢專用之 Row 物件。</summary>
     private class MembershipRow
     {
         public int Id { get; init; }

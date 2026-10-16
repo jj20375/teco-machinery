@@ -3,27 +3,42 @@ using Teco.Hvac.Domain.Entities;
 
 namespace Teco.Hvac.Infrastructure.Repositories;
 
-/// <summary>class＋init 屬性，不用 positional record——理由見 MembershipRepository.MerchantUserRow 上的註解。</summary>
+/// <summary>
+/// 角色權限關聯詳細資訊物件 (<see cref="RolePermissionDetail"/>)。
+/// 採用類別屬性配合 init 設定子，支援 Dapper 查詢與 JSON 序列化。
+/// </summary>
 public sealed class RolePermissionDetail
 {
+    /// <summary>權限資源代碼（例如 "hvac.chiller"、"hvac.fcu"）。</summary>
     public required string PermissionCode { get; init; }
+    /// <summary>是否具有建立 (Create) 權限。</summary>
     public bool PerCreate { get; init; }
+    /// <summary>是否具有讀取 (Read) 權限。</summary>
     public bool PerRead { get; init; }
+    /// <summary>是否具有更新 (Update) 權限。</summary>
     public bool PerUpdate { get; init; }
+    /// <summary>是否具有刪除 (Delete) 權限。</summary>
     public bool PerDelete { get; init; }
+    /// <summary>已勾選子選項清單之 JSON 字串。</summary>
     public required string OptionsJson { get; init; }
 }
 
+/// <summary>
+/// 角色與角色權限資料庫倉儲 (<see cref="RoleRepository"/>)。
+/// 
+/// 負責 app_role 與 app_role_permission 資料表之 CRUD 操作。
+/// 支援角色清單篩選、代碼衝突檢驗、角色更名與刪除、細部權限配置查詢與更新。
+/// </summary>
 public sealed class RoleRepository(TecoDbConnectionFactory factory)
 {
     /// <summary>
-    /// 一般角色清單（角色管理頁、成員角色下拉選單、平台角色列表用）。
-    /// 「編輯成員」六個核取方塊面板會幫每個成員建立一個 code = "member-{membershipId}" 的
-    /// 專屬角色（見 MerchantEndpoints.SetUserFeatures），這種角色是內部實作細節、不是給人挑選
-    /// 的一般角色，一律排除，否則多個成員都存過這個面板後，角色清單會混進好幾筆同樣叫
-    /// 「自訂權限」但 id 不同的項目。真的需要解析某個成員目前的專屬角色名稱時，直接讀
-    /// membership 列表 JOIN 出來的 RoleName（MembershipRepository.ListAsync），不要走這裡。
+    /// 查詢一般可供管理員挑選之角色清單（排除內部為成員自訂權限建立之 "member-*" 虛擬角色）。
+    /// 可選依據 Scope 與 MerchantId 進行範圍過濾。
     /// </summary>
+    /// <param name="scope">角色範圍（Platform 或 Merchant）；若為 null 則不限範圍。</param>
+    /// <param name="merchantId">所屬場館 ID；若填寫則回傳該場館自訂角色與全域系統範本角色。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>角色實體物件清單。</returns>
     public async Task<IReadOnlyList<AppRole>> ListAsync(RoleScope? scope = null, int? merchantId = null, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
@@ -38,6 +53,12 @@ public sealed class RoleRepository(TecoDbConnectionFactory factory)
         return rows.Select(ToEntity).ToList();
     }
 
+    /// <summary>
+    /// 依據角色主鍵 ID 查詢角色詳細資訊。
+    /// </summary>
+    /// <param name="id">角色主鍵 ID。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>角色實體物件；若不存在則回傳 null。</returns>
     public async Task<AppRole?> FindByIdAsync(int id, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
@@ -48,6 +69,14 @@ public sealed class RoleRepository(TecoDbConnectionFactory factory)
         return row is null ? null : ToEntity(row);
     }
 
+    /// <summary>
+    /// 依據 Scope、唯一代碼與場館 ID 查詢角色實體。
+    /// </summary>
+    /// <param name="scope">角色範圍。</param>
+    /// <param name="code">角色代碼。</param>
+    /// <param name="merchantId">所屬場館 ID（全域角色為 null）。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>角色實體物件；若不存在則回傳 null。</returns>
     public async Task<AppRole?> FindByCodeAsync(RoleScope scope, string code, int? merchantId, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
@@ -61,10 +90,12 @@ public sealed class RoleRepository(TecoDbConnectionFactory factory)
     }
 
     /// <summary>
-    /// 場館新增自訂角色時，代碼是否已被占用：同場館的自訂角色與全平台共用的系統範本（merchant_id IS NULL，
-    /// 例如 editor／merchant-admin）都算。資料庫唯一鍵 (scope, code, merchant_id) 擋不住後者——
-    /// NULL 在唯一鍵裡互不相等——所以這裡要明確查。比對沿用欄位的 collation，大小寫視為相同。
+    /// 檢驗場館自訂角色代碼是否已被同場館或全域系統範本角色占用。
     /// </summary>
+    /// <param name="code">欲檢驗的角色代碼。</param>
+    /// <param name="merchantId">所屬場館 ID。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>若已被占用回傳 true，可用則回傳 false。</returns>
     public async Task<bool> IsMerchantRoleCodeTakenAsync(string code, int? merchantId, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
@@ -74,6 +105,12 @@ public sealed class RoleRepository(TecoDbConnectionFactory factory)
         return count > 0;
     }
 
+    /// <summary>
+    /// 新增一筆角色主檔紀錄。
+    /// </summary>
+    /// <param name="role">欲建立之角色實體物件。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>新增成功後之自動遞增主鍵 ID。</returns>
     public async Task<int> CreateAsync(AppRole role, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
@@ -90,18 +127,37 @@ public sealed class RoleRepository(TecoDbConnectionFactory factory)
         return (int)id;
     }
 
+    /// <summary>
+    /// 修改指定自訂角色的中文顯示名稱。
+    /// </summary>
+    /// <param name="roleId">角色主鍵 ID。</param>
+    /// <param name="name">全新中文名稱。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>代表非同步作業的 <see cref="Task"/>。</returns>
     public async Task RenameAsync(int roleId, string name, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
         await conn.ExecuteAsync("UPDATE app_role SET name = @name WHERE id = @roleId", new { roleId, name });
     }
 
+    /// <summary>
+    /// 刪除指定 ID 之角色（僅限非系統內建角色，is_system = 0 才能被刪除）。
+    /// </summary>
+    /// <param name="roleId">角色主鍵 ID。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>代表非同步刪除作業的 <see cref="Task"/>。</returns>
     public async Task DeleteAsync(int roleId, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
         await conn.ExecuteAsync("DELETE FROM app_role WHERE id = @roleId AND is_system = 0", new { roleId });
     }
 
+    /// <summary>
+    /// 查詢指定角色目前在資料庫中登記的所有細部權限配置明細。
+    /// </summary>
+    /// <param name="roleId">目標角色 ID。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>該角色被授予的權限與 CRUD 動作清單。</returns>
     public async Task<IReadOnlyList<RolePermissionDetail>> GetRolePermissionsAsync(int roleId, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
@@ -116,7 +172,19 @@ public sealed class RoleRepository(TecoDbConnectionFactory factory)
         return rows.ToList();
     }
 
-    /// <summary>Upsert 單一資源的 CRUD/子功能授予；全部動作與子功能皆為空時直接移除該列。</summary>
+    /// <summary>
+    /// 設定或更新指定角色在單一權限資源上的 CRUD 動作與附加子功能。
+    /// 若傳入之所有動作皆為 false 且子功能為空，則直接刪除該筆關聯以精簡資料庫列數。
+    /// </summary>
+    /// <param name="roleId">角色主鍵 ID。</param>
+    /// <param name="permissionCode">權限資源代碼。</param>
+    /// <param name="perCreate">是否授予建立權限。</param>
+    /// <param name="perRead">是否授予讀取權限。</param>
+    /// <param name="perUpdate">是否授予修改權限。</param>
+    /// <param name="perDelete">是否授予刪除權限。</param>
+    /// <param name="options">已勾選附加子功能 Key 集合。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>代表非同步作業的 <see cref="Task"/>。</returns>
     public async Task SetRolePermissionAsync(
         int roleId, string permissionCode, bool perCreate, bool perRead, bool perUpdate, bool perDelete,
         IReadOnlyCollection<string> options, CancellationToken ct = default)
@@ -145,6 +213,7 @@ public sealed class RoleRepository(TecoDbConnectionFactory factory)
             """, new { roleId, permissionId, perCreate, perRead, perUpdate, perDelete, optionsJson });
     }
 
+    /// <summary>內部資料映射轉換方法。</summary>
     private static AppRole ToEntity(RoleRow r) => new()
     {
         Id = r.Id, Code = r.Code, Name = r.Name, Scope = (RoleScope)r.Scope, MerchantId = r.MerchantId,
@@ -152,6 +221,7 @@ public sealed class RoleRepository(TecoDbConnectionFactory factory)
         CreatedAt = r.CreatedAt,
     };
 
+    /// <summary>Dapper 內部查詢專用之 Row 物件。</summary>
     private sealed class RoleRow
     {
         public int Id { get; init; }

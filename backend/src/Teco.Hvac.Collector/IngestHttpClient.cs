@@ -6,17 +6,29 @@ using Teco.Hvac.Contracts;
 namespace Teco.Hvac.Collector;
 
 /// <summary>
-/// 把每次事件即時推給 Api 的 /internal/ingest（compose 內網 + 共享 token）。
-/// 這條路徑不節流——即時看板需要每 5 秒更新；節流只套用在 DB 落地（見 ThrottlePolicy）。
-/// 送失敗只記警告、不中斷收集流程：即時推播是加分項，不是資料完整性的保證來源
-///（保證來源是 DB，DB 寫入走獨立、有重試空間的路徑）。
+/// 內部 HTTP 遙測攝取客戶端 (IngestHttpClient)。
+/// 
+/// 負責將 Collector 所接收到的每次硬體資料事件與連線狀態即時推送給 Web API 的 /internal/ingest 端點
+/// （透過 Docker Compose 內部虛擬網路與共享安全權杖 X-Internal-Token 驗證）。
+/// 
+/// 【特性與設計考量】
+/// 1. 不套用節流：前台即時監控儀表板需要 5 秒一次的更新頻率，因此此推播管道每次收到事件皆即刻發送。
+/// 2. 失敗不中斷：若推播失敗僅記錄日誌警告，絕不中斷採集核心的運作；因為時序資料的持久性由獨立的資料庫落地管道保障。
 /// </summary>
 public sealed class IngestHttpClient(HttpClient httpClient, IOptions<CollectorOptions> options, ILogger<IngestHttpClient> logger)
 {
+    /// <summary>採集器組態設定選項，包含 API 端點 BaseUrl 與內部存取權杖。</summary>
     private readonly CollectorOptions _options = options.Value;
 
+    /// <summary>
+    /// 以 HTTP POST 將最新採集到的設備遙測快照非同步推送給 Web API。
+    /// </summary>
+    /// <param name="payload">包含漢鐘 1/2 號主機與 DDC 1/2 快照之完整遙測酬載物件。</param>
+    /// <param name="ct">控制非同步請求取消的語彙基元。</param>
+    /// <returns>代表非同步推送作業的 <see cref="Task"/>。</returns>
     public async Task PostDataAsync(IngestPayload payload, CancellationToken ct)
     {
+        // 若未設定 API 端點網址，則直接略過推送
         if (string.IsNullOrWhiteSpace(_options.ApiBaseUrl)) return;
 
         try
@@ -41,8 +53,15 @@ public sealed class IngestHttpClient(HttpClient httpClient, IOptions<CollectorOp
         }
     }
 
+    /// <summary>
+    /// 以 HTTP POST 將通訊通道之連線狀態變更事件非同步推送給 Web API。
+    /// </summary>
+    /// <param name="payload">包含通道識別、IP、連接埠與最新連線狀態之酬載物件。</param>
+    /// <param name="ct">控制非同步請求取消的語彙基元。</param>
+    /// <returns>代表非同步推送作業的 <see cref="Task"/>。</returns>
     public async Task PostConnectionStatusAsync(ConnectionStatusPayload payload, CancellationToken ct)
     {
+        // 若未設定 API 端點網址，則直接略過推送
         if (string.IsNullOrWhiteSpace(_options.ApiBaseUrl)) return;
 
         try

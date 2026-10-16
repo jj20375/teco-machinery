@@ -15,10 +15,15 @@ namespace Teco.Hvac.Api.Endpoints;
 /// </summary>
 public static class ChillerMaintenanceEndpoints
 {
+    /// <summary>
+    /// 註冊冰水主機保養提醒相關 HTTP 端點路由。
+    /// </summary>
+    /// <param name="app">WebApplication 實體。</param>
     public static void MapChillerMaintenanceEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/v1/chillers/{id:int}/maintenance").RequireAuthorization();
 
+        // 查詢特定冰水主機的目前保養狀態與最近歷史紀錄
         group.MapGet("/", async (ClaimsPrincipal principal, int id, ChillerRepository chillers, AlarmRepository alarms,
             ChillerMaintenanceRepository maintenance, CurrentStateStore store, CancellationToken ct) =>
         {
@@ -57,6 +62,7 @@ public static class ChillerMaintenanceEndpoints
             });
         });
 
+        // 標記特定冰水主機保養完成並重置累積計算基準
         group.MapPost("/reset", async (ClaimsPrincipal principal, int id, ResetMaintenanceRequest? request,
             ChillerRepository chillers, ChillerMaintenanceRepository maintenance, CurrentStateStore store,
             OperationLogger opLog, CancellationToken ct) =>
@@ -88,6 +94,12 @@ public static class ChillerMaintenanceEndpoints
         });
     }
 
+    /// <summary>
+    /// 嘗試從記憶體即時快照中讀取冰水主機最新的累計運轉時數。
+    /// </summary>
+    /// <param name="store">即時狀態儲存庫。</param>
+    /// <param name="device">目標冰水主機實體。</param>
+    /// <returns>運轉時數；若未連線或讀取失敗則為 null。</returns>
     internal static int? GetLiveHours(CurrentStateStore store, DeviceChiller device)
     {
         var latest = store.GetLatest();
@@ -95,6 +107,13 @@ public static class ChillerMaintenanceEndpoints
         return live is { ReadStatus: ReadStatus.Success } ? live.AccumulatedRunningHours : null;
     }
 
+    /// <summary>
+    /// 查詢目標冰水主機目前設定之保養間隔時數。
+    /// </summary>
+    /// <param name="alarms">告警規則倉儲。</param>
+    /// <param name="device">冰水主機實體。</param>
+    /// <param name="ct">非同步作業取消語彙基元。</param>
+    /// <returns>保養週期小時數；若未設定則為 null。</returns>
     private static async Task<int?> GetIntervalHoursAsync(AlarmRepository alarms, DeviceChiller device, CancellationToken ct)
     {
         var rules = await alarms.GetRulesAsync(AlarmDeviceType.Chiller, device.ModbusId.ToString(), ct);
@@ -103,5 +122,9 @@ public static class ChillerMaintenanceEndpoints
         return rule is null ? null : (int)rule.Threshold;
     }
 
+    /// <summary>
+    /// 重置保養時數之請求載體模型。
+    /// </summary>
+    /// <param name="Memo">保養作業備註說明（例如工單編號或技師姓名）。</param>
     public sealed record ResetMaintenanceRequest(string? Memo);
 }

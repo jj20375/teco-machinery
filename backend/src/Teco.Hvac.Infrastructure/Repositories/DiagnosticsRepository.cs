@@ -3,35 +3,53 @@ using Dapper;
 namespace Teco.Hvac.Infrastructure.Repositories;
 
 /// <summary>
-/// 平台「系統診斷」頁用的落地統計：資料有沒有真的寫進時序表、聚合排程有沒有把整點補上。
-/// 只讀、只做彙總，不回傳任何原始列。
-///
-/// 時序表的主鍵是 (device_id, ts)，直接對整張表 MAX(ts) 或 WHERE ts >= ... 用不到索引、
-/// 會掃過整個月份分割區（FCU 一個月上百萬筆），診斷頁又是 5 秒輪詢一次，所以一律改成
-/// 「從設備主檔逐台走主鍵」的寫法（相關子查詢／STRAIGHT_JOIN 強制以設備表驅動）。
-///
-/// 只算 read_status = 1（Success）的列：2026-09-29 以前 Collector 在通道斷線時仍會照節流週期寫入
-/// read_status = Disconnected 的列（現已改成不寫，但舊資料還在），不過濾的話「連不上設備」也會被
-/// 誤判成「資料庫寫入正常」。
+/// 平台「系統診斷」專用時序資料庫診斷倉儲 (<see cref="DiagnosticsRepository"/>)。
+/// 
+/// 【效能極致最佳化】
+/// 時序資料表 chiller_reading 與 fcu_reading 之複合主鍵為 (device_id, ts)，
+/// 若直接對整張大表執行 MAX(ts) 會觸發百萬級別全分區掃描，導致 5 秒輪詢時拖垮資料庫。
+/// 本倉儲透過 STRAIGHT_JOIN 由小型設備主檔 (device_chiller / device_fcu) 驅動，
+/// 配合精準主鍵索引在數毫秒內完成寫入健康度、活躍設備數與小時聚合狀態之快速聚合診斷。
 /// </summary>
 public sealed class DiagnosticsRepository(TecoDbConnectionFactory factory)
 {
-    /// <summary>時間欄位一律 DateTime（UTC），由呼叫端 AsUtcOffset() 轉換——見 CLAUDE.md 原則 1。</summary>
+    /// <summary>
+    /// 時序落地與彙總健康狀態統計 Row 物件 (<see cref="PersistenceStatsRow"/>)。
+    /// </summary>
     public sealed class PersistenceStatsRow
     {
+        /// <summary>冰水主機最後成功寫入時序表的時間戳記 (ts)。</summary>
         public DateTime? ChillerLatestTs { get; init; }
+        /// <summary>冰水主機最後成功接收到的時間戳記 (received_at)。</summary>
         public DateTime? ChillerLatestReceivedAt { get; init; }
+        /// <summary>冰水主機在指定近期間隔內成功寫入的總筆數。</summary>
         public long ChillerRecentRows { get; init; }
+        /// <summary>近期有成功回報數據之活躍冰機台數。</summary>
         public long ChillerRecentDevices { get; init; }
+        /// <summary>系統中目前啟用的冰水主機總台數。</summary>
         public long ChillerActiveDevices { get; init; }
+
+        /// <summary>FCU 最後成功寫入時序表的時間戳記 (ts)。</summary>
         public DateTime? FcuLatestTs { get; init; }
+        /// <summary>FCU 在指定近期間隔內成功寫入的總筆數。</summary>
         public long FcuRecentRows { get; init; }
+        /// <summary>近期有成功回報數據之活躍 FCU 台數。</summary>
         public long FcuRecentDevices { get; init; }
+        /// <summary>系統中目前啟用的 FCU 總台數。</summary>
         public long FcuActiveDevices { get; init; }
+
+        /// <summary>冰水主機 1 小時聚合資料表 (rollup_chiller_1h) 最新完成之 Bucket 時間點。</summary>
         public DateTime? RollupChillerLatestBucket { get; init; }
+        /// <summary>FCU 1 小時聚合資料表 (rollup_fcu_1h) 最新完成之 Bucket 時間點。</summary>
         public DateTime? RollupFcuLatestBucket { get; init; }
     }
 
+    /// <summary>
+    /// 查詢時序表最近的資料落地統計與小時聚合進度指標。
+    /// </summary>
+    /// <param name="recentSinceUtc">近期活躍統計之起算標準 UTC 時間點（例如最近 15 分鐘）。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>包含時序落地與聚合狀態之統計 Row 物件。</returns>
     public async Task<PersistenceStatsRow> GetPersistenceStatsAsync(DateTime recentSinceUtc, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);

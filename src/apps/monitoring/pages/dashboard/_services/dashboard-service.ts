@@ -18,8 +18,14 @@ import {
 } from '../../admin/_services/hvac-service';
 import { chillerExceededFlags } from '../../admin/_services/threshold-service';
 
-/** 三個超標旗標改從「目前有效告警」反查（見 threshold-service.ts 的 chillerExceededFlags），
- * 跟後台監控中心總覽頁用同一套邏輯，門檻資料現在是真的了（告警門檻設定頁），不用再全部回 false。 */
+/**
+ * 取得前台大廳螢幕展示用的冰水主機即時運轉資料清單
+ *
+ * 三個超標旗標改從「目前有效告警」反查（見 threshold-service.ts 的 chillerExceededFlags），
+ * 跟後台監控中心總覽頁用同一套邏輯，門檻資料現在是真的了（告警門檻設定頁），不用再全部回 false。
+ *
+ * @returns 傳回冰水主機資料物件陣列
+ */
 export async function getChillersDataApi(): Promise<ChillerData[]> {
   const [chillers, alarms] = await Promise.all([listChillersApi(), listAlarmsApi('active')]);
   return chillers.map((c) => {
@@ -42,12 +48,25 @@ export async function getChillersDataApi(): Promise<ChillerData[]> {
   });
 }
 
+/**
+ * 載入指定樓層或全廠的 FCU 清單並結合即時告警衍生其運轉狀態
+ *
+ * @param floor 樓層篩選條件（可選，'B1' | 'B2'）
+ * @returns 傳回包含原始 FCU 資料與衍生狀態的物件陣列
+ */
 async function loadFcusWithStatus(floor?: FloorId) {
   const [fcus, alarms] = await Promise.all([listFcusApi(floor), listAlarmsApi('active')]);
   const alarmingFcus = alarmingFcuIdsOf(alarms);
   return fcus.map((f) => ({ f, status: deriveFcuStatus(f, alarmingFcus) }));
 }
 
+/**
+ * 將原始 FCU 狀態物件轉換為前台戰情室專用的 FcuItem 顯示模型
+ *
+ * @param f FCU 設備原始 DTO 物件
+ * @param status 設備計算後的運轉狀態標籤
+ * @returns 傳回前台 FcuItem 模型物件
+ */
 function toFcuItem(f: Awaited<ReturnType<typeof loadFcusWithStatus>>[number]['f'], status: FcuItem['status']): FcuItem {
   const online = isDataQualityOnline(f.dataQuality);
   const roomTemp = online ? (f.value?.temperature ?? NaN) : NaN;
@@ -64,6 +83,11 @@ function toFcuItem(f: Awaited<ReturnType<typeof loadFcusWithStatus>>[number]['f'
   };
 }
 
+/**
+ * 取得依樓層分類（B1 / B2）之全廠 FCU 狀態矩陣資料
+ *
+ * @returns 傳回以樓層 ID 為鍵的 FCU 陣列字典
+ */
 export async function getFcuStatusMatrixApi(): Promise<Record<FloorId, FcuItem[]>> {
   const withStatus = await loadFcusWithStatus();
   const result: Record<FloorId, FcuItem[]> = { B1: [], B2: [] };
@@ -73,11 +97,23 @@ export async function getFcuStatusMatrixApi(): Promise<Record<FloorId, FcuItem[]
   return result;
 }
 
+/**
+ * 取得指定樓層的 FCU 列表矩陣資料
+ *
+ * @param floor 樓層代碼（'B1' 或 'B2'）
+ * @returns 傳回該樓層的 FcuItem 陣列
+ */
 export async function listFcuMatrixApi(floor: FloorId): Promise<FcuItem[]> {
   const withStatus = await loadFcusWithStatus(floor);
   return withStatus.map(({ f, status }) => toFcuItem(f, status));
 }
 
+/**
+ * 取得指定樓層之 FCU 統計與運轉率摘要
+ *
+ * @param floor 樓層代碼
+ * @returns 傳回樓層 FCU 總數、運轉數與運轉率物件
+ */
 export async function getFloorHeatmapApi(floor: FloorId): Promise<FloorHeatmapData> {
   const withStatus = await loadFcusWithStatus(floor);
   const total = withStatus.length;
@@ -91,10 +127,14 @@ export async function getFloorHeatmapApi(floor: FloorId): Promise<FloorHeatmapDa
 }
 
 /**
+ * 取得戰情看板總體指標數據（總台數、運轉率、均溫等）
+ *
  * 總體指標。真正有畫面在用的只有 b1AvgTemp/b2AvgTemp（樓層均溫膠囊）跟
  * totalFcu/overallRunRate（FCU 設備總覽卡片在沒有清單資料時的備援值），其餘欄位
  * （totalChillers/runningChillers/runningFcu/abnormalFcu/offlineFcu/stoppedFcu）
  * 翻過所有戰情室元件都沒有被實際渲染，但型別还留著，就用真實統計值填，不留假數字。
+ *
+ * @returns 傳回戰情室總覽指標物件
  */
 export async function getDashboardOverviewApi(): Promise<DashboardOverview> {
   const [chillers, fcus] = await Promise.all([listChillersApi(), listFcusApi()]);
@@ -128,9 +168,14 @@ export async function getDashboardOverviewApi(): Promise<DashboardOverview> {
 }
 
 /**
+ * 將 FCU 告警規則代碼反查轉換為可讀的門檻值字串
+ *
  * FCU 的 ruleCode 是 "{Metric}.{Operator}.{Threshold}"（例："Temperature.0.28"）；
  * 從中還原出「門檻 28°C」這種人話字串，跟後端 AlarmEndpoints.DescribeFcuRule 是同一份邏輯的
  * 前端版本——這裡只是為了組出 thresholdValue 顯示字串，不是重新判斷告警。
+ *
+ * @param ruleCode 告警規則代碼字串
+ * @returns 傳回如 "28.0 °C" 之門檻顯示字串，無法解析時傳回 "—"
  */
 function fcuThresholdText(ruleCode: string): string {
   const parts = ruleCode.split('.');
@@ -139,9 +184,15 @@ function fcuThresholdText(ruleCode: string): string {
   return Number.isFinite(threshold) ? `${threshold.toFixed(1)} °C` : '—';
 }
 
-/** 跟後台「全部告警」彈窗同一套分類：離線、待保養（保養提醒不是異常）、其餘才是異常。 */
+/** 告警前綴文字對應（跟後台「全部告警」彈窗同一套分類：離線、待保養、異常） */
 const ALARM_PREFIX = { OFFLINE: '離線', MAINTENANCE: '待保養', ABNORMAL: '異常' } as const;
 
+/**
+ * 將後端 AlarmRow 告警紀錄轉換為前台戰情室專用的 AlarmItem 顯示模型
+ *
+ * @param a 告警資料列
+ * @returns 傳回 AlarmItem 物件
+ */
 function toAlarmItem(a: AlarmRow): AlarmItem {
   const isFcu = a.deviceType === AlarmDeviceType.Fcu;
   return {
@@ -160,6 +211,11 @@ function toAlarmItem(a: AlarmRow): AlarmItem {
   };
 }
 
+/**
+ * 取得前台戰情室即時活躍告警清單
+ *
+ * @returns 傳回格式化之 AlarmItem 陣列
+ */
 export async function listRealtimeAlarmsApi(): Promise<AlarmItem[]> {
   const alarms = await listAlarmsApi('active');
   return alarms.map(toAlarmItem);
@@ -169,11 +225,21 @@ export async function listRealtimeAlarmsApi(): Promise<AlarmItem[]> {
 // DashboardApp.vue 用 Promise.all 平行呼叫，所以會打兩次同一支端點——資料量小、
 // 一天一次的聚合查詢，不值得為了省一次請求把兩個獨立函式的介面攪在一起。
 
+/**
+ * 取得全廠 24 小時各樓層 FCU 啟用台數趨勢圖資料
+ *
+ * @returns 傳回每小時 FCU 啟用長條圖資料
+ */
 export async function getHourlyFcuUsageTrendApi(): Promise<HourlyUsageTrend> {
   const stats = await getPublicHourlyFcuStatsApi();
   return { hours: stats.hours, b1Count: stats.b1Count, b2Count: stats.b2Count };
 }
 
+/**
+ * 取得全廠 24 小時各樓層平均溫度變化趨勢圖資料
+ *
+ * @returns 傳回每小時溫度折線圖資料
+ */
 export async function getHourlyTempTrendApi(): Promise<HourlyTempTrend> {
   const stats = await getPublicHourlyFcuStatsApi();
   return { hours: stats.hours, b1Temp: stats.b1Temp, b2Temp: stats.b2Temp };

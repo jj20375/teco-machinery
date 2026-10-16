@@ -6,12 +6,21 @@ using Teco.Hvac.Infrastructure.Repositories;
 
 namespace Teco.Hvac.Api.Endpoints;
 
+/// <summary>
+/// 小型冷度送風機 (FCU) 相關 HTTP API 端點群組。
+/// 提供設備清單、歷史讀值查詢、每小時運轉統計與自訂名稱維護功能。
+/// </summary>
 public static class FcuEndpoints
 {
+    /// <summary>
+    /// 註冊 FCU 相關 HTTP 端點路由。
+    /// </summary>
+    /// <param name="app">WebApplication 實體。</param>
     public static void MapFcuEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/v1/fcus").RequireAuthorization();
 
+        // 查詢所有 FCU 設備列表與最新狀態
         group.MapGet("/", async (ClaimsPrincipal principal, string? floor, FcuRepository repo, CurrentStateStore store, CancellationToken ct) =>
         {
             if (!RequestScope.TryRead(principal, out var scope) || scope is null || !scope.Has("hvac.fcus", "read"))
@@ -19,6 +28,7 @@ public static class FcuEndpoints
             return Results.Ok(await BuildListAsync(floor, repo, store, ct));
         });
 
+        // 查詢特定 FCU 之歷史時序讀值
         group.MapGet("/{id:int}/history", async (ClaimsPrincipal principal, int id, DateTime from, DateTime to, string? interval, FcuRepository repo, CancellationToken ct) =>
         {
             if (!RequestScope.TryRead(principal, out var scope) || scope is null || !scope.Has("hvac.fcus", "read"))
@@ -31,6 +41,7 @@ public static class FcuEndpoints
             return Results.Ok(rows);
         });
 
+        // 查詢 FCU 24 小時運轉台數與溫度趨勢統計
         group.MapGet("/hourly-stats", async (ClaimsPrincipal principal, DateTime? date, FcuRepository repo, CancellationToken ct) =>
         {
             if (!RequestScope.TryRead(principal, out var scope) || scope is null || !scope.Has("hvac.fcus", "read"))
@@ -38,15 +49,24 @@ public static class FcuEndpoints
             return Results.Ok(await BuildHourlyStatsAsync(date, repo, ct));
         });
 
+        // 修改 FCU 自訂顯示代碼/名稱
         group.MapPatch("/{id:int}", UpdateDisplayName);
     }
 
     /// <summary>
+    /// 更新 FCU 自訂代碼之處理處理器。
     /// 讓場館自己填一組看得懂的代碼／名稱（例如現場設備標籤上的編號），跟系統的
     /// (channel, station_id, position) 並存——這組是實體接線決定的，不能被覆蓋掉，所以另外用
     /// display_name 這個欄位放客戶的版本。zone_code 不是識別：它是儲存空間配置時依「放在哪個分區」
     /// 回寫的，同一區可以有多台。留空代表清回「未設定」，圖面會退回顯示供應商編號。
     /// </summary>
+    /// <param name="principal">使用者身分主體。</param>
+    /// <param name="id">FCU 流水號識別碼。</param>
+    /// <param name="request">更新代碼請求載體。</param>
+    /// <param name="repo">FCU 倉儲。</param>
+    /// <param name="opLog">操作日誌服務。</param>
+    /// <param name="ct">非同步作業取消語彙基元。</param>
+    /// <returns>HTTP 操作結果。</returns>
     private static async Task<IResult> UpdateDisplayName(
         ClaimsPrincipal principal, int id, UpdateFcuDisplayNameRequest request,
         FcuRepository repo, OperationLogger opLog, CancellationToken ct)
@@ -78,6 +98,10 @@ public static class FcuEndpoints
         return Results.NoContent();
     }
 
+    /// <summary>
+    /// 更新 FCU 自訂代碼之請求模型。
+    /// </summary>
+    /// <param name="DisplayName">自訂名稱或代碼。</param>
     public sealed record UpdateFcuDisplayNameRequest(string? DisplayName);
 
     /// <summary>
@@ -85,9 +109,19 @@ public static class FcuEndpoints
     /// 有連線時直接用供應商回報的 ID；沒連線時依說明書表 19 的命名規則「FC_MC{站號}_{兩位位置}」推算。
     /// 注意：這個編號在 DDC1、DDC2 之間會重複（說明書 6.1），畫面上一定要搭配 DDC 一起顯示。
     /// </summary>
+    /// <param name="stationId">Modbus Station ID (1~4)。</param>
+    /// <param name="position">控制器內部索引位置 (1~64)。</param>
+    /// <returns>格式為 FC_MC{StationId}_{Position:D2} 的字串。</returns>
     internal static string VendorCodeOf(byte stationId, int position) => $"FC_MC{stationId}_{position:00}";
 
-    /// <summary>清單建置邏輯抽成共用方法，理由見 ChillerEndpoints.BuildListAsync 上的註解。</summary>
+    /// <summary>
+    /// 清單建置邏輯抽成共用方法，理由見 ChillerEndpoints.BuildListAsync 上的註解。
+    /// </summary>
+    /// <param name="floor">可選的樓層篩選條件。</param>
+    /// <param name="repo">FCU 倉儲。</param>
+    /// <param name="store">目前狀態儲存庫。</param>
+    /// <param name="ct">非同步作業取消語彙基元。</param>
+    /// <returns>包含即時讀值與品質描述的 FCU 設備清單物件。</returns>
     internal static async Task<object> BuildListAsync(string? floor, FcuRepository repo, CurrentStateStore store, CancellationToken ct)
     {
         var devices = await repo.ListAsync(floor, ct);
@@ -131,6 +165,10 @@ public static class FcuEndpoints
     /// 小時分桶跟時區換算都在這裡用 TimeZoneInfo.Local 做，理由見
     /// FcuRepository.GetReadingsForHourlyStatsAsync 上的註解。
     /// </summary>
+    /// <param name="date">查詢日期；null 表示今天。</param>
+    /// <param name="repo">FCU 倉儲。</param>
+    /// <param name="ct">非同步作業取消語彙基元。</param>
+    /// <returns>包含 24 小時時段、開機台數與平均溫度的統計物件。</returns>
     internal static async Task<object> BuildHourlyStatsAsync(DateTime? date, FcuRepository repo, CancellationToken ct)
     {
         var localTz = TimeZoneInfo.Local;

@@ -4,19 +4,32 @@ using Teco.Hvac.Contracts;
 namespace Teco.Hvac.Infrastructure.Repositories;
 
 /// <summary>
-/// 通道連線狀態「區段」紀錄，由 Collector 看門狗寫入（計畫 P2）。每一列是一段持續的狀態，
-/// `duration_seconds` 在下一段開始時才回填；NULL 代表這段還在持續（或 2026-10-15 之前的舊資料，當時沒有回填）。
+/// 通道健康度與連線區段歷史資料庫倉儲 (<see cref="ChannelHealthRepository"/>)。
+/// 對應資料庫 channel_health 資料表。
+/// 
+/// 採區段 (Segment) 設計模型，記錄通訊通道每次連線或斷線的開始時間，並於該區段結束時回填 duration_seconds（持續秒數）。
 /// </summary>
 public sealed class ChannelHealthRepository(TecoDbConnectionFactory factory)
 {
+    /// <summary>
+    /// 查詢指定通道最近一筆連線狀態所使用的輕量 Row 物件。
+    /// </summary>
     public sealed class LatestRow
     {
+        /// <summary>紀錄主鍵 ID。</summary>
         public long Id { get; init; }
+        /// <summary>連線狀態整數值 (ConnectionState)。</summary>
         public int ConnectionState { get; init; }
-        /// <summary>UTC；刻意宣告成 DateTime（見 CLAUDE.md 原則 1）。</summary>
+        /// <summary>狀態變更發生的標準 UTC 時間（使用 DateTime 宣告避免轉型時區污染）。</summary>
         public DateTime ChangedAt { get; init; }
     }
 
+    /// <summary>
+    /// 查詢指定通道最新一筆連線歷史紀錄（用於 Collector 重啟時接續歷史區段）。
+    /// </summary>
+    /// <param name="channel">目標通訊通道。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>該通道最後一筆紀錄；若資料庫尚無紀錄則為 null。</returns>
     public async Task<LatestRow?> GetLatestAsync(Channel channel, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
@@ -26,7 +39,16 @@ public sealed class ChannelHealthRepository(TecoDbConnectionFactory factory)
             new { channel = (int)channel });
     }
 
-    /// <summary>開始新的一段狀態：回填上一段的持續秒數，並寫入新的一列。回傳新列的 id。</summary>
+    /// <summary>
+    /// 開立全新的通道狀態區段：在交易內回填上一區段的持續時間 (DurationSeconds)，並插入新區段列。
+    /// </summary>
+    /// <param name="channel">通訊通道。</param>
+    /// <param name="state">新區段之連線狀態。</param>
+    /// <param name="readStatus">新區段之資料讀取狀態。</param>
+    /// <param name="changedAtUtc">狀態變更發生的標準 UTC 時間戳記。</param>
+    /// <param name="previousId">上一區段的資料表主鍵 ID；若為首筆紀錄則為 null。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>新開立區段之自動遞增主鍵 ID。</returns>
     public async Task<long> StartSegmentAsync(
         Channel channel, ConnectionState state, ReadStatus readStatus, DateTimeOffset changedAtUtc,
         long? previousId, CancellationToken ct = default)
@@ -36,7 +58,7 @@ public sealed class ChannelHealthRepository(TecoDbConnectionFactory factory)
         var changedAt = changedAtUtc.UtcDateTime;
         if (previousId is not null)
         {
-            // GREATEST：DLL 的事件時間是本機時間，主機校時可能讓新事件早於上一段，不要寫出負數。
+            // 使用 GREATEST(0, ...) 防止因 NTP 伺服器校時或時間回退導致算出的持續秒數為負數
             await conn.ExecuteAsync(
                 "UPDATE channel_health SET duration_seconds = GREATEST(0, TIMESTAMPDIFF(SECOND, changed_at, @changedAt)) " +
                 "WHERE id = @previousId",
@@ -51,10 +73,12 @@ public sealed class ChannelHealthRepository(TecoDbConnectionFactory factory)
     }
 
     /// <summary>
-    /// 刪除早於 cutoff 的紀錄，回傳刪除筆數。分批刪，避免一次鎖住大量資料列
-    /// （修正前的版本在設備長期連不上時一天會寫好幾萬筆，舊資料庫可能還留著那批量）。
-    /// `channel IN (...)` 是為了用到 (channel, changed_at) 索引做範圍掃描。
+    /// 依據截止時間批次清除歷史過期健康狀態紀錄。
+    /// 採用分批 LIMIT 10000 刪除策略，避免單次大交易鎖表影響線上讀寫。
     /// </summary>
+    /// <param name="cutoffUtc">過期資料刪除截止時間（早於此時間點的紀錄將被清除）。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>累計已刪除的資料總筆數。</returns>
     public async Task<int> DeleteOlderThanAsync(DateTime cutoffUtc, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
@@ -71,17 +95,32 @@ public sealed class ChannelHealthRepository(TecoDbConnectionFactory factory)
         }
     }
 
+    /// <summary>
+    /// 前端系統診斷與通訊歷史查詢專用 Row 物件。
+    /// </summary>
     public sealed class ChannelHealthRow
     {
+        /// <summary>紀錄主鍵 ID。</summary>
         public long Id { get; init; }
+        /// <summary>通道列舉數值。</summary>
         public int Channel { get; init; }
+        /// <summary>連線狀態列舉數值。</summary>
         public int ConnectionState { get; init; }
+        /// <summary>讀取狀態列舉數值。</summary>
         public int ReadStatus { get; init; }
-        /// <summary>UTC；刻意宣告成 DateTime，由呼叫端 AsUtcOffset() 轉換（見 CLAUDE.md 原則 1）。</summary>
+        /// <summary>變更時間（UTC DateTime，由呼叫端透過 AsUtcOffset() 轉換為 DateTimeOffset）。</summary>
         public DateTime ChangedAt { get; init; }
+        /// <summary>該狀態持續歷時（秒數）；若進行中則為 null。</summary>
         public int? DurationSeconds { get; init; }
     }
 
+    /// <summary>
+    /// 查詢全廠通道最近的健康狀態與連線歷程紀錄。
+    /// 供平台維運「系統診斷」頁面呈現通道離線與跳動軌跡。
+    /// </summary>
+    /// <param name="limit">查詢最大回傳筆數。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>通道健康歷史 Row 清單。</returns>
     public async Task<IReadOnlyList<ChannelHealthRow>> ListRecentAsync(int limit, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);

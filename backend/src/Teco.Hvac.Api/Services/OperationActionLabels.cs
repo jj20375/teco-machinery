@@ -6,11 +6,16 @@ namespace Teco.Hvac.Api.Services;
 /// </summary>
 public static class OperationActionLabels
 {
+    /// <summary>權限拒絕動作代碼。</summary>
     public const string Denied = "access.denied";
+    /// <summary>使用者登入動作代碼。</summary>
     public const string Login = "auth.login";
+    /// <summary>使用者登出動作代碼。</summary>
     public const string Logout = "auth.logout";
+    /// <summary>帳號密碼錯誤次數超限鎖定動作代碼。</summary>
     public const string AccountLocked = "auth.account_locked";
 
+    /// <summary>內部動作代碼對應至中文分類標籤之字典。</summary>
     private static readonly Dictionary<string, string> Labels = new(StringComparer.OrdinalIgnoreCase)
     {
         ["auth.login"] = "登入",
@@ -46,6 +51,11 @@ public static class OperationActionLabels
         ["platform.role.permission.update"] = "角色設定",
     };
 
-    /// <summary>沒有對照的動作回傳原始代碼（不隱藏，才看得出來是漏了）。</summary>
+    /// <summary>
+    /// 取得指定動作代碼對應的繁體中文顯示標籤。
+    /// 沒有對照的動作回傳原始代碼（不隱藏，才看得出來是漏了）。
+    /// </summary>
+    /// <param name="action">動作代碼（例如 "auth.login"）。</param>
+    /// <returns>繁體中文動作標籤；查無對照時傳回原代碼。</returns>
     public static string For(string action) => Labels.GetValueOrDefault(action, action);
 }

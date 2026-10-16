@@ -7,12 +7,19 @@ namespace Teco.Hvac.Api.Auth;
 /// </summary>
 public static class PasswordPolicy
 {
+    /// <summary>密碼最小長度限制 (6)。</summary>
     public const int MinLength = 6;
+    /// <summary>密碼最大長度限制 (128)。</summary>
     public const int MaxLength = 128;
 
+    /// <summary>供前端與 API 錯誤提示使用的預設規則說明文字。</summary>
     public const string RuleText = "密碼至少要 6 個字元。";
 
-    /// <summary>回傳 null 表示合格；否則是要直接顯示給使用者的原因。</summary>
+    /// <summary>
+    /// 驗證密碼是否符合安全政策。
+    /// </summary>
+    /// <param name="password">待檢驗的密碼字串。</param>
+    /// <returns>回傳 null 表示合格；否則是要直接顯示給使用者的原因。</returns>
     public static string? Validate(string? password)
     {
         if (string.IsNullOrEmpty(password) || password.Length < MinLength) return RuleText;

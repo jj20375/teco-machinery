@@ -12,9 +12,13 @@ namespace Teco.Hvac.Api.Services.Diagnostics;
 /// </summary>
 public static class DataValidationRules
 {
+    /// <summary>正常健康等級 ("ok")。</summary>
     public const string LevelOk = "ok";
+    /// <summary>警告提醒等級 ("warn")。</summary>
     public const string LevelWarn = "warn";
+    /// <summary>錯誤異常等級 ("error")。</summary>
     public const string LevelError = "error";
+    /// <summary>未明狀態等級 ("unknown")。</summary>
     public const string LevelUnknown = "unknown";
 
     /// <summary>通道超過這個秒數沒有成功讀取就視為異常；跟 Collector 的 WatchdogStaleSeconds 預設值一致。</summary>
@@ -30,14 +34,27 @@ public static class DataValidationRules
     /// 所以這項檢查看不到現場設備自己的時鐘。
     /// </summary>
     public const double ClockSkewWarnSeconds = 30;
+    /// <summary>時鐘偏移判定為 Error 的門檻秒數（超過 1 小時）。</summary>
     public const double ClockSkewErrorSeconds = 3600;
 
     /// <summary>落地統計看「最近幾分鐘」；FCU 節流最長 60 秒一筆，10 分鐘內每台至少該有好幾筆。</summary>
     public static readonly TimeSpan PersistenceRecentWindow = TimeSpan.FromMinutes(10);
 
+    /// <summary>FCU 環境溫度合理下限 (0°C)。</summary>
     public const double FcuTemperatureMin = 0;
+    /// <summary>FCU 環境溫度合理上限 (50°C)。</summary>
     public const double FcuTemperatureMax = 50;
 
+    /// <summary>
+    /// 冰水主機單一遙測欄位的健康檢驗規則定義。
+    /// </summary>
+    /// <param name="Key">欄位英文字鍵名。</param>
+    /// <param name="Label">繁體中文欄位名稱。</param>
+    /// <param name="Unit">物理單位。</param>
+    /// <param name="Read">從快照提取該欄位數值的委派函式。</param>
+    /// <param name="Min">合理範圍下限值；null 表示不設限。</param>
+    /// <param name="Max">合理範圍上限值；null 表示不設限。</param>
+    /// <param name="MustNotDecrease">是否為遞增計數欄位（例如累計運轉時數，值不可倒退）。</param>
     public sealed record FieldRule(
         string Key, string Label, string Unit, Func<ChillerSnapshot, double> Read, double? Min, double? Max,
         bool MustNotDecrease = false);
@@ -64,20 +81,42 @@ public static class DataValidationRules
         new("accumulatedEnergyKilowattHour", "累計耗電量", "kWh", c => c.AccumulatedEnergyKilowattHour, 0, null, MustNotDecrease: true),
     ];
 
+    /// <summary>
+    /// 檢查數值是否超出合理範圍。
+    /// </summary>
+    /// <param name="value">當前數值。</param>
+    /// <param name="min">下限值。</param>
+    /// <param name="max">上限值。</param>
+    /// <returns>若超出界限則為 true；否則為 false。</returns>
     public static bool IsOutOfRange(double value, double? min, double? max) =>
         (min is not null && value < min) || (max is not null && value > max);
 
     /// <summary>讀取成功卻所有數值欄位都是 0——幾乎可以確定是暫存器位址/站號對錯，讀到空資料。</summary>
+    /// <param name="c">冰水主機快照。</param>
+    /// <returns>若所有欄位皆為 0 則為 true。</returns>
     public static bool LooksAllZero(ChillerSnapshot c) => ChillerFields.All(f => f.Read(c) == 0);
 
     /// <summary>BACKEND_INTEGRATION_PLAN §2.2 的啟發式：狀態欄位全部 Unknown 且溫度為 0，視為該台沒回應。</summary>
+    /// <param name="f">FCU 快照。</param>
+    /// <returns>若呈現未連線無回應狀態則為 true。</returns>
     public static bool LooksUnresponsive(FcuSnapshot f) =>
         f.SwitchStatus == FcuSwitchStatus.Unknown && f.Mode == FcuOperationMode.Unknown &&
         f.FanSpeed == FcuFanSpeed.Unknown && f.Temperature == 0;
 
+    /// <summary>
+    /// 檢查 FCU 環境溫度是否超出正常範圍 (0~50°C)。
+    /// </summary>
+    /// <param name="f">FCU 快照。</param>
+    /// <returns>若溫度異常超標則為 true。</returns>
     public static bool IsFcuTemperatureOutOfRange(FcuSnapshot f) =>
         IsOutOfRange(f.Temperature, FcuTemperatureMin, FcuTemperatureMax);
 
+    /// <summary>
+    /// 從多個狀態層級字串中評估出最嚴重的等級。
+    /// 優先順序：error > warn > unknown > ok。
+    /// </summary>
+    /// <param name="levels">層級字串集合。</param>
+    /// <returns>最嚴重的等級字串。</returns>
     public static string Worst(IEnumerable<string> levels)
     {
         var worst = LevelOk;
@@ -88,6 +127,11 @@ public static class DataValidationRules
         return worst;
     }
 
+    /// <summary>
+    /// 計算狀態等級的權重分數。
+    /// </summary>
+    /// <param name="level">等級代碼。</param>
+    /// <returns>權重整數數值。</returns>
     private static int Rank(string level) => level switch
     {
         LevelError => 3,

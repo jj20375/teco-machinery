@@ -21,16 +21,26 @@ namespace Teco.Hvac.Api.Endpoints;
 /// </summary>
 public static class ThresholdEndpoints
 {
+    /// <summary>冰水出水溫度指標代碼。</summary>
     private const string SupplyTemp = nameof(ChillerSnapshot.ChilledWaterOutletTemperature);
+    /// <summary>冰水入水溫度指標代碼。</summary>
     private const string ReturnTemp = nameof(ChillerSnapshot.ChilledWaterInletTemperature);
+    /// <summary>冰水溫差 ΔT 指標代碼。</summary>
     private const string TempDiff = nameof(ChillerSnapshot.ChilledWaterTemperatureDifference);
+    /// <summary>累計運轉時數指標代碼。</summary>
     private const string RunningHours = nameof(ChillerSnapshot.AccumulatedRunningHours);
+    /// <summary>FCU 環境溫度指標代碼。</summary>
     private const string RoomTemp = nameof(FcuSnapshot.Temperature);
 
+    /// <summary>
+    /// 註冊告警門檻相關 HTTP 端點路由。
+    /// </summary>
+    /// <param name="app">WebApplication 實體。</param>
     public static void MapThresholdEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/v1/thresholds").RequireAuthorization();
 
+        // 取得指定冰水主機的各項門檻設定
         group.MapGet("/chillers/{code}", async (
             ClaimsPrincipal principal, string code, ChillerRepository chillers, AlarmRepository alarms, CancellationToken ct) =>
         {
@@ -44,6 +54,7 @@ public static class ThresholdEndpoints
             return Results.Ok(BuildChillerConfig(code, rules));
         });
 
+        // 調整更新指定冰水主機的告警門檻設定
         group.MapPut("/chillers/{code}", async (
             ClaimsPrincipal principal, string code, ChillerThresholdRequest request,
             ChillerRepository chillers, AlarmRepository alarms, ChillerMaintenanceRepository maintenance,
@@ -95,6 +106,7 @@ public static class ThresholdEndpoints
             return Results.Ok(after);
         });
 
+        // 取得全廠 FCU 室溫上下限設定
         group.MapGet("/fcus", async (ClaimsPrincipal principal, AlarmRepository alarms, CancellationToken ct) =>
         {
             if (!RequestScope.TryRead(principal, out var scope) || scope is null || !scope.Has("hvac.thresholds", "read"))
@@ -103,6 +115,7 @@ public static class ThresholdEndpoints
             return Results.Ok(BuildFcuConfig(rules));
         });
 
+        // 調整更新全廠 FCU 室溫上下限設定
         group.MapPut("/fcus", async (
             ClaimsPrincipal principal, FcuThresholdRequest request, AlarmRepository alarms, OperationLogger opLog, CancellationToken ct) =>
         {
@@ -122,7 +135,19 @@ public static class ThresholdEndpoints
         });
     }
 
-    /// <summary>value 為 null 代表畫面把這個欄位清空——直接刪掉對應規則，而不是存一個停用的。</summary>
+    /// <summary>
+    /// 套用單項指標邊界門檻值至 alarm_rule。
+    /// value 為 null 代表畫面把這個欄位清空——直接刪掉對應規則，而不是存一個停用的。
+    /// </summary>
+    /// <param name="alarms">告警規則倉儲。</param>
+    /// <param name="deviceType">設備類型。</param>
+    /// <param name="scopeKey">規則適用範圍識別（例如 Modbus ID 或 "*"）。</param>
+    /// <param name="deviceId">關聯設備識別碼。</param>
+    /// <param name="metric">指標代碼。</param>
+    /// <param name="op">比較運算子。</param>
+    /// <param name="value">門檻數值；null 代表刪除規則。</param>
+    /// <param name="ct">非同步作業取消語彙基元。</param>
+    /// <param name="severity">告警嚴重程度，預設為 Warning。</param>
     private static async Task ApplyBoundAsync(
         AlarmRepository alarms, AlarmDeviceType deviceType, string scopeKey, int? deviceId, string metric, AlarmMetricOperator op,
         double? value, CancellationToken ct, AlarmSeverity severity = AlarmSeverity.Warning)
@@ -143,6 +168,12 @@ public static class ThresholdEndpoints
         await alarms.CloseStaleThresholdEventsAsync(deviceType, deviceId, metric, op, keep, DateTimeOffset.UtcNow, ct);
     }
 
+    /// <summary>
+    /// 將冰水主機規則清單轉換組裝為前端畫面設定物件。
+    /// </summary>
+    /// <param name="code">主機代碼。</param>
+    /// <param name="rules">生效中的規則列表。</param>
+    /// <returns>前端格式的組態物件。</returns>
     private static object BuildChillerConfig(string code, IReadOnlyList<AlarmRule> rules)
     {
         double? Find(string metric, AlarmMetricOperator op) =>
@@ -161,15 +192,35 @@ public static class ThresholdEndpoints
         };
     }
 
+    /// <summary>
+    /// 將 FCU 規則清單轉換組裝為前端畫面設定物件。
+    /// </summary>
+    /// <param name="rules">生效中的規則列表。</param>
+    /// <returns>前端格式的組態物件。</returns>
     private static object BuildFcuConfig(IReadOnlyList<AlarmRule> rules)
     {
         double? Find(AlarmMetricOperator op) => rules.FirstOrDefault(r => r.Metric == RoomTemp && r.Operator == op)?.Threshold;
         return new { roomTempMin = Find(AlarmMetricOperator.LessThan), roomTempMax = Find(AlarmMetricOperator.GreaterThan) };
     }
 
+    /// <summary>
+    /// 冰水主機門檻更新請求模型。
+    /// </summary>
+    /// <param name="SupplyTempMin">冰水出水溫度下限 (°C)。</param>
+    /// <param name="SupplyTempMax">冰水出水溫度上限 (°C)。</param>
+    /// <param name="ReturnTempMin">冰水回水溫度下限 (°C)。</param>
+    /// <param name="ReturnTempMax">冰水回水溫度上限 (°C)。</param>
+    /// <param name="TempDiffMin">冰水溫差下限 (°C)。</param>
+    /// <param name="TempDiffMax">冰水溫差上限 (°C)。</param>
+    /// <param name="MaintenanceHoursLimit">保養週期時數間隔 (h)。</param>
     public sealed record ChillerThresholdRequest(
         double? SupplyTempMin, double? SupplyTempMax, double? ReturnTempMin, double? ReturnTempMax,
         double? TempDiffMin, double? TempDiffMax, double? MaintenanceHoursLimit);
 
+    /// <summary>
+    /// FCU 全廠門檻更新請求模型。
+    /// </summary>
+    /// <param name="RoomTempMin">室溫下限 (°C)。</param>
+    /// <param name="RoomTempMax">室溫上限 (°C)。</param>
     public sealed record FcuThresholdRequest(double? RoomTempMin, double? RoomTempMax);
 }

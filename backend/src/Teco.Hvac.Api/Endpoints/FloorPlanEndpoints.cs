@@ -7,21 +7,37 @@ using Teco.Hvac.Infrastructure.Repositories;
 namespace Teco.Hvac.Api.Endpoints;
 
 /// <summary>
-/// 樓層平面圖的設備配置。這在先前只存在使用者瀏覽器的 localStorage，換裝置或清快取就消失；
+/// 樓層平面圖的設備配置 API 端點群組。
+/// 這在先前只存在使用者瀏覽器的 localStorage，換裝置或清快取就消失；
 /// 改由後端保存後才能跨裝置共用，前台的唯讀檢視也才看得到管理員配置的結果。
 /// </summary>
 public static class FloorPlanEndpoints
 {
+    /// <summary>系統允許配置之合法樓層代碼清單 ("B1", "B2")。</summary>
     internal static readonly string[] KnownFloors = ["B1", "B2"];
 
+    /// <summary>
+    /// 註冊空間配置相關 HTTP 端點路由。
+    /// </summary>
+    /// <param name="app">WebApplication 實體。</param>
     public static void MapFloorPlanEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/v1/floor-plan").RequireAuthorization();
 
+        // 查詢指定樓層的所有設備座標配置
         group.MapGet("/{floor}/placements", GetPlacements);
+        // 全量覆寫更新指定樓層的設備座標配置（支援樂觀鎖版本控制）
         group.MapPut("/{floor}/placements", ReplacePlacements);
     }
 
+    /// <summary>
+    /// 取得指定樓層空間配置清單之處理處理器。
+    /// </summary>
+    /// <param name="principal">使用者身分宣告主體。</param>
+    /// <param name="floor">樓層代碼（例如 "B1"）。</param>
+    /// <param name="repo">空間配置倉儲。</param>
+    /// <param name="ct">非同步作業取消語彙基元。</param>
+    /// <returns>HTTP 操作結果。</returns>
     private static async Task<IResult> GetPlacements(
         ClaimsPrincipal principal, string floor, FloorPlanRepository repo, CancellationToken ct)
     {
@@ -31,7 +47,13 @@ public static class FloorPlanEndpoints
         return Results.Ok(await BuildPlacementsResponseAsync(floor, repo, ct));
     }
 
-    /// <summary>清單建置邏輯抽成共用方法，理由見 ChillerEndpoints.BuildListAsync 上的註解。</summary>
+    /// <summary>
+    /// 清單建置邏輯抽成共用方法，理由見 ChillerEndpoints.BuildListAsync 上的註解。
+    /// </summary>
+    /// <param name="floor">目標樓層。</param>
+    /// <param name="repo">空間配置倉儲。</param>
+    /// <param name="ct">非同步作業取消語彙基元。</param>
+    /// <returns>包含樓層、版本號與設備位置清單的物件。</returns>
     internal static async Task<object> BuildPlacementsResponseAsync(string floor, FloorPlanRepository repo, CancellationToken ct)
     {
         var placements = await repo.ListByFloorAsync(floor, ct);
@@ -49,6 +71,13 @@ public static class FloorPlanEndpoints
     /// expectedVersion 對應先前 localStorage 版本裡「另一個頁面已更新配置」那道保護，
     /// 沒有它的話兩個人同時編輯會互相把對方的配置蓋掉。
     /// </summary>
+    /// <param name="principal">使用者身分宣告主體。</param>
+    /// <param name="floor">樓層代碼。</param>
+    /// <param name="request">全量配置請求載體。</param>
+    /// <param name="repo">空間配置倉儲。</param>
+    /// <param name="opLog">操作日誌服務。</param>
+    /// <param name="ct">非同步作業取消語彙基元。</param>
+    /// <returns>HTTP 操作結果。</returns>
     private static async Task<IResult> ReplacePlacements(
         ClaimsPrincipal principal, string floor, ReplacePlacementsRequest request,
         FloorPlanRepository repo, OperationLogger opLog, CancellationToken ct)
@@ -121,7 +150,13 @@ public static class FloorPlanEndpoints
         return Results.Ok(new { floor, version = newVersion, count = placements.Count });
     }
 
-    /// <summary>兩邊都是 null（整層還沒配置過）也算相符；時間比對到毫秒即可，DB 欄位就是 DATETIME(3)。</summary>
+    /// <summary>
+    /// 比對目前資料庫版本與前端提交之預期版本是否一致（樂觀鎖檢查）。
+    /// 兩邊都是 null（整層還沒配置過）也算相符；時間比對到毫秒即可，DB 欄位就是 DATETIME(3)。
+    /// </summary>
+    /// <param name="current">資料庫最新版本時間戳。</param>
+    /// <param name="expected">前端請求所攜帶的預期版本時間戳。</param>
+    /// <returns>若版本吻合則為 true；否則為 false。</returns>
     private static bool VersionMatches(DateTimeOffset? current, DateTimeOffset? expected)
     {
         if (current is null && expected is null) return true;
@@ -129,6 +164,11 @@ public static class FloorPlanEndpoints
         return Math.Abs((current.Value - expected.Value).TotalMilliseconds) < 1;
     }
 
+    /// <summary>
+    /// 將平面圖實體轉換為前端傳輸物件。
+    /// </summary>
+    /// <param name="p">設備平面配置實體。</param>
+    /// <returns>匿名 DTO 物件。</returns>
     private static object ToDto(DeviceFloorPlacement p) => new
     {
         deviceType = (int)p.DeviceType,
@@ -139,6 +179,21 @@ public static class FloorPlanEndpoints
         rotation = p.Rotation,
     };
 
+    /// <summary>
+    /// 單一設備圖面位置資訊項。
+    /// </summary>
+    /// <param name="DeviceType">設備類型代碼（0=冰水主機, 1=FCU）。</param>
+    /// <param name="DeviceId">設備識別碼 PK。</param>
+    /// <param name="AreaId">所屬分區識別碼。</param>
+    /// <param name="X">圖面 X 座標百分比。</param>
+    /// <param name="Y">圖面 Y 座標百分比。</param>
+    /// <param name="Rotation">圖示旋轉角度 (0~359)。</param>
     public sealed record PlacementItem(int DeviceType, int DeviceId, string AreaId, decimal X, decimal Y, int Rotation);
+
+    /// <summary>
+    /// 全量覆寫樓層空間配置請求模型。
+    /// </summary>
+    /// <param name="Placements">設備位置資訊項清單。</param>
+    /// <param name="ExpectedVersion">樂觀鎖預期版本時間戳記。</param>
     public sealed record ReplacePlacementsRequest(PlacementItem[]? Placements, DateTimeOffset? ExpectedVersion);
 }

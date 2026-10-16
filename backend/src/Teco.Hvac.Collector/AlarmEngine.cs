@@ -9,16 +9,20 @@ using Teco.Hvac.Infrastructure.Repositories;
 namespace Teco.Hvac.Collector;
 
 /// <summary>
-/// 告警評估：漢鐘走硬體 14 個 IsXxx 旗標（供應商 SDK 直接算好的異常判定，不可設定）
-/// ＋可設定門檻（AlarmRule，供水/回水/溫差/累積運轉時數）；FCU 只有可設定門檻（絕對室溫）。
-///
-/// 兩條關鍵規則（計畫 §2.8、§P5 明確要求）：
-/// 1) 只有 ReadStatus == Success（這輪讀取真的成功）才評估／關閉告警。讀取失敗或斷線時
-///    兩件事都不做：不開新告警（避免 Gateway 斷線時兩台漢鐘的 14 個旗標一起噴出誤報），
-///    也不關閉既有告警（斷線不代表問題解決了，要等到收到一次乾淨的讀取才能結案）。
-/// 2) 可設定門檻要 debounce：連續超過門檻達 DebounceSeconds 才真的開告警，避免單次雜訊誤報。
-///    規則清單由 CollectorHostedService 定期重新載入（見該檔案的 RunSupervisorLoopAsync），
-///    畫面改門檻後不用重建 Collector，約一分鐘內生效。
+/// 告警評估與開立引擎 (AlarmEngine)。
+/// 
+/// 負責評估設備遙測數據並管理告警的生命週期（開立、防抖動延遲、解除結案）。
+/// 
+/// 【評估分類】
+/// 1. 漢鐘冰水主機：包含硬體自帶之 14 個異常旗標（供應商 SDK 內建判定，不可設定）
+///    ＋ 使用者自訂動態門檻（出水溫度、進水溫度、水溫溫差、累積運轉時數保養提醒）。
+/// 2. FCU 送風機：使用者自訂之動態溫度門檻（絕對室溫）。
+/// 3. 通訊通道：連續離線判定（超過 60 秒無成功讀取即觸發通道離線告警）。
+/// 
+/// 【兩大關鍵核心原則】
+/// 1. 讀取未成功不異動：只有在 ReadStatus == Success 時才進行設備告警評估與結案。
+///    通訊中斷時不開新設備告警（防止因通訊失敗導致 14 個旗標全部誤報），亦不關閉既有告警（問題未證實已排除）。
+/// 2. 門檻防抖動 (Debounce)：動態門檻必須連續超標達設定之 DebounceSeconds 秒數才開立告警，過濾單次雜訊。
 ///
 /// 【溫度門檻只在設備運轉中判定】（2026-10-16，決策見 docs/BACKEND_INTEGRATION_PLAN.md「告警只在運轉中判定」）
 /// 冰水主機停機時水溫會回升到環境溫度、溫差趨近 0；FCU 關機的區域室溫自然偏高——這些都不是設備異常。
@@ -39,6 +43,9 @@ public sealed class AlarmEngine(
     /// <summary>FCU 上一輪是否開機；只用來在「開→關」那一輪結案一次，不必每輪對每台關機的 FCU 下 UPDATE。</summary>
     private readonly ConcurrentDictionary<int, bool> _fcuSwitchedOn = new();
 
+    /// <summary>
+    /// 漢鐘冰水主機 14 個硬體故障警報旗標名稱清單（對齊原廠說明書表 14）。
+    /// </summary>
     private static readonly string[] ChillerAlarmFlags =
     [
         nameof(ChillerSnapshot.IsChilledWaterFlowAbnormal),
@@ -57,20 +64,34 @@ public sealed class AlarmEngine(
         nameof(ChillerSnapshot.IsInletAntiFreezeAbnormal),
     ];
 
+    /// <summary>目前載入之 FCU 動態告警門檻規則清單快取。</summary>
     private IReadOnlyList<AlarmRule> _fcuRules = [];
+
+    /// <summary>目前載入之冰水主機動態告警門檻規則清單快取。</summary>
     private IReadOnlyList<AlarmRule> _chillerRules = [];
+
+    /// <summary>
+    /// 記錄規則違規超標的起始時間字典，鍵值為 (RuleId, DeviceId)。
+    /// 用於計算持續超標時間是否達到 DebounceSeconds 門檻。
+    /// </summary>
     private readonly ConcurrentDictionary<(int RuleId, int DeviceId), DateTimeOffset> _breachSince = new();
 
+    /// <summary>
+    /// 告警規則快取指紋字串（由資料庫規則更新時間與內容產生），用於比對規則是否在後台遭修改。
+    /// </summary>
     private string _rulesFingerprint = "";
+
+    /// <summary>重新載入告警規則時使用的非同步號誌鎖，防止多個線程同時進行重載。</summary>
     private readonly SemaphoreSlim _reloadLock = new(1, 1);
 
     /// <summary>
-    /// 每次評估前呼叫：規則在後台被改過就立刻重載。後台改的門檻不能讓使用者等一段「快取過期」的時間才生效，
-    /// 不然畫面上設定值和實際判定會對不上（改了範圍卻還在用舊門檻告警）。
-    /// 比對失敗（資料庫暫時連不上）時沿用目前規則，下一輪再試。
+    /// 每次評估前呼叫此方法：比對資料庫告警規則指紋，若後台管理員修改了門檻則立即熱重載。
     /// </summary>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>代表非同步檢查作業的 <see cref="Task"/>。</returns>
     public async Task RefreshRulesIfChangedAsync(CancellationToken ct)
     {
+        // 嘗試取得重載鎖，若已有其他線程正在檢查則直接返回
         if (!await _reloadLock.WaitAsync(0, ct)) return;
         try
         {
@@ -84,9 +105,14 @@ public sealed class AlarmEngine(
         finally { _reloadLock.Release(); }
     }
 
+    /// <summary>
+    /// 從資料庫重新載入所有已啟用的告警門檻規則，並將已遭刪除或停用規則的遺留告警自動結案。
+    /// </summary>
+    /// <param name="ct">控制非同步載入作業取消的語彙基元。</param>
+    /// <returns>代表非同步載入作業的 <see cref="Task"/>。</returns>
     public async Task LoadRulesAsync(CancellationToken ct)
     {
-        // 指紋要在讀規則「之前」取：讀的途中若又被改，下一輪指紋不同會再重載一次。
+        // 先讀取資料庫指紋
         _rulesFingerprint = await alarmRepository.GetRulesFingerprintAsync(ct);
         var rules = await alarmRepository.GetEnabledRulesAsync(ct);
         _fcuRules = rules.Where(r => r.DeviceType == AlarmDeviceType.Fcu).ToList();
@@ -94,29 +120,30 @@ public sealed class AlarmEngine(
         logger.LogInformation(
             "告警規則載入完成：FCU 規則 {FcuCount} 條、冰水主機規則 {ChillerCount} 條", _fcuRules.Count, _chillerRules.Count);
 
-        // 門檻改過之後，舊代碼的告警沒人會再評估也沒人會關；API 改門檻當下會關一次，但那一刻 Collector
-        // 還握著舊規則，可能又開回來，所以每次換上新規則後掃一次。
+        // 清理不再存在於啟用清單中的孤兒告警事件
         var closed = await alarmRepository.CloseOrphanThresholdEventsAsync(
             rules.Select(r => r.RuleCode).ToList(), DateTimeOffset.UtcNow, ct);
         if (closed > 0)
             logger.LogInformation("已關閉 {Count} 筆門檻已變更、找不到對應規則的告警", closed);
     }
 
-    /// <summary>通道離線告警的 rule_code，沒有門檻也不走 alarm_rule，跟 14 個硬體旗標一樣由引擎直接判斷。</summary>
+    /// <summary>通道通訊離線告警的固定規則代碼。</summary>
     public const string ChannelOfflineRuleCode = "ChannelOffline";
 
-    /// <summary>連續讀不到這麼久才開告警：DLL 偶爾會單輪失敗或重連，不能一閃就通知。</summary>
+    /// <summary>通道離線判定防抖動時間（連續 60 秒讀取失敗或中斷才開立告警）。</summary>
     private static readonly TimeSpan ChannelOfflineDebounce = TimeSpan.FromSeconds(60);
 
+    /// <summary>記錄各通訊通道進入未讀取成功狀態的起始時間戳記字典。</summary>
     private readonly ConcurrentDictionary<Channel, DateTimeOffset> _offlineSince = new();
 
     /// <summary>
-    /// 通道離線告警（離線也要通知）：連續 60 秒沒有成功讀取就開一筆，恢復成功讀取就結案。
-    /// 一條通道一筆告警，不逐台設備開——DDC 讀取失敗時整層 FCU（64／31 台）都讀不到，逐台會一次冒出幾十筆。
-    /// 「失敗」包含連線中斷與某一站故障（供應商 DLL 一站失敗整台 DDC 判為失敗），兩者從這裡分不出來，
-    /// 差別看平台「系統診斷」頁。NotRead（還沒讀、剛啟動或重連中）不算失敗也不算恢復，狀態維持原樣。
-    /// 告警存在資料庫，Collector 重啟後仍然有效：重啟後計時重來，但已經開著的不會重複開。
+    /// 評估特定實體通訊通道的連線健康度並開立或關閉通道離線告警。
     /// </summary>
+    /// <param name="channel">目標通訊通道。</param>
+    /// <param name="readStatus">該通道最新回報的讀取狀態。</param>
+    /// <param name="nowUtc">目前計算使用的標準 UTC 時間戳記。</param>
+    /// <param name="ct">控制非同步評估作業取消的語彙基元。</param>
+    /// <returns>代表非同步評估作業的 <see cref="Task"/>。</returns>
     public async Task EvaluateChannelAsync(Channel channel, ReadStatus readStatus, DateTimeOffset nowUtc, CancellationToken ct)
     {
         var deviceId = (int)channel;
@@ -141,10 +168,20 @@ public sealed class AlarmEngine(
         }
     }
 
+    /// <summary>
+    /// 評估單台漢鐘冰水主機的 14 個硬體異常旗標、動態水溫門檻以及累積運轉時數保養提醒。
+    /// </summary>
+    /// <param name="deviceId">主機在資料庫中的主鍵 ID。</param>
+    /// <param name="snapshot">採集到的冰水主機最新遙測快照。</param>
+    /// <param name="nowUtc">目前計算使用的標準 UTC 時間戳記。</param>
+    /// <param name="ct">控制非同步評估作業取消的語彙基元。</param>
+    /// <returns>代表非同步評估作業的 <see cref="Task"/>。</returns>
     public async Task EvaluateChillerAsync(int deviceId, ChillerSnapshot snapshot, DateTimeOffset nowUtc, CancellationToken ct)
     {
-        if (snapshot.ReadStatus != ReadStatus.Success) return; // 規則 1：讀取不乾淨時完全不動告警狀態
+        // 【核心原則 1】：讀取狀態不為成功時完全不更動告警狀態
+        if (snapshot.ReadStatus != ReadStatus.Success) return;
 
+        // 1. 逐一比對 14 個硬體故障旗標
         foreach (var flagName in ChillerAlarmFlags)
         {
             bool isActive = flagName switch
@@ -176,7 +213,6 @@ public sealed class AlarmEngine(
             }
             else if (!isActive && wasActive)
             {
-                // 逐一關閉：TryFindActiveAsync 只回傳布林，關閉需要事件 id——用 ListAsync 找出來關掉。
                 var actives = await alarmRepository.ListAsync(activeOnly: true, limit: 1000, ct: ct);
                 var toClose = actives.FirstOrDefault(a =>
                     a.DeviceType == AlarmDeviceType.Chiller && a.DeviceId == deviceId && a.RuleCode == flagName);
@@ -188,9 +224,7 @@ public sealed class AlarmEngine(
             }
         }
 
-        // 硬體旗標之外，再評估後台「告警門檻設定」畫面可設定的門檻（供水/回水/溫差）。
-        // Scope 用 ModbusId 字串比對，"*" 代表全部冰水主機共用。
-        // 累積運轉時數不走這裡：通用門檻會在低於門檻時自動關閉告警，保養提醒要等人按「保養完成」才熄燈。
+        // 2. 評估可設定的動態門檻規則（出水溫、進水溫、溫差）——只在運轉中且暖機寬限已過時
         var applicableRules = _chillerRules
             .Where(r => r.Scope == "*" || r.Scope == snapshot.ModbusId.ToString())
             .ToList();
@@ -208,6 +242,7 @@ public sealed class AlarmEngine(
             }, nowUtc, ct);
         }
 
+        // 3. 評估主機累積運轉時數保養提醒
         var maintenanceRule = applicableRules.FirstOrDefault(r =>
             r.Metric == nameof(ChillerSnapshot.AccumulatedRunningHours) && r.Operator == AlarmMetricOperator.GreaterThan);
         if (maintenanceRule is not null)
@@ -286,10 +321,15 @@ public sealed class AlarmEngine(
     }
 
     /// <summary>
-    /// 保養提醒，比照機車換機油：距上次保養的時數達到間隔就開一筆告警（＝通知一次），
-    /// 之後不管拖多久都不會重開，也不會自動關閉，只有 API 的「保養完成」會關掉並重新起算。
-    /// 基準點每次都從 DB 讀、不快取：重置是 API 那邊寫的，快取的話重置後下一輪會拿舊基準點又開一次告警。
+    /// 評估冰水主機累積運轉時數是否已達保養週期。
+    /// 類似車輛里程保養概念，自上次保養基準點時數起算，若運轉時數達到間隔則開啟保養通知告警。
     /// </summary>
+    /// <param name="deviceId">主機在資料庫中的主鍵 ID。</param>
+    /// <param name="currentHours">目前採集到的累積運轉時數數值。</param>
+    /// <param name="intervalHours">保養間隔時數門檻（例如 1000 小時）。</param>
+    /// <param name="nowUtc">目前計算使用的標準 UTC 時間戳記。</param>
+    /// <param name="ct">控制非同步評估作業取消的語彙基元。</param>
+    /// <returns>代表非同步評估作業的 <see cref="Task"/>。</returns>
     private async Task EvaluateMaintenanceAsync(int deviceId, int currentHours, int intervalHours, DateTimeOffset nowUtc, CancellationToken ct)
     {
         if (intervalHours <= 0) return;
@@ -297,6 +337,7 @@ public sealed class AlarmEngine(
         var state = await maintenanceRepository.GetStateAsync(deviceId, ct);
         if (state.BaselineHours is not { } baseline)
         {
+            // 首次啟動尚無基準時數，以當前時數作為起始起算點
             await maintenanceRepository.InitBaselineIfMissingAsync(deviceId, currentHours, nowUtc, ct);
             logger.LogInformation("保養時數開始計算：Chiller#{DeviceId} 起算點 {Hours}h", deviceId, currentHours);
             return;
@@ -304,6 +345,7 @@ public sealed class AlarmEngine(
 
         if (currentHours < baseline)
         {
+            // 異常情況：運轉時數倒退（可能主機重設控制器計時器），重新校正基準點
             logger.LogWarning("累積運轉時數倒退（{Current}h < 基準點 {Baseline}h），疑似主機計數器歸零，改以目前時數重新起算：Chiller#{DeviceId}",
                 currentHours, baseline, deviceId);
             await maintenanceRepository.RebaseAsync(deviceId, baseline, currentHours, nowUtc, ct);
@@ -313,16 +355,27 @@ public sealed class AlarmEngine(
         var sinceService = currentHours - (int)baseline;
         if (sinceService < intervalHours) return;
 
+        // 開立保養告警通知
         if (await maintenanceRepository.OpenAlarmIfDueAsync(deviceId, baseline, sinceService, nowUtc, ct))
             logger.LogWarning("開啟保養提醒：Chiller#{DeviceId} 距上次保養 {Since}h（間隔 {Interval}h）", deviceId, sinceService, intervalHours);
     }
 
+    /// <summary>
+    /// 評估單台 FCU 設備的動態溫度門檻規則。
+    /// </summary>
+    /// <param name="deviceId">FCU 在資料庫中的主鍵 ID。</param>
+    /// <param name="floor">FCU 所屬樓層代碼（如 "B1" 或 "B2"）。</param>
+    /// <param name="snapshot">採集到的 FCU 即時快照。</param>
+    /// <param name="ddcReadStatus">所屬 DDC 控制器的讀取狀態。</param>
+    /// <param name="nowUtc">目前計算使用的標準 UTC 時間戳記。</param>
+    /// <param name="ct">控制非同步評估作業取消的語彙基元。</param>
+    /// <returns>代表非同步評估作業的 <see cref="Task"/>。</returns>
     public async Task EvaluateFcuAsync(int deviceId, string floor, FcuSnapshot snapshot, ReadStatus ddcReadStatus,
         DateTimeOffset nowUtc, CancellationToken ct)
     {
-        if (ddcReadStatus != ReadStatus.Success) return; // 規則 1：同上
+        if (ddcReadStatus != ReadStatus.Success) return;
 
-        // 目前只支援室溫（決策見計畫 §2.1：Collector 沒有 FCU 設定溫度，做不出「溫差」規則）。
+        // 篩選套用於全區 (*) 或該樓層之 FCU 規則
         var applicableRules = _fcuRules.Where(r => r.Scope == "*" || r.Scope == floor).ToList();
 
         switch (snapshot.SwitchStatus)
@@ -349,10 +402,16 @@ public sealed class AlarmEngine(
     }
 
     /// <summary>
-    /// 可設定門檻規則的共用評估邏輯——冰水主機與 FCU 都走這個，debounce／開關告警的語意完全一致，
-    /// 差別只在「這個 metric 名稱要對應到 snapshot 的哪個欄位」，用 resolveMetricValue 這個
-    /// callback 解決，resolver 回傳 null 代表這條規則的 metric 目前沒有對應的資料來源，直接跳過。
+    /// 共用之動態門檻規則評估函式（冰水主機與 FCU 共用此邏輯）。
+    /// 負責計算防抖動時間、比對觸發條件並調用 Repository 執行告警開立或結案。
     /// </summary>
+    /// <param name="deviceType">設備類型（Chiller、Fcu 或 Channel）。</param>
+    /// <param name="deviceId">設備在資料庫中的主鍵 ID。</param>
+    /// <param name="applicableRules">適用於此設備的規則集合。</param>
+    /// <param name="resolveMetricValue">用於依據指標名稱獲取目前數值的委派函式。</param>
+    /// <param name="nowUtc">目前計算使用的標準 UTC 時間戳記。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>代表非同步評估作業的 <see cref="Task"/>。</returns>
     private async Task EvaluateThresholdRulesAsync(
         AlarmDeviceType deviceType, int deviceId, IEnumerable<AlarmRule> applicableRules,
         Func<string, double?> resolveMetricValue, DateTimeOffset nowUtc, CancellationToken ct)
@@ -368,6 +427,7 @@ public sealed class AlarmEngine(
 
             if (result.IsTriggered)
             {
+                // 超標違規：檢查是否已達 DebounceSeconds 防抖動延遲
                 var breachSince = _breachSince.GetOrAdd(key, nowUtc);
                 bool debounceElapsed = (nowUtc - breachSince).TotalSeconds >= rule.DebounceSeconds;
                 bool wasActive = await alarmRepository.TryFindActiveAsync(deviceType, deviceId, ruleCode, ct);
@@ -380,6 +440,7 @@ public sealed class AlarmEngine(
             }
             else
             {
+                // 恢復正常：移除超標違規時間，並解除已開立的告警
                 _breachSince.TryRemove(key, out _);
                 var actives = await alarmRepository.ListAsync(activeOnly: true, limit: 1000, ct: ct);
                 var toClose = actives.FirstOrDefault(a =>
@@ -393,5 +454,10 @@ public sealed class AlarmEngine(
         }
     }
 
+    /// <summary>
+    /// 取得告警規則之識別代碼。
+    /// </summary>
+    /// <param name="rule">告警規則實體。</param>
+    /// <returns>規則代碼字串。</returns>
     private static string RuleCode(AlarmRule rule) => rule.RuleCode;
 }

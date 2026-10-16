@@ -3,22 +3,46 @@ using Teco.Hvac.Domain.Entities;
 
 namespace Teco.Hvac.Infrastructure.Repositories;
 
-/// <summary>class＋init 屬性，不用 positional record——理由見 MembershipRepository.MerchantUserRow 上的註解。</summary>
+/// <summary>
+/// 平面圖設備座標配置資料庫 Row 物件 (<see cref="FloorPlacementRow"/>)。
+/// 採用類別屬性配合 init 設定子，提供 Dapper 映射最佳相容性。
+/// </summary>
 public sealed class FloorPlacementRow
 {
+    /// <summary>設備類型整數值 (AlarmDeviceType)。</summary>
     public int DeviceType { get; init; }
+    /// <summary>設備在資料庫中的主鍵 ID。</summary>
     public int DeviceId { get; init; }
+    /// <summary>樓層代碼（例如 "B1"、"B2"）。</summary>
     public required string Floor { get; init; }
+    /// <summary>平面圖分區代碼（例如 "B1-Z07"）。</summary>
     public required string AreaId { get; init; }
+    /// <summary>畫布 X 座標。</summary>
     public decimal X { get; init; }
+    /// <summary>畫布 Y 座標。</summary>
     public decimal Y { get; init; }
+    /// <summary>圖示旋轉角度。</summary>
     public int Rotation { get; init; }
+    /// <summary>更新者使用者 ID。</summary>
     public int? UpdatedBy { get; init; }
+    /// <summary>更新時間 (UTC DateTime)。</summary>
     public DateTime UpdatedAt { get; init; }
 }
 
+/// <summary>
+/// 樓層平面圖與設備錨點座標倉儲 (<see cref="FloorPlanRepository"/>)。
+/// 
+/// 負責維護設備在 2D/3D 平面圖上的放置座標 (X, Y)、旋轉角度與所屬分區 (AreaId)。
+/// 提供整層查詢、樂觀鎖版本控制以及整層覆寫替換功能。
+/// </summary>
 public sealed class FloorPlanRepository(TecoDbConnectionFactory factory)
 {
+    /// <summary>
+    /// 查詢指定樓層目前已配置的所有設備圖面座標清單。
+    /// </summary>
+    /// <param name="floor">目標樓層代碼（例如 "B1" 或 "B2"）。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>該樓層所有設備擺放位置實體清單。</returns>
     public async Task<IReadOnlyList<DeviceFloorPlacement>> ListByFloorAsync(string floor, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
@@ -45,9 +69,12 @@ public sealed class FloorPlanRepository(TecoDbConnectionFactory factory)
     }
 
     /// <summary>
-    /// 整層的版本依據：該樓層所有配置裡最新的 updated_at。沒有任何配置時回 null
-    /// （代表這層還沒被配置過，樂觀鎖的期望值也應該是 null）。
+    /// 取得指定樓層當前配置的樂觀鎖版本時間（該樓層最新一筆 placement 之 updated_at）。
+    /// 若該樓層尚未建立任何配置，回傳 null。
     /// </summary>
+    /// <param name="floor">樓層代碼。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>最新版本時間戳記；若無資料則為 null。</returns>
     public async Task<DateTimeOffset?> GetFloorVersionAsync(string floor, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
@@ -57,14 +84,18 @@ public sealed class FloorPlanRepository(TecoDbConnectionFactory factory)
     }
 
     /// <summary>
-    /// 整層覆寫：先刪掉這層舊配置再寫入新的，全程在同一個交易裡，避免刪完還沒寫完就中斷
-    /// 導致整層配置消失。回傳寫入後的新版本時間。
+    /// 在單一資料庫交易內以全新配置整層覆寫原有的設備座標紀錄。
+    /// 先清空該樓層舊有紀錄再批次插入新座標，保證資料原子性。
     /// </summary>
+    /// <param name="floor">樓層代碼。</param>
+    /// <param name="placements">欲更新的設備座標清單。</param>
+    /// <param name="updatedByUserId">執行儲存操作之使用者 ID。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>代表本次覆寫寫入之全新版本時間戳記（截至毫秒）。</returns>
     public async Task<DateTimeOffset> ReplaceFloorAsync(
         string floor, IReadOnlyCollection<DeviceFloorPlacement> placements, int updatedByUserId, CancellationToken ct = default)
     {
-        // 截到毫秒：欄位是 DATETIME(3)，若回傳微秒精度的時間，呼叫端拿它當 expectedVersion
-        // 再存一次時就會跟資料庫裡的值對不起來。
+        // 將時間截斷至毫秒精度，對齊資料庫 DATETIME(3) 欄位規格，避免樂觀鎖微秒誤差
         var nowUtc = new DateTimeOffset(
             DateTimeOffset.UtcNow.Ticks / TimeSpan.TicksPerMillisecond * TimeSpan.TicksPerMillisecond, TimeSpan.Zero);
         using var conn = await factory.CreateOpenAsync(ct);
@@ -100,19 +131,25 @@ public sealed class FloorPlanRepository(TecoDbConnectionFactory factory)
     }
 
     /// <summary>
-    /// 把 FCU 的所在分區同步回 device_fcu.zone_code——那個欄位原本永遠是 NULL，同步之後
-    /// 報表與熱區圖才能用分區統計。設備被移出圖面時一併清成 NULL。
+    /// 將圖面上配置的 FCU 分區代碼 (AreaId) 反向同步更新回 device_fcu.zone_code 欄位。
+    /// 供報表與熱區圖快速依分區彙整統計；若設備自圖面上移除則清為 NULL。
     /// </summary>
+    /// <param name="floor">目標樓層。</param>
+    /// <param name="placements">當前圖面上的設備座標集合。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>代表非同步同步作業的 <see cref="Task"/>。</returns>
     public async Task SyncFcuZoneCodesAsync(
         string floor, IReadOnlyCollection<DeviceFloorPlacement> placements, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);
+        // 先將該樓層所有 FCU 的 zone_code 重設為 NULL
         await conn.ExecuteAsync(
             "UPDATE device_fcu SET zone_code = NULL WHERE floor = @floor", new { floor });
 
         var fcuPlacements = placements.Where(p => p.DeviceType == AlarmDeviceType.Fcu).ToList();
         if (fcuPlacements.Count == 0) return;
 
+        // 批次依據 DeviceId 更新最新的 AreaId
         await conn.ExecuteAsync(
             "UPDATE device_fcu SET zone_code = @AreaId WHERE id = @DeviceId",
             fcuPlacements.Select(p => new { p.AreaId, p.DeviceId }));

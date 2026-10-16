@@ -11,8 +11,14 @@ import { authorizedJsonApi } from './auth-service';
 import type { OperationLogRow } from '../_types/admin-types';
 
 /**
+ * 查詢系統操作紀錄日誌
+ *
  * 查詢區間為「日期」（YYYY-MM-DD），這裡補成整天的起訖時間再送出，
  * 否則 dateTo 當天發生的操作會因為只送到 00:00:00 而被排除在外。
+ *
+ * @param dateFrom 查詢起始日期（格式 YYYY-MM-DD）
+ * @param dateTo 查詢結束日期（格式 YYYY-MM-DD）
+ * @returns 傳回操作紀錄資料列清單
  */
 export function listOperationLogsApi(dateFrom: string, dateTo: string): Promise<OperationLogRow[]> {
   const params = new URLSearchParams({

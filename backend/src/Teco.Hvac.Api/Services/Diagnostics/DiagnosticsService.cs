@@ -15,6 +15,15 @@ namespace Teco.Hvac.Api.Services.Diagnostics;
 /// 各段資料來源彼此獨立，任一段失敗（例如資料庫暫時連不上）只讓該段顯示錯誤，
 /// 不讓整頁 500——診斷頁本身在系統半壞的時候最需要還能打開。
 /// </summary>
+/// <param name="store">即時遙測記憶體快照儲存庫。</param>
+/// <param name="jobs">排程作業狀態儲存庫。</param>
+/// <param name="devices">設備主檔倉儲。</param>
+/// <param name="fcus">FCU 倉儲。</param>
+/// <param name="channelHealth">通道健康與連線歷史倉儲。</param>
+/// <param name="diagnostics">診斷統計專用倉儲。</param>
+/// <param name="httpClientFactory">HTTP 客戶端工廠，用於探測 Collector /healthz。</param>
+/// <param name="configuration">應用程式組態物件。</param>
+/// <param name="logger">記錄器實體。</param>
 public sealed class DiagnosticsService(
     CurrentStateStore store,
     ScheduledJobStatusStore jobs,
@@ -26,14 +35,22 @@ public sealed class DiagnosticsService(
     IConfiguration configuration,
     ILogger<DiagnosticsService> logger)
 {
+    /// <summary>注入之 HttpClient 具名註冊鍵值 ("collector-health")。</summary>
     public const string CollectorHttpClientName = "collector-health";
+    /// <summary>清單回傳筆數截斷上限 (50 筆)。</summary>
     private const int ListLimit = 50;
 
     // 模擬腳本只打 /internal/ingest，不會寫資料庫（正式環境是 Collector 自己寫），跑模擬時這項必定紅燈。
     private const string SimulationNote = "（若正在跑 simulate-live-data.sh，模擬資料不會寫進資料庫，這項紅燈屬預期。）";
 
+    /// <summary>系統定義之所有通訊通道清單。</summary>
     private static readonly Channel[] AllChannels = [Channel.HanbellModbusGateway, Channel.Ddc1, Channel.Ddc2];
 
+    /// <summary>
+    /// 取得通訊通道的繁體中文名稱標籤。
+    /// </summary>
+    /// <param name="channel">通訊通道列舉值。</param>
+    /// <returns>繁體中文通道說明文字。</returns>
     public static string ChannelName(Channel channel) => channel switch
     {
         Channel.HanbellModbusGateway => "漢鐘 Gateway（冰水主機 ×2）",
@@ -42,6 +59,11 @@ public sealed class DiagnosticsService(
         _ => channel.ToString(),
     };
 
+    /// <summary>
+    /// 彙整所有指標與檢查項，組裝產生完整的系統診斷報告。
+    /// </summary>
+    /// <param name="ct">非同步作業取消語彙基元。</param>
+    /// <returns>組裝完成之 <see cref="DiagnosticsReport"/> 物件。</returns>
     public async Task<DiagnosticsReport> BuildAsync(CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;

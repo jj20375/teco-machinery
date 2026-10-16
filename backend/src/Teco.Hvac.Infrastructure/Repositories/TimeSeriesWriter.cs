@@ -5,12 +5,21 @@ using Teco.Hvac.Contracts;
 namespace Teco.Hvac.Infrastructure.Repositories;
 
 /// <summary>
-/// 時序資料批次寫入。用單次 multi-row INSERT，不逐筆來回（計畫 P2 §寫入節流）。
-/// 節流／變化偵測的決策（60 秒一筆或狀態變化即寫）由呼叫端（Collector 的
-/// ThrottlePolicy）決定，這裡只負責把「已經決定要寫」的快照批次落地。
+/// 高效能時序資料批次寫入器 (<see cref="TimeSeriesWriter"/>)。
+/// 
+/// 【架構與效能考量】
+/// 採用單次 Multi-Row 批次 INSERT 語法（例如 INSERT INTO ... VALUES (...), (...)），
+/// 杜絕逐筆迴圈往返資料庫 (N+1 Database Roundtrip) 造成的網路與鎖競爭瓶頸。
+/// 搭配 ON DUPLICATE KEY UPDATE 確保同設備在同一時間戳記重複寫入時具備冪等性 (Idempotent)。
 /// </summary>
 public sealed class TimeSeriesWriter(TecoDbConnectionFactory factory)
 {
+    /// <summary>
+    /// 將已通過節流篩選的冰水主機遙測數據批次寫入 chiller_reading 時序資料表。
+    /// </summary>
+    /// <param name="rows">包含 (設備ID, 接收時間UTC, 冰機快照) 之元組集合。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>代表非同步批次寫入作業的 <see cref="Task"/>。</returns>
     public async Task WriteChillerReadingsAsync(
         IReadOnlyList<(int DeviceId, DateTimeOffset ReceivedAtUtc, ChillerSnapshot Snapshot)> rows,
         CancellationToken ct = default)
@@ -68,6 +77,12 @@ public sealed class TimeSeriesWriter(TecoDbConnectionFactory factory)
         await conn.ExecuteAsync(sql, parameters);
     }
 
+    /// <summary>
+    /// 將已通過節流篩選的 FCU 遙測數據批次寫入 fcu_reading 時序資料表。
+    /// </summary>
+    /// <param name="rows">包含 (設備ID, 數據時間UTC, FCU快照, 讀取狀態) 之元組集合。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>代表非同步批次寫入作業的 <see cref="Task"/>。</returns>
     public async Task WriteFcuReadingsAsync(
         IReadOnlyList<(int DeviceId, DateTimeOffset TsUtc, FcuSnapshot Snapshot, ReadStatus ReadStatus)> rows,
         CancellationToken ct = default)

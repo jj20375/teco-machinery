@@ -12,8 +12,13 @@ namespace Teco.Hvac.Api.Endpoints;
 /// </summary>
 public static class PlatformEndpoints
 {
+    /// <summary>
+    /// 註冊平台總管端點路由群組。
+    /// </summary>
+    /// <param name="app">Web 應用程式實例</param>
     public static void MapPlatformEndpoints(this WebApplication app)
     {
+        // 建立平台管理端點群組 /api/v1/platform，強制要求 JWT 驗證
         var group = app.MapGroup("/api/v1/platform").RequireAuthorization();
 
         group.MapGet("/merchants", ListMerchants);
@@ -35,6 +40,14 @@ public static class PlatformEndpoints
         group.MapGet("/permissions", ListPermissions);
     }
 
+    /// <summary>
+    /// 驗證呼叫者是否為合法平台範圍 (Platform Scope) 且具備指定權限資源與操作動作。
+    /// </summary>
+    /// <param name="principal">呼叫端身分識別 ClaimsPrincipal</param>
+    /// <param name="code">權限資源代碼（例如 platform.merchants）</param>
+    /// <param name="action">操作動作（例如 read, create, update, delete）</param>
+    /// <param name="scope">解析成功之 RequestScope 物件輸出</param>
+    /// <returns>若為平台管理者且具備該權限則回傳 true；否則為 false</returns>
     private static bool RequirePlatform(ClaimsPrincipal principal, string code, string action, out RequestScope? scope)
     {
         scope = null;
@@ -44,6 +57,11 @@ public static class PlatformEndpoints
 
     // ---- 場館 ----
 
+    /// <summary>列出系統所有場館商家清單</summary>
+    /// <param name="principal">呼叫端身分識別 ClaimsPrincipal</param>
+    /// <param name="repo">場館倉儲實例</param>
+    /// <param name="ct">非同步作業取消權杖</param>
+    /// <returns>HTTP 結果：所有場館資料陣列</returns>
     private static async Task<IResult> ListMerchants(ClaimsPrincipal principal, MerchantRepository repo, CancellationToken ct)
     {
         if (!RequirePlatform(principal, "platform.merchants", "read", out _)) return Results.Forbid();
@@ -56,6 +74,12 @@ public static class PlatformEndpoints
     /// 一路變成 500——使用者看到的是「系統發生錯誤」，不知道是自己填了已存在的代碼。
     /// 比照 MerchantEndpoints.AddUser 對帳號重複的處理方式，先查一次再決定要不要 INSERT。
     /// </summary>
+    /// <param name="principal">呼叫端身分識別 ClaimsPrincipal</param>
+    /// <param name="request">建立場館請求物件，含代碼、名稱與簡化模式設定</param>
+    /// <param name="repo">場館倉儲實例</param>
+    /// <param name="opLog">操作稽核記錄器</param>
+    /// <param name="ct">非同步作業取消權杖</param>
+    /// <returns>HTTP 結果：建立之場館 ID 與資源路徑</returns>
     private static async Task<IResult> CreateMerchant(
         ClaimsPrincipal principal, CreateMerchantRequest request, MerchantRepository repo, OperationLogger opLog, CancellationToken ct)
     {
@@ -85,6 +109,14 @@ public static class PlatformEndpoints
     /// 更新場館，含 CRUD/子項簡化開關——這正是「決定商家是否啟用 CRUD 與子項功能」的落地端點。
     /// 開關真的變動時遞增該場館所有成員的 AuthVersion，讓舊 JWT 立即失效、新模式馬上生效。
     /// </summary>
+    /// <param name="principal">呼叫端身分識別 ClaimsPrincipal</param>
+    /// <param name="merchantId">目標場館 ID</param>
+    /// <param name="request">更新場館設定請求物件</param>
+    /// <param name="merchants">場館倉儲實例</param>
+    /// <param name="users">使用者倉儲實例</param>
+    /// <param name="opLog">操作稽核記錄器</param>
+    /// <param name="ct">非同步作業取消權杖</param>
+    /// <returns>HTTP 結果：更新後的場館物件</returns>
     private static async Task<IResult> UpdateMerchant(
         ClaimsPrincipal principal, int merchantId, UpdateMerchantRequest request,
         MerchantRepository merchants, UserRepository users, OperationLogger opLog, CancellationToken ct)
@@ -110,18 +142,16 @@ public static class PlatformEndpoints
     }
 
     /// <summary>
-    /// 幫場館加成員——支援兩種情境，跟 MerchantEndpoints.AddUser（場館自己新增成員）同一套
-    /// find-or-create 邏輯：<c>request.UserId</c> 有值就掛既有帳號（例如同一人身兼多個場館）；
-    /// 沒有就用 Username/DisplayName/Password 建一個全新帳號。**這是新場館能不能有第一個
-    /// 管理員帳號的關鍵入口**：新場館還沒有任何成員，不可能先登入那個場館的 scope 去呼叫
-    /// MerchantEndpoints.AddUser（那支端點要求呼叫者已經是該場館的 merchant scope token），
-    /// 所以「建立第一個成員」只能從平台這邊、用全新帳號的方式完成。
-    /// </summary>
-    /// <summary>
     /// 平台管理員檢視某場館目前的成員清單——新增成員前要先看得到現有名單（避免重複加入、
     /// 判斷這個場館還有沒有管理員），且跟場館自己 GET /merchant/users 用同一份
     /// MembershipRepository.ListForMerchantAsync，不重寫第二份查詢。
     /// </summary>
+    /// <param name="principal">呼叫端身分識別 ClaimsPrincipal</param>
+    /// <param name="merchantId">目標場館 ID</param>
+    /// <param name="merchants">場館倉儲實例</param>
+    /// <param name="memberships">成員關係倉儲實例</param>
+    /// <param name="ct">非同步作業取消權杖</param>
+    /// <returns>HTTP 結果：該場館所有成員清單</returns>
     private static async Task<IResult> ListMerchantMemberships(
         ClaimsPrincipal principal, int merchantId, MerchantRepository merchants, MembershipRepository memberships, CancellationToken ct)
     {
@@ -135,6 +165,12 @@ public static class PlatformEndpoints
     /// viewer ＋這個場館自己的自訂角色），跟 MerchantEndpoints 自己那支 GET /merchant/roles
     /// 概念一樣，差別只在這裡是平台管理員用 URL 上的 merchantId、不是從呼叫者自己的 JWT 拿。
     /// </summary>
+    /// <param name="principal">呼叫端身分識別 ClaimsPrincipal</param>
+    /// <param name="merchantId">目標場館 ID</param>
+    /// <param name="merchants">場館倉儲實例</param>
+    /// <param name="roles">角色倉儲實例</param>
+    /// <param name="ct">非同步作業取消權杖</param>
+    /// <returns>HTTP 結果：可供指派的角色清單陣列</returns>
     private static async Task<IResult> ListMerchantAssignableRoles(
         ClaimsPrincipal principal, int merchantId, MerchantRepository merchants, RoleRepository roles, CancellationToken ct)
     {
@@ -143,6 +179,24 @@ public static class PlatformEndpoints
         return Results.Ok(await roles.ListAsync(RoleScope.Merchant, merchantId, ct));
     }
 
+    /// <summary>
+    /// 幫場館加成員——支援兩種情境，跟 MerchantEndpoints.AddUser（場館自己新增成員）同一套
+    /// find-or-create 邏輯：<c>request.UserId</c> 有值就掛既有帳號（例如同一人身兼多個場館）；
+    /// 沒有就用 Username/DisplayName/Password 建一個全新帳號。**這是新場館能不能有第一個
+    /// 管理員帳號的關鍵入口**：新場館還沒有任何成員，不可能先登入那個場館的 scope 去呼叫
+    /// MerchantEndpoints.AddUser（那支端點要求呼叫者已經是該場館的 merchant scope token），
+    /// 所以「建立第一個成員」只能從平台這邊、用全新帳號的方式完成。
+    /// </summary>
+    /// <param name="principal">呼叫端身分識別 ClaimsPrincipal</param>
+    /// <param name="merchantId">目標場館 ID</param>
+    /// <param name="request">建立成員請求物件，包含既有 UserId 或全新帳號帳密與角色</param>
+    /// <param name="merchants">場館倉儲實例</param>
+    /// <param name="memberships">成員關係倉儲實例</param>
+    /// <param name="roles">角色倉儲實例</param>
+    /// <param name="users">使用者倉儲實例</param>
+    /// <param name="opLog">操作稽核記錄器</param>
+    /// <param name="ct">非同步作業取消權杖</param>
+    /// <returns>HTTP 結果：建立之 membership ID 與資源路徑</returns>
     private static async Task<IResult> CreateMerchantMembership(
         ClaimsPrincipal principal, int merchantId, CreateMembershipRequest request,
         MerchantRepository merchants, MembershipRepository memberships, RoleRepository roles, UserRepository users,
@@ -215,6 +269,25 @@ public static class PlatformEndpoints
     /// 自己的 AuthVersion——這是先前「編輯成員面板」踩過的真實 bug 的同一個教訓
     /// （改別人權限時不小心把整個場館／自己一起登出），這裡從一開始設計就避開。
     /// </summary>
+    /// <summary>
+    /// 平台管理員重設任一場館成員的密碼——先前只有場館管理員能重設自己場館成員的密碼，
+    /// 平台這邊完全沒有對應能力。邏輯比照 MerchantEndpoints.ResetUserPassword，差別只在
+    /// 這裡不檢查 membership 屬於「呼叫者自己的場館」（平台管理員本來就能跨場館操作），
+    /// 改成用 URL 上的 merchantId 核對 membership 真的屬於這個場館。
+    ///
+    /// 遞增 AuthVersion 只作用在被重設密碼的那個使用者身上，不會動到呼叫端（平台管理員）
+    /// 自己的 AuthVersion——這是先前「編輯成員面板」踩過的真實 bug 的同一個教訓
+    /// （改別人權限時不小心把整個場館／自己一起登出），這裡從一開始設計就避開。
+    /// </summary>
+    /// <param name="principal">呼叫端身分識別 ClaimsPrincipal</param>
+    /// <param name="merchantId">目標場館 ID</param>
+    /// <param name="membershipId">欲重設密碼之成員關係 ID</param>
+    /// <param name="merchants">場館倉儲實例</param>
+    /// <param name="memberships">成員關係倉儲實例</param>
+    /// <param name="users">使用者倉儲實例</param>
+    /// <param name="opLog">操作稽核記錄器</param>
+    /// <param name="ct">非同步作業取消權杖</param>
+    /// <returns>HTTP 結果：包含一次性臨時明文密碼物件</returns>
     private static async Task<IResult> ResetMembershipPassword(
         ClaimsPrincipal principal, int merchantId, int membershipId, MerchantRepository merchants,
         MembershipRepository memberships, UserRepository users, OperationLogger opLog, CancellationToken ct)
@@ -243,12 +316,25 @@ public static class PlatformEndpoints
 
     // ---- 系統帳號（平台帳號） ----
 
+    /// <summary>列出系統中所有平台管理帳號清單</summary>
+    /// <param name="principal">呼叫端身分識別 ClaimsPrincipal</param>
+    /// <param name="users">使用者倉儲實例</param>
+    /// <param name="ct">非同步作業取消權杖</param>
+    /// <returns>HTTP 結果：平台系統使用者陣列</returns>
     private static async Task<IResult> ListSystemUsers(ClaimsPrincipal principal, UserRepository users, CancellationToken ct)
     {
         if (!RequirePlatform(principal, "platform.system_users", "read", out _)) return Results.Forbid();
         return Results.Ok(await users.ListSystemUsersAsync(ct));
     }
 
+    /// <summary>建立新的平台系統管理員帳號</summary>
+    /// <param name="principal">呼叫端身分識別 ClaimsPrincipal</param>
+    /// <param name="request">建立系統帳號請求物件</param>
+    /// <param name="users">使用者倉儲實例</param>
+    /// <param name="roles">角色倉儲實例</param>
+    /// <param name="opLog">操作稽核記錄器</param>
+    /// <param name="ct">非同步作業取消權杖</param>
+    /// <returns>HTTP 結果：建立之使用者 ID 與資源路徑</returns>
     private static async Task<IResult> CreateSystemUser(
         ClaimsPrincipal principal, CreateSystemUserRequest request, UserRepository users, RoleRepository roles,
         OperationLogger opLog, CancellationToken ct)
@@ -284,12 +370,23 @@ public static class PlatformEndpoints
     /// 系統裡每一個場館的自訂角色都混進來——這支是「平台角色管理」頁用的，不該連別人場館的
     /// 角色清單都看得到，語意上也不對（平台角色管理管的是 platform.* 這層，不是場館內部角色）。
     /// </summary>
+    /// <param name="principal">呼叫端身分識別 ClaimsPrincipal</param>
+    /// <param name="repo">角色倉儲實例</param>
+    /// <param name="ct">非同步作業取消權杖</param>
+    /// <returns>HTTP 結果：平台專屬角色清單陣列</returns>
     private static async Task<IResult> ListRoles(ClaimsPrincipal principal, RoleRepository repo, CancellationToken ct)
     {
         if (!RequirePlatform(principal, "platform.roles", "read", out _)) return Results.Forbid();
         return Results.Ok(await repo.ListAsync(RoleScope.Platform, ct: ct));
     }
 
+    /// <summary>建立新的平台範圍角色</summary>
+    /// <param name="principal">呼叫端身分識別 ClaimsPrincipal</param>
+    /// <param name="request">建立角色請求物件</param>
+    /// <param name="repo">角色倉儲實例</param>
+    /// <param name="opLog">操作稽核記錄器</param>
+    /// <param name="ct">非同步作業取消權杖</param>
+    /// <returns>HTTP 結果：建立之角色 ID 與路徑</returns>
     private static async Task<IResult> CreateRole(
         ClaimsPrincipal principal, CreateRoleRequest request, RoleRepository repo, OperationLogger opLog, CancellationToken ct)
     {
@@ -305,6 +402,12 @@ public static class PlatformEndpoints
         return Results.Created($"/api/v1/platform/roles/{id}", new { id });
     }
 
+    /// <summary>取得指定平台角色的細項權限清單</summary>
+    /// <param name="principal">呼叫端身分識別 ClaimsPrincipal</param>
+    /// <param name="roleId">目標角色 ID</param>
+    /// <param name="repo">角色倉儲實例</param>
+    /// <param name="ct">非同步作業取消權杖</param>
+    /// <returns>HTTP 結果：角色細項權限資料集合</returns>
     private static async Task<IResult> GetRolePermissions(ClaimsPrincipal principal, int roleId, RoleRepository repo, CancellationToken ct)
     {
         if (!RequirePlatform(principal, "platform.roles", "read", out _)) return Results.Forbid();
@@ -314,6 +417,13 @@ public static class PlatformEndpoints
     /// <summary>
     /// 系統內建角色僅 platform-admin 可修改（IsSystem 角色鎖定，只有平台管理員能動）。
     /// </summary>
+    /// <param name="principal">呼叫端身分識別 ClaimsPrincipal</param>
+    /// <param name="roleId">目標角色 ID</param>
+    /// <param name="requests">權限設定項目陣列</param>
+    /// <param name="repo">角色倉儲實例</param>
+    /// <param name="opLog">操作稽核記錄器</param>
+    /// <param name="ct">非同步作業取消權杖</param>
+    /// <returns>HTTP 結果：成功回傳 204 NoContent</returns>
     private static async Task<IResult> SetRolePermissions(
         ClaimsPrincipal principal, int roleId, SetRolePermissionRequest[] requests, RoleRepository repo,
         OperationLogger opLog, CancellationToken ct)
@@ -344,16 +454,58 @@ public static class PlatformEndpoints
     /// 角色編輯面板勾選格用的，混進場館權限會讓平台角色出現「冰水主機」「FCU 設備」這種語意
     /// 不通的勾選項。
     /// </summary>
+    /// <param name="principal">呼叫端身分識別 ClaimsPrincipal</param>
+    /// <param name="repo">權限倉儲實例</param>
+    /// <param name="ct">非同步作業取消權杖</param>
+    /// <returns>HTTP 結果：平台專屬權限目錄清單</returns>
     private static async Task<IResult> ListPermissions(ClaimsPrincipal principal, PermissionRepository repo, CancellationToken ct)
     {
         if (!RequirePlatform(principal, "platform.permissions", "read", out _)) return Results.Forbid();
         return Results.Ok(await repo.ListAsync(RoleScope.Platform, ct));
     }
 
+    /// <summary>建立商家場館請求資料傳輸物件</summary>
+    /// <param name="Code">場館唯一代碼</param>
+    /// <param name="Name">場館名稱</param>
+    /// <param name="IsRoleCrudConfigurationEnabled">是否啟用角色建立/修改功能（可選）</param>
+    /// <param name="IsRoleOptionConfigurationEnabled">是否啟用角色功能細項自訂（可選）</param>
     public sealed record CreateMerchantRequest(string Code, string Name, bool? IsRoleCrudConfigurationEnabled, bool? IsRoleOptionConfigurationEnabled);
+
+    /// <summary>更新商家場館設定請求資料傳輸物件</summary>
+    /// <param name="IsRoleCrudConfigurationEnabled">是否啟用角色建立/修改功能（可選）</param>
+    /// <param name="IsRoleOptionConfigurationEnabled">是否啟用角色功能細項自訂（可選）</param>
     public sealed record UpdateMerchantRequest(bool? IsRoleCrudConfigurationEnabled, bool? IsRoleOptionConfigurationEnabled);
+
+    /// <summary>平台端建立場館成員請求資料傳輸物件</summary>
+    /// <param name="UserId">既有使用者 ID（掛入既有帳號時提供）</param>
+    /// <param name="Username">新建立使用者之帳號（新建時必填）</param>
+    /// <param name="DisplayName">新建立使用者之姓名（新建時必填）</param>
+    /// <param name="Email">使用者電子郵件（可選）</param>
+    /// <param name="Password">初始密碼（新建時必填）</param>
+    /// <param name="RoleId">指派之角色 ID</param>
     public sealed record CreateMembershipRequest(int? UserId, string? Username, string? DisplayName, string? Email, string? Password, int RoleId);
+
+    /// <summary>建立平台系統管理帳號請求資料傳輸物件</summary>
+    /// <param name="Username">登入帳號</param>
+    /// <param name="DisplayName">使用者姓名</param>
+    /// <param name="Password">登入密碼</param>
+    /// <param name="SystemRoleId">所屬平台系統角色 ID</param>
     public sealed record CreateSystemUserRequest(string Username, string DisplayName, string Password, int SystemRoleId);
+
+    /// <summary>建立平台角色請求資料傳輸物件</summary>
+    /// <param name="Code">角色代碼</param>
+    /// <param name="Name">角色名稱</param>
+    /// <param name="Scope">角色範圍 (Platform / Merchant)</param>
+    /// <param name="MerchantId">所屬場館 ID（若為場館角色）</param>
     public sealed record CreateRoleRequest(string Code, string Name, RoleScope Scope, int? MerchantId);
+
+    /// <summary>設定角色權限項目資料傳輸物件</summary>
+    /// <param name="PermissionCode">權限資源代碼</param>
+    /// <param name="PerCreate">是否具備建立權限</param>
+    /// <param name="PerRead">是否具備讀取權限</param>
+    /// <param name="PerUpdate">是否具備更新權限</param>
+    /// <param name="PerDelete">是否具備刪除權限</param>
+    /// <param name="Options">啟用的子功能選項代碼陣列</param>
     public sealed record SetRolePermissionRequest(string PermissionCode, bool PerCreate, bool PerRead, bool PerUpdate, bool PerDelete, string[] Options);
 }
+

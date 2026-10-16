@@ -16,11 +16,18 @@ namespace Teco.Hvac.Api.Endpoints;
 /// </summary>
 public static class AuthEndpoints
 {
+    /// <summary>帳號連續登入失敗達此門檻即觸發暫時鎖定保護</summary>
     private const int MaxFailuresBeforeLock = 5;
+    /// <summary>帳號觸發鎖定後的持續時間（15 分鐘）</summary>
     private static readonly TimeSpan LockDuration = TimeSpan.FromMinutes(15);
 
+    /// <summary>
+    /// 註冊身分驗證與權杖交換相關端點路由。
+    /// </summary>
+    /// <param name="app">Web 應用程式實例</param>
     public static void MapAuthEndpoints(this WebApplication app)
     {
+        // 建立身分驗證端點群組 /api/v1/auth
         var group = app.MapGroup("/api/v1/auth");
 
         group.MapPost("/login", Login);
@@ -37,6 +44,13 @@ public static class AuthEndpoints
     /// 使用者自行修改密碼。成功後遞增 AuthVersion，讓當下這顆 token 立即失效——
     /// 密碼異動後強制重新登入是預期行為，前端要接著清掉工作階段導去 /login。
     /// </summary>
+    /// <param name="request">修改密碼請求內容，包含目前密碼與新密碼</param>
+    /// <param name="principal">目前呼叫端的 ClaimsPrincipal 身分識別</param>
+    /// <param name="users">使用者資料存取倉儲</param>
+    /// <param name="refreshTokens">更新權杖倉儲，用於撤銷既有工作階段</param>
+    /// <param name="opLog">操作稽核日誌記錄器</param>
+    /// <param name="ct">非同步作業取消權杖</param>
+    /// <returns>HTTP 結果：成功回傳 204 NoContent，驗證失敗回傳 400 BadRequest</returns>
     private static async Task<IResult> ChangePassword(
         ChangePasswordRequest request, ClaimsPrincipal principal, UserRepository users, RefreshTokenRepository refreshTokens,
         OperationLogger opLog, CancellationToken ct)
@@ -67,6 +81,11 @@ public static class AuthEndpoints
         return Results.NoContent();
     }
 
+    /// <summary>
+    /// 修改密碼請求資料傳輸物件。
+    /// </summary>
+    /// <param name="CurrentPassword">使用者當前之明文密碼</param>
+    /// <param name="NewPassword">欲變更之新明文密碼</param>
     public sealed record ChangePasswordRequest(string CurrentPassword, string? NewPassword);
 
     /// <summary>
@@ -75,6 +94,12 @@ public static class AuthEndpoints
     /// </summary>
     private static readonly ConcurrentDictionary<string, DateTimeOffset> UnknownUserLogThrottle = new();
 
+    /// <summary>
+    /// 判斷是否需要針對不存在的帳號寫入登入失敗稽核日誌（以 IP 與帳號維度進行每分鐘一次的節流）。
+    /// </summary>
+    /// <param name="username">嘗試登入之使用者名稱</param>
+    /// <param name="ip">來源客戶端 IP 位址</param>
+    /// <returns>若超過節流區間則回傳 true 允許記錄；否則回傳 false 略過</returns>
     private static bool ShouldLogUnknownUser(string username, string? ip)
     {
         var now = DateTimeOffset.UtcNow;
@@ -85,7 +110,17 @@ public static class AuthEndpoints
         return true;
     }
 
-    /// <summary>登入失敗的稽核。原因只寫進操作紀錄給管理員看，回給前端的訊息仍然不區分（避免帳號枚舉）。</summary>
+    /// <summary>
+    /// 登入失敗的稽核。原因只寫進操作紀錄給管理員看，回給前端的訊息仍然不區分（避免帳號枚舉）。
+    /// </summary>
+    /// <param name="opLog">操作稽核記錄器</param>
+    /// <param name="memberships">成員關係倉儲，用於查詢所屬場館 ID</param>
+    /// <param name="http">當前 HTTP 請求上下文</param>
+    /// <param name="user">查詢到的使用者實體（若帳號不存在則為 null）</param>
+    /// <param name="attemptedUsername">嘗試登入的使用者帳號名稱</param>
+    /// <param name="reason">失敗原因文字描述</param>
+    /// <param name="justLocked">是否剛好達到連續失敗上限而觸發鎖定</param>
+    /// <param name="ct">非同步作業取消權杖</param>
     private static async Task LogLoginFailureAsync(
         OperationLogger opLog, MembershipRepository memberships, HttpContext http, AppUser? user, string attemptedUsername,
         string reason, bool justLocked, CancellationToken ct)
@@ -98,6 +133,7 @@ public static class AuthEndpoints
                 "登入失敗：帳號不存在", isSuccess: false, errorMessage: reason, ct: ct);
             return;
         }
+
         // 場館成員的失敗登入掛在他的場館底下，場館管理員才看得到（平台帳號沒有場館，merchant_id 為空）
         int? merchantId = user.SystemRoleId is null && !user.IsPlatformAdmin
             ? (await memberships.ListActiveForUserAsync(user.Id, ct)).FirstOrDefault()?.MerchantId
@@ -112,6 +148,21 @@ public static class AuthEndpoints
         }
     }
 
+    /// <summary>
+    /// 使用者登入端點處理函式。驗證帳密、鎖定狀態、取得所屬場館或平台角色權限，並簽發 Access Token 與 Refresh Token。
+    /// </summary>
+    /// <param name="request">登入請求物件，含帳號與密碼</param>
+    /// <param name="http">當前 HTTP 請求上下文</param>
+    /// <param name="users">使用者資料存取倉儲</param>
+    /// <param name="memberships">成員與場館關聯倉儲</param>
+    /// <param name="merchants">場館基本資料倉儲</param>
+    /// <param name="grants">角色權限計算服務</param>
+    /// <param name="jwt">JWT 簽發服務</param>
+    /// <param name="refreshTokens">更新權杖管理倉儲</param>
+    /// <param name="opLog">操作稽核記錄器</param>
+    /// <param name="jwtOptions">JWT 選項設定，含過期天數</param>
+    /// <param name="ct">非同步作業取消權杖</param>
+    /// <returns>HTTP 結果：包含 Token、使用者資訊、權限清單與 Refresh Token</returns>
     private static async Task<IResult> Login(
         LoginRequest request, HttpContext http, UserRepository users, MembershipRepository memberships, MerchantRepository merchants,
         PermissionGrantService grants, JwtTokenService jwt, RefreshTokenRepository refreshTokens, OperationLogger opLog,
@@ -179,6 +230,12 @@ public static class AuthEndpoints
     /// 登出：撤銷這個瀏覽器的 refresh token（只撤銷呼叫端帶來的那一顆，不影響同一個帳號在別處的登入）並寫紀錄。
     /// 前端登出是盡力而為——這支失敗不能擋住登出，工作階段照樣在本機清掉。
     /// </summary>
+    /// <param name="request">登出請求資料，可選攜帶欲撤銷之 RefreshToken</param>
+    /// <param name="principal">呼叫端身分識別 ClaimsPrincipal</param>
+    /// <param name="refreshTokens">更新權杖倉儲</param>
+    /// <param name="opLog">操作稽核記錄器</param>
+    /// <param name="ct">非同步作業取消權杖</param>
+    /// <returns>HTTP 結果：成功回傳 204 NoContent</returns>
     private static async Task<IResult> Logout(
         LogoutRequest? request, ClaimsPrincipal principal, RefreshTokenRepository refreshTokens, OperationLogger opLog, CancellationToken ct)
     {
@@ -193,6 +250,11 @@ public static class AuthEndpoints
     }
 
     /// <summary>簽發並落地一顆新的 refresh token，回傳明文（只有這一刻拿得到，資料庫只存 hash）。</summary>
+    /// <param name="refreshTokens">更新權杖倉儲</param>
+    /// <param name="user">目標使用者實體</param>
+    /// <param name="options">JWT 設定選項，提供 RefreshToken 有效天數</param>
+    /// <param name="ct">非同步作業取消權杖</param>
+    /// <returns>簽發出的明文 Refresh Token 字串</returns>
     private static async Task<string> IssueRefreshTokenAsync(
         RefreshTokenRepository refreshTokens, AppUser user, JwtOptions options, CancellationToken ct)
     {
@@ -207,6 +269,16 @@ public static class AuthEndpoints
     /// 呼叫這支的當下 access token 通常已經過期，要求帶有效 JWT 就自相矛盾了。
     /// 採 token 輪替：每次交換都撤銷舊 refresh token、發一顆新的，降低外洩後被重複使用的風險。
     /// </summary>
+    /// <param name="request">換發權杖請求物件，含明文 Refresh Token</param>
+    /// <param name="users">使用者資料存取倉儲</param>
+    /// <param name="memberships">成員與場館關聯倉儲</param>
+    /// <param name="merchants">場館基本資料倉儲</param>
+    /// <param name="grants">角色權限計算服務</param>
+    /// <param name="jwt">JWT 簽發服務</param>
+    /// <param name="refreshTokens">更新權杖管理倉儲</param>
+    /// <param name="jwtOptions">JWT 選項設定</param>
+    /// <param name="ct">非同步作業取消權杖</param>
+    /// <returns>HTTP 結果：成功簽發新 Access Token 與輪替之 Refresh Token</returns>
     private static async Task<IResult> RefreshWithToken(
         RefreshTokenRequest request, UserRepository users, MembershipRepository memberships, MerchantRepository merchants,
         PermissionGrantService grants, JwtTokenService jwt, RefreshTokenRepository refreshTokens,
@@ -250,6 +322,15 @@ public static class AuthEndpoints
             merchant.IsRoleCrudConfigurationEnabled, merchant.IsRoleOptionConfigurationEnabled, newRefreshToken));
     }
 
+    /// <summary>
+    /// 列出當前登入使用者所有可切換的工作範圍清單（包含平台管理及各個場館身分）。
+    /// </summary>
+    /// <param name="principal">呼叫端身分識別 ClaimsPrincipal</param>
+    /// <param name="users">使用者資料存取倉儲</param>
+    /// <param name="memberships">成員與場館關聯倉儲</param>
+    /// <param name="merchants">場館基本資料倉儲</param>
+    /// <param name="ct">非同步作業取消權杖</param>
+    /// <returns>可選的工作範圍清單陣列</returns>
     private static async Task<IResult> ListScopes(
         ClaimsPrincipal principal, UserRepository users, MembershipRepository memberships, MerchantRepository merchants, CancellationToken ct)
     {
@@ -270,6 +351,18 @@ public static class AuthEndpoints
         return Results.Ok(options);
     }
 
+    /// <summary>
+    /// 切換當前使用者的工作範圍（例如切換至特定場館或切回平台管理），並簽發對應範圍的 JWT。
+    /// </summary>
+    /// <param name="request">選取範圍請求內容，包含 scopeKind 與 merchantId</param>
+    /// <param name="principal">呼叫端身分識別 ClaimsPrincipal</param>
+    /// <param name="users">使用者資料存取倉儲</param>
+    /// <param name="memberships">成員與場館關聯倉儲</param>
+    /// <param name="merchants">場館基本資料倉儲</param>
+    /// <param name="grants">角色權限計算服務</param>
+    /// <param name="jwt">JWT 簽發服務</param>
+    /// <param name="ct">非同步作業取消權杖</param>
+    /// <returns>HTTP 結果：成功回傳該範圍的新 Token 及使用者資訊</returns>
     private static async Task<IResult> SelectScope(
         SelectScopeRequest request, ClaimsPrincipal principal, UserRepository users, MembershipRepository memberships,
         MerchantRepository merchants, PermissionGrantService grants, JwtTokenService jwt, CancellationToken ct)
@@ -300,6 +393,17 @@ public static class AuthEndpoints
             merchant.IsRoleCrudConfigurationEnabled, merchant.IsRoleOptionConfigurationEnabled));
     }
 
+    /// <summary>
+    /// 在已登入且權杖尚未過期的狀態下，依目前的使用範圍重新載入最新授權並更新 Access Token。
+    /// </summary>
+    /// <param name="principal">呼叫端身分識別 ClaimsPrincipal</param>
+    /// <param name="users">使用者資料存取倉儲</param>
+    /// <param name="memberships">成員與場館關聯倉儲</param>
+    /// <param name="merchants">場館基本資料倉儲</param>
+    /// <param name="grants">角色權限計算服務</param>
+    /// <param name="jwt">JWT 簽發服務</param>
+    /// <param name="ct">非同步作業取消權杖</param>
+    /// <returns>HTTP 結果：更新後的 Token 與範圍資訊</returns>
     private static async Task<IResult> Refresh(
         ClaimsPrincipal principal, UserRepository users, MembershipRepository memberships, MerchantRepository merchants,
         PermissionGrantService grants, JwtTokenService jwt, CancellationToken ct)
@@ -329,6 +433,11 @@ public static class AuthEndpoints
             merchant.IsRoleCrudConfigurationEnabled, merchant.IsRoleOptionConfigurationEnabled));
     }
 
+    /// <summary>
+    /// 取得目前登入者的身分與範圍摘要資訊（供前端初始化或檢查權限狀態）。
+    /// </summary>
+    /// <param name="principal">呼叫端身分識別 ClaimsPrincipal</param>
+    /// <returns>使用者 ID、身分類別、場館 ID、權限集合等物件</returns>
     private static IResult GetMe(ClaimsPrincipal principal)
     {
         if (!RequestScope.TryRead(principal, out var scope) || scope is null) return Results.Forbid();
@@ -343,6 +452,18 @@ public static class AuthEndpoints
         });
     }
 
+    /// <summary>
+    /// 組裝統一的登入/切換範圍/更新授權回傳資料結構。
+    /// </summary>
+    /// <param name="token">簽發出之 Access Token 字串</param>
+    /// <param name="user">使用者實體</param>
+    /// <param name="scopeKind">範圍種類 ("platform" 或 "merchant")</param>
+    /// <param name="merchant">場館實體（若是平台範圍則為 null）</param>
+    /// <param name="grants">授予之權限清單</param>
+    /// <param name="isRoleCrudConfigurationEnabled">是否啟用角色建立/修改功能</param>
+    /// <param name="isRoleOptionConfigurationEnabled">是否啟用功能細項授權設定</param>
+    /// <param name="refreshToken">可選之明文 Refresh Token 字串</param>
+    /// <returns>匿名回傳物件</returns>
     private static object BuildResponse(
         string token, AppUser user, string scopeKind, Merchant? merchant, IReadOnlyCollection<PermissionGrant> grants,
         bool isRoleCrudConfigurationEnabled = true, bool isRoleOptionConfigurationEnabled = true, string? refreshToken = null) => new
@@ -365,8 +486,22 @@ public static class AuthEndpoints
         },
     };
 
+    /// <summary>登入要求資料傳輸物件</summary>
+    /// <param name="Username">登入帳號</param>
+    /// <param name="Password">登入密碼</param>
     public sealed record LoginRequest(string Username, string Password);
+
+    /// <summary>選取工作範圍請求資料傳輸物件</summary>
+    /// <param name="ScopeKind">工作範圍種類 ("platform" 或 "merchant")</param>
+    /// <param name="MerchantId">場館 ID（若為場館範圍則必填）</param>
     public sealed record SelectScopeRequest(string ScopeKind, int? MerchantId);
+
+    /// <summary>以 Refresh Token 換取 Access Token 請求資料傳輸物件</summary>
+    /// <param name="RefreshToken">明文更新權杖</param>
     public sealed record RefreshTokenRequest(string RefreshToken);
+
+    /// <summary>登出請求資料傳輸物件</summary>
+    /// <param name="RefreshToken">欲一併撤銷之明文更新權杖（可選）</param>
     public sealed record LogoutRequest(string? RefreshToken);
 }
+

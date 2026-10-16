@@ -9,46 +9,82 @@
  * 開發伺服器直接跑（沒有經過 Caddy）時，相對路徑打不到後端，需要另外設 dev proxy。
  */
 
+/** 本機儲存空間中所使用的工作階段 Key 名稱 */
 const STORAGE_KEY = 'teco_auth_session';
 
+/**
+ * 角色與權限授予定義介面
+ */
 export interface PermissionGrant {
+  /** 權限資源代碼（例如 hvac.chillers） */
   code: string;
+  /** 允許執行的 CRUD 動作陣列（例如 ['create', 'read', 'update', 'delete']） */
   actions: string[];
+  /** 啟用的子功能選項代碼陣列（例如 ['batch_control', 'reset_password']） */
   options: string[];
 }
 
+/**
+ * 已登入使用者的身分與授權資料介面
+ */
 export interface AuthUser {
+  /** 使用者唯一主鍵 ID */
   id: number;
+  /** 登入帳號名稱 */
   username: string;
+  /** 顯示名稱 / 全名 */
   displayName: string;
+  /** 目前工作範圍種類：'platform'（平台管理）或 'merchant'（場館端） */
   scopeKind: 'platform' | 'merchant';
+  /** 所屬場館 ID（若為平台範圍則為 null） */
   merchantId: number | null;
+  /** 所屬場館名稱（若為平台範圍則為 null） */
   merchantName: string | null;
+  /** 是否為平台最高系統管理員 */
   isPlatformAdmin: boolean;
+  /** 場館是否啟用自訂角色的建立/修改功能 */
   isRoleCrudConfigurationEnabled: boolean;
+  /** 場館是否啟用功能細項授權設定 */
   isRoleOptionConfigurationEnabled: boolean;
+  /** 該使用者獲授權的完整權限清單 */
   grants: PermissionGrant[];
+  /** 該使用者擁有的資源代碼字串陣列（供快速檢查使用） */
   permissions: string[];
 }
 
+/**
+ * 完整登入工作階段物件介面
+ */
 export interface AuthSession {
+  /** JWT 存取權杖（Access Token） */
   accessToken: string;
-  /** 舊工作階段（升級前登入的）可能沒有這個欄位，一律當可為 null 處理。 */
+  /** 更新權杖（Refresh Token），舊工作階段（升級前登入的）可能沒有這個欄位，一律當可為 null 處理 */
   refreshToken: string | null;
+  /** 登入之使用者詳細資訊 */
   user: AuthUser;
 }
 
+/** 登入失敗結果介面 */
 interface LoginFailure {
   ok: false;
+  /** 失敗原因提示訊息 */
   message: string;
 }
 
+/** 登入成功結果介面 */
 interface LoginSuccess {
   ok: true;
+  /** 簽發出的工作階段物件 */
   session: AuthSession;
 }
 
-/** 呼叫後端登入 API；成功時會把工作階段存進 localStorage，失敗時回傳可直接顯示的錯誤訊息。 */
+
+/**
+ * 呼叫後端登入 API；成功時會把工作階段存進 localStorage，失敗時回傳可直接顯示的錯誤訊息。
+ * @param username 登入帳號名稱
+ * @param password 登入密碼
+ * @returns 登入成功（含 Session）或失敗（含錯誤訊息）結果
+ */
 export async function loginApi(username: string, password: string): Promise<LoginSuccess | LoginFailure> {
   let response: Response;
   try {
@@ -78,6 +114,7 @@ export async function loginApi(username: string, password: string): Promise<Logi
  * Astro 元件在 hydrate 前會先跑一次 SSR（即使是 client:load），SSR 是在 Node.js 執行，
  * 沒有 `localStorage` 這個瀏覽器專屬 API，直接呼叫會整頁噴 ReferenceError——SSR 階段一律
  * 當作「還沒有工作階段」，等瀏覽器端 hydrate 後這個 computed/呼叫會重新算出正確結果。
+ * @returns 目前有效的工作階段物件，若無或解析失敗則為 null
  */
 export function getSessionApi(): AuthSession | null {
   if (typeof localStorage === 'undefined') return null;
@@ -94,6 +131,7 @@ export function getSessionApi(): AuthSession | null {
 /**
  * 改了自己的顯示名稱後，把工作階段裡存的名稱一併更新（只改本機顯示用的資料，不涉及權限）。
  * 後端不會因為改名而讓登入失效，所以不更新的話，右上角會一直顯示舊名稱直到下次登入。
+ * @param displayName 使用者新的顯示姓名
  */
 export function updateSessionDisplayName(displayName: string): void {
   const session = getSessionApi();
@@ -101,7 +139,11 @@ export function updateSessionDisplayName(displayName: string): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...session, user: { ...session.user, displayName } }));
 }
 
-/** 判斷工作階段是否仍在有效期內（只解 JWT payload 做 UX 判斷，不驗簽章——真正的授權檢查在後端）。 */
+/**
+ * 判斷工作階段是否仍在有效期內（只解 JWT payload 做 UX 判斷，不驗簽章——真正的授權檢查在後端）。
+ * @param session 當前工作階段物件
+ * @returns 若有效且未過期則回傳 true；否則回傳 false
+ */
 export function isSessionValidApi(session: AuthSession | null): boolean {
   if (!session?.accessToken) return false;
   try {
@@ -113,7 +155,6 @@ export function isSessionValidApi(session: AuthSession | null): boolean {
   }
 }
 
-/** 清掉工作階段（登出）。 */
 /**
  * 通知後端登出：撤銷這個瀏覽器的 refresh token 並寫操作紀錄。盡力而為——網路不通、token 已過期都不能擋住登出，
  * 呼叫端不管成功與否都要接著 clearSessionApi()。keepalive 讓緊接著的頁面跳轉不會把請求中斷。
@@ -133,13 +174,20 @@ export async function logoutApi(): Promise<void> {
   }
 }
 
+/**
+ * 清除本機儲存空間中快取的工作階段（登出）。
+ */
 export function clearSessionApi(): void {
   localStorage.removeItem(STORAGE_KEY);
 }
 
+/** 可選切換之身分範圍選項介面 */
 export interface ScopeOption {
+  /** 範圍種類 ('platform' 或 'merchant') */
   scopeKind: 'platform' | 'merchant';
+  /** 場館 ID（若為平台範圍則為 null） */
   merchantId: number | null;
+  /** 範圍顯示名稱 */
   name: string;
 }
 
@@ -147,6 +195,7 @@ export interface ScopeOption {
  * 列出目前帳號可以切換的身分——後端 AppUser 是雙軌設計，一個人可能同時是平台帳號、又是
  * 一或多個場館的成員（見 backend/README.md「權限機制」）。回傳長度 <= 1 時代表這個帳號
  * 只有單一身分，不需要顯示切換畫面。
+ * @returns 可切換之身分選項清單 Promise
  */
 export function listScopesApi(): Promise<ScopeOption[]> {
   return authorizedJsonApi('/api/v1/auth/scopes');
@@ -157,6 +206,8 @@ export function listScopesApi(): Promise<ScopeOption[]> {
  * 後端 SelectScope 刻意不換發新的 refresh token（呼叫當下的 access token 通常還沒過期，
  * 純粹是切身分不是重新登入），這裡要保留原本工作階段的 refreshToken，不能整個用 null 蓋掉，
  * 否則之後 access token 過期就沒有 refresh token 可用、被迫重新輸入密碼。
+ * @param option 切換目標選項，包含 scopeKind 與可選的 merchantId
+ * @returns 切換後的新工作階段物件 Promise
  */
 export async function selectScopeApi(option: { scopeKind: string; merchantId?: number | null }): Promise<AuthSession> {
   const response = await authorizedJsonApi<AuthSession>('/api/v1/auth/scopes/select', {
@@ -169,12 +220,18 @@ export async function selectScopeApi(option: { scopeKind: string; merchantId?: n
   return merged;
 }
 
-/** 登入或切換身分後該去哪個首頁，平台身分跟場館身分是完全不同的畫面組。 */
+/**
+ * 登入或切換身分後該去哪個首頁，平台身分跟場館身分是完全不同的畫面組。
+ * @param user 使用者身分類別
+ * @returns 首頁路徑字串（/platform/merchants 或 /admin）
+ */
 export function defaultHomePathApi(user: Pick<AuthUser, 'scopeKind'>): string {
   return user.scopeKind === 'platform' ? '/platform/merchants' : '/admin';
 }
 
-
+/**
+ * API 呼叫自訂錯誤類別，封裝 HTTP 狀態碼與錯誤訊息
+ */
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -229,6 +286,9 @@ async function doRefreshSessionApi(): Promise<boolean> {
  * 401 時先試著用 refresh token 換一顆新的 access token、重打一次原本的請求；只有在沒有
  * refresh token 或 refresh 也失敗時（密碼重設、角色變更、場館開關變更都會讓 refresh token
  * 一起失效），才清掉工作階段並導去登入頁——呼叫端不需要每個地方都重複處理這個情境。
+ * @param path 請求之相對或絕對路徑
+ * @param init 原始 Fetch RequestInit 設定
+ * @returns Fetch Response 物件 Promise
  */
 export async function authorizedFetchApi(path: string, init: RequestInit = {}): Promise<Response> {
   const session = getSessionApi();
@@ -258,6 +318,8 @@ export async function authorizedFetchApi(path: string, init: RequestInit = {}): 
 /**
  * 修改自己的密碼。成功後後端會遞增 AuthVersion，讓目前這顆 token 立即失效——
  * 呼叫端成功後要自己清掉工作階段並導去 /login，不要期待原本的 token 還能再用。
+ * @param currentPassword 目前明文舊密碼
+ * @param newPassword 欲設定之新密碼
  */
 export function changePasswordApi(currentPassword: string, newPassword: string): Promise<void> {
   return authorizedJsonApi('/api/v1/auth/change-password', {
@@ -266,7 +328,12 @@ export function changePasswordApi(currentPassword: string, newPassword: string):
   });
 }
 
-/** 呼叫成功回傳 JSON；失敗時把後端訊息（若有）包成 ApiError 丟出，方便畫面直接顯示。 */
+/**
+ * 呼叫成功回傳 JSON；失敗時把後端訊息（若有）包成 ApiError 丟出，方便畫面直接顯示。
+ * @param path 請求路徑
+ * @param init 請求設定
+ * @returns 解析完成的強型別資料 Promise
+ */
 export async function authorizedJsonApi<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await authorizedFetchApi(path, init);
   if (!response.ok) {
@@ -288,6 +355,9 @@ export async function authorizedJsonApi<T>(path: string, init: RequestInit = {})
  * 沒有登入檢查），打的是 `/api/v1/public/*`（不掛 JWT 驗證）。跟 authorizedJsonApi 分開實作，
  * 不能共用——authorizedFetchApi 遇到 401 會清工作階段並導去 /login，那是給後台管理頁設計的行為，
  * 套到公開大螢幕上會變成「沒人登入，螢幕就一直被彈回登入頁」。
+ * @param path 公開請求路徑
+ * @param init 請求選項
+ * @returns 解析完成的資料 Promise
  */
 export async function publicJsonApi<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(path, { ...init, headers: new Headers({ 'Content-Type': 'application/json', ...init.headers }) });
@@ -304,3 +374,4 @@ export async function publicJsonApi<T>(path: string, init: RequestInit = {}): Pr
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
+

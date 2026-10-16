@@ -16,9 +16,22 @@ namespace Teco.Hvac.Api.Services;
 /// </summary>
 public sealed class UtcDateTimeConverter : JsonConverter<DateTime>
 {
+    /// <summary>
+    /// 自 JSON 讀取日期時間，並強制將 Kind 指定為 <see cref="DateTimeKind.Utc"/>。
+    /// </summary>
+    /// <param name="reader">JSON 讀取器。</param>
+    /// <param name="typeToConvert">待轉換型別。</param>
+    /// <param name="options">序列化選項。</param>
+    /// <returns>帶有 UTC 時區標籤的 <see cref="DateTime"/>。</returns>
     public override DateTime Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         DateTime.SpecifyKind(reader.GetDateTime(), DateTimeKind.Utc);
 
+    /// <summary>
+    /// 將日期時間序列化為帶有 'Z' 結尾的 ISO-8601 UTC 字串。
+    /// </summary>
+    /// <param name="writer">JSON 寫入器。</param>
+    /// <param name="value">待寫入之日期時間。</param>
+    /// <param name="options">序列化選項。</param>
     public override void Write(Utf8JsonWriter writer, DateTime value, JsonSerializerOptions options) =>
         writer.WriteStringValue(DateTime.SpecifyKind(value, DateTimeKind.Utc));
 }
@@ -26,9 +39,22 @@ public sealed class UtcDateTimeConverter : JsonConverter<DateTime>
 /// <summary>同上，給 `DateTime?`（可為 null 的時間欄位，例如告警的 EndedAt）用。</summary>
 public sealed class UtcNullableDateTimeConverter : JsonConverter<DateTime?>
 {
+    /// <summary>
+    /// 自 JSON 讀取可為 null 的日期時間，並強制將 Kind 指定為 <see cref="DateTimeKind.Utc"/>。
+    /// </summary>
+    /// <param name="reader">JSON 讀取器。</param>
+    /// <param name="typeToConvert">待轉換型別。</param>
+    /// <param name="options">序列化選項。</param>
+    /// <returns>帶有 UTC 時區標籤的可空 <see cref="DateTime"/>。</returns>
     public override DateTime? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         reader.TokenType == JsonTokenType.Null ? null : DateTime.SpecifyKind(reader.GetDateTime(), DateTimeKind.Utc);
 
+    /// <summary>
+    /// 將可為 null 的日期時間序列化為帶有 'Z' 結尾的 ISO-8601 UTC 字串或 null。
+    /// </summary>
+    /// <param name="writer">JSON 寫入器。</param>
+    /// <param name="value">待寫入之可空日期時間。</param>
+    /// <param name="options">序列化選項。</param>
     public override void Write(Utf8JsonWriter writer, DateTime? value, JsonSerializerOptions options)
     {
         if (value is null) writer.WriteNullValue();

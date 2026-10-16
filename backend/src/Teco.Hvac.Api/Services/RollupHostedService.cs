@@ -14,15 +14,26 @@ namespace Teco.Hvac.Api.Services;
 /// 自動回補，需要的話要另外手動對 ChillerRepository/FcuRepository.UpsertHourlyRollupAsync
 /// 跑一次更大範圍的區間（見 backend/README.md 的已知限制）。
 /// </summary>
+/// <param name="chillers">冰水主機倉儲，負責 rollup_chiller_1h 聚合寫入。</param>
+/// <param name="fcus">FCU 倉儲，負責 rollup_fcu_1h 聚合寫入。</param>
+/// <param name="jobStatus">排程狀態快照儲存庫，供前台系統診斷顯示。</param>
+/// <param name="logger">記錄器實體。</param>
 public sealed class RollupHostedService(
     ChillerRepository chillers, FcuRepository fcus, ScheduledJobStatusStore jobStatus,
     ILogger<RollupHostedService> logger) : BackgroundService
 {
+    /// <summary>排程工作唯一識別鍵值 ("rollup-hourly")。</summary>
     public const string JobKey = "rollup-hourly";
 
+    /// <summary>排程觸發週期（每 15 分鐘觸發一次）。</summary>
     private static readonly TimeSpan TickInterval = TimeSpan.FromMinutes(15);
+    /// <summary>滾動覆蓋視窗長度（每次聚合過去 26 小時的資料）。</summary>
     private static readonly TimeSpan RollingWindow = TimeSpan.FromHours(26);
 
+    /// <summary>
+    /// 背景工作生命週期主迴圈。
+    /// </summary>
+    /// <param name="stoppingToken">取消語彙基元。</param>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         jobStatus.Register(JobKey, "每小時聚合（rollup_chiller_1h／rollup_fcu_1h）", TickInterval);
@@ -37,6 +48,10 @@ public sealed class RollupHostedService(
         }
     }
 
+    /// <summary>
+    /// 執行單次聚合任務邏輯。
+    /// </summary>
+    /// <param name="ct">非同步作業取消語彙基元。</param>
     private async Task RunOnceAsync(CancellationToken ct)
     {
         jobStatus.Start(JobKey);
