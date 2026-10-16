@@ -20,6 +20,13 @@ public sealed class CollectorOptions
     /// <summary>冰水主機落地節流秒數。</summary>
     public int ChillerThrottleSeconds { get; init; } = 10;
 
+    /// <summary>
+    /// 冰水主機從停止變成運轉後，隔多少分鐘才開始評估出水溫／回水溫／溫差門檻（預設 15 分鐘）。
+    /// 剛開機時冰水迴路還是環境溫度，主機要一段時間才拉到設定溫度，這段期間超標是正常現象。
+    /// 現場量到實際的降溫時間後再調整（環境變數 <c>Collector__ChillerWarmupMinutes</c>）。
+    /// </summary>
+    public int ChillerWarmupMinutes { get; init; } = 15;
+
     /// <summary>通道超過此秒數沒有成功讀取，視為降級（寫入 channel_health + 觸發告警）。</summary>
     public int WatchdogStaleSeconds { get; init; } = 60;
     /// <summary>完全沒有收到任何 EventDataReceived 超過此秒數，觸發 Collector 自我重建。</summary>

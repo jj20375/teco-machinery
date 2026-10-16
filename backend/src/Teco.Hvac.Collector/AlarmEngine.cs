@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Teco.Hvac.Contracts;
 using Teco.Hvac.Domain.Alarms;
 using Teco.Hvac.Domain.Entities;
@@ -18,10 +19,26 @@ namespace Teco.Hvac.Collector;
 /// 2) 可設定門檻要 debounce：連續超過門檻達 DebounceSeconds 才真的開告警，避免單次雜訊誤報。
 ///    規則清單由 CollectorHostedService 定期重新載入（見該檔案的 RunSupervisorLoopAsync），
 ///    畫面改門檻後不用重建 Collector，約一分鐘內生效。
+///
+/// 【溫度門檻只在設備運轉中判定】（2026-10-16，決策見 docs/BACKEND_INTEGRATION_PLAN.md「告警只在運轉中判定」）
+/// 冰水主機停機時水溫會回升到環境溫度、溫差趨近 0；FCU 關機的區域室溫自然偏高——這些都不是設備異常。
+/// 停機／關機時不評估溫度門檻，且把已開著的溫度門檻告警結案；冰水主機重新開機後另有暖機寬限。
+/// 14 個硬體旗標、保養提醒、通道離線不受影響，停機時照常判定。
 /// </summary>
 public sealed class AlarmEngine(
-    AlarmRepository alarmRepository, ChillerMaintenanceRepository maintenanceRepository, ILogger<AlarmEngine> logger)
+    AlarmRepository alarmRepository, ChillerMaintenanceRepository maintenanceRepository,
+    IOptions<CollectorOptions> options, ILogger<AlarmEngine> logger)
 {
+    private readonly TimeSpan _chillerWarmup = TimeSpan.FromMinutes(Math.Max(0, options.Value.ChillerWarmupMinutes));
+
+    /// <summary>
+    /// 冰水主機這一段運轉從何時起算暖機；null＝上一輪看到的是停止，沒有鍵＝Collector 啟動後還沒看過這台。
+    /// </summary>
+    private readonly ConcurrentDictionary<int, DateTimeOffset?> _chillerRunningSince = new();
+
+    /// <summary>FCU 上一輪是否開機；只用來在「開→關」那一輪結案一次，不必每輪對每台關機的 FCU 下 UPDATE。</summary>
+    private readonly ConcurrentDictionary<int, bool> _fcuSwitchedOn = new();
+
     private static readonly string[] ChillerAlarmFlags =
     [
         nameof(ChillerSnapshot.IsChilledWaterFlowAbnormal),
@@ -177,19 +194,95 @@ public sealed class AlarmEngine(
         var applicableRules = _chillerRules
             .Where(r => r.Scope == "*" || r.Scope == snapshot.ModbusId.ToString())
             .ToList();
-        await EvaluateThresholdRulesAsync(AlarmDeviceType.Chiller, deviceId,
-            applicableRules.Where(r => r.Metric != nameof(ChillerSnapshot.AccumulatedRunningHours)), metric => metric switch
+        var temperatureRules = applicableRules
+            .Where(r => r.Metric != nameof(ChillerSnapshot.AccumulatedRunningHours))
+            .ToList();
+        if (await IsChillerReadyForTemperatureRulesAsync(deviceId, snapshot, temperatureRules, nowUtc, ct))
         {
-            nameof(ChillerSnapshot.ChilledWaterOutletTemperature) => snapshot.ChilledWaterOutletTemperature,
-            nameof(ChillerSnapshot.ChilledWaterInletTemperature) => snapshot.ChilledWaterInletTemperature,
-            nameof(ChillerSnapshot.ChilledWaterTemperatureDifference) => snapshot.ChilledWaterTemperatureDifference,
-            _ => null,
-        }, nowUtc, ct);
+            await EvaluateThresholdRulesAsync(AlarmDeviceType.Chiller, deviceId, temperatureRules, metric => metric switch
+            {
+                nameof(ChillerSnapshot.ChilledWaterOutletTemperature) => snapshot.ChilledWaterOutletTemperature,
+                nameof(ChillerSnapshot.ChilledWaterInletTemperature) => snapshot.ChilledWaterInletTemperature,
+                nameof(ChillerSnapshot.ChilledWaterTemperatureDifference) => snapshot.ChilledWaterTemperatureDifference,
+                _ => null,
+            }, nowUtc, ct);
+        }
 
         var maintenanceRule = applicableRules.FirstOrDefault(r =>
             r.Metric == nameof(ChillerSnapshot.AccumulatedRunningHours) && r.Operator == AlarmMetricOperator.GreaterThan);
         if (maintenanceRule is not null)
             await EvaluateMaintenanceAsync(deviceId, snapshot.AccumulatedRunningHours, (int)maintenanceRule.Threshold, nowUtc, ct);
+    }
+
+    /// <summary>
+    /// 冰水主機是否在運轉：沿用前端 hvac-service.ts 的 deriveChillerStatus（負載率 &gt; 0 為運轉中），
+    /// 兩邊要一致，否則畫面顯示「停止」的主機卻開出溫度告警。
+    /// </summary>
+    /// <param name="snapshot">冰水主機最新快照。</param>
+    /// <returns>運轉中回傳 true。</returns>
+    public static bool IsChillerRunning(ChillerSnapshot snapshot) => snapshot.LoadPercentage > 0;
+
+    /// <summary>
+    /// 依運轉狀態決定這一輪要不要評估冰水主機的溫度門檻，並處理停機結案與開機暖機寬限。
+    /// </summary>
+    /// <param name="deviceId">主機在資料庫中的主鍵 ID。</param>
+    /// <param name="snapshot">冰水主機最新快照（已確認讀取成功）。</param>
+    /// <param name="temperatureRules">適用於這台主機的溫度類門檻規則。</param>
+    /// <param name="nowUtc">目前計算使用的標準 UTC 時間戳記。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>運轉中且暖機寬限已過時回傳 true。</returns>
+    private async Task<bool> IsChillerReadyForTemperatureRulesAsync(
+        int deviceId, ChillerSnapshot snapshot, IReadOnlyList<AlarmRule> temperatureRules, DateTimeOffset nowUtc, CancellationToken ct)
+    {
+        bool seenBefore = _chillerRunningSince.TryGetValue(deviceId, out var runningSince);
+
+        if (!IsChillerRunning(snapshot))
+        {
+            // Collector 剛啟動時第一次看到停機也要結案一次：可能是上次程序結束前開著、之後主機才停的告警
+            if (!seenBefore || runningSince is not null)
+            {
+                _chillerRunningSince[deviceId] = null;
+                var closed = await CloseThresholdAlarmsAsync(AlarmDeviceType.Chiller, deviceId, temperatureRules, nowUtc, ct);
+                if (seenBefore) logger.LogInformation("冰水主機停機：Chiller#{DeviceId}，暫停溫度門檻判定", deviceId);
+                if (closed > 0) logger.LogInformation("停機結案 {Count} 筆溫度門檻告警：Chiller#{DeviceId}", closed, deviceId);
+            }
+            return false;
+        }
+
+        if (!seenBefore)
+        {
+            // Collector 啟動時主機已經在運轉，不知道何時開機的，當成已暖機完成。
+            // 反過來當成剛開機的話，每次重啟 Collector 都會有一段時間對真的異常視而不見。
+            _chillerRunningSince[deviceId] = nowUtc - _chillerWarmup;
+            return true;
+        }
+
+        if (runningSince is null)
+        {
+            _chillerRunningSince[deviceId] = nowUtc;
+            logger.LogInformation("冰水主機開機：Chiller#{DeviceId}，暖機寬限 {Minutes} 分鐘後才判定溫度門檻",
+                deviceId, _chillerWarmup.TotalMinutes);
+            return _chillerWarmup <= TimeSpan.Zero;
+        }
+
+        return nowUtc - runningSince.Value >= _chillerWarmup;
+    }
+
+    /// <summary>
+    /// 設備停機／關機時結案它的溫度門檻告警，並清掉防抖計時，下次開機從零開始計算連續超標時間。
+    /// </summary>
+    /// <param name="deviceType">設備類型。</param>
+    /// <param name="deviceId">設備在資料庫中的主鍵 ID。</param>
+    /// <param name="rules">要結案的門檻規則。</param>
+    /// <param name="nowUtc">結案時間戳記。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>被結案的告警筆數。</returns>
+    private async Task<int> CloseThresholdAlarmsAsync(
+        AlarmDeviceType deviceType, int deviceId, IReadOnlyList<AlarmRule> rules, DateTimeOffset nowUtc, CancellationToken ct)
+    {
+        foreach (var rule in rules) _breachSince.TryRemove((rule.Id, deviceId), out _);
+        return await alarmRepository.CloseActiveEventsAsync(
+            deviceType, deviceId, rules.Select(RuleCode).ToList(), nowUtc, ct);
     }
 
     /// <summary>
@@ -230,7 +323,27 @@ public sealed class AlarmEngine(
         if (ddcReadStatus != ReadStatus.Success) return; // 規則 1：同上
 
         // 目前只支援室溫（決策見計畫 §2.1：Collector 沒有 FCU 設定溫度，做不出「溫差」規則）。
-        var applicableRules = _fcuRules.Where(r => r.Scope == "*" || r.Scope == floor);
+        var applicableRules = _fcuRules.Where(r => r.Scope == "*" || r.Scope == floor).ToList();
+
+        switch (snapshot.SwitchStatus)
+        {
+            case FcuSwitchStatus.On:
+                _fcuSwitchedOn[deviceId] = true;
+                break;
+            case FcuSwitchStatus.Off:
+                // 關機的區域沒有空調，室溫超標是正常現象；只在「開→關」那一輪（或啟動後第一次看到）結案一次
+                if (!_fcuSwitchedOn.TryGetValue(deviceId, out var wasOn) || wasOn)
+                {
+                    _fcuSwitchedOn[deviceId] = false;
+                    var closed = await CloseThresholdAlarmsAsync(AlarmDeviceType.Fcu, deviceId, applicableRules, nowUtc, ct);
+                    if (closed > 0) logger.LogInformation("FCU 關機結案 {Count} 筆室溫告警：Fcu#{DeviceId}", closed, deviceId);
+                }
+                return;
+            default:
+                // 開關狀態未知：跟讀取失敗一樣，不開新告警也不結案既有告警
+                return;
+        }
+
         await EvaluateThresholdRulesAsync(AlarmDeviceType.Fcu, deviceId, applicableRules, metric =>
             metric == nameof(FcuSnapshot.Temperature) ? snapshot.Temperature : (double?)null, nowUtc, ct);
     }

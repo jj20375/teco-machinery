@@ -90,6 +90,12 @@ backend/
 - 重讀供應商說明書全文逐欄對照：說明書的欄位全部都有接進來。`GET /api/v1/fcus` 新增 `vendorCode`（供應商 FCU 編號，
   例如 `FC_MC1_01`，DDC 之間會重複）與 `address`（暫存器文件位址），FCU 管理頁與空間設備配置顯示成「DDC1 · FC_MC1_01」
 
+**溫度門檻只在運轉中判定**（2026-10-16，決策見 `docs/BACKEND_INTEGRATION_PLAN.md` §2.9，細節見 `CHANGELOG.md` 同名章節）：
+- 冰水主機（`LoadPercentage > 0`，跟前端狀態徽章同一條判斷）運轉中、且開機超過暖機寬限（`.env` 的 `CHILLER_WARMUP_MINUTES`，預設 15）
+  才判定出水溫／回水溫／溫差門檻；FCU 只有 `SwitchStatus = On` 才判定室溫門檻
+- 停機／關機時把已開著的溫度門檻告警結案；14 個硬體旗標、通道離線、保養提醒不受影響
+- 已用本機模擬器（暖機寬限暫設 2 分鐘）實測停機、開機、FCU 關機情境；**尚未在現場真實主機上確認停機時負載率確實為 0**
+
 **冰水主機保養提醒**（2026-10-01，「機車換機油」模式，判定規則見 `docs/BACKEND_INTEGRATION_PLAN.md` §2.3，細節見 `CHANGELOG.md` 同名章節）：
 - migration `014_chiller_maintenance.sql`：`device_chiller.maintenance_baseline_hours/_at`＋`chiller_maintenance_log`（既有資料庫要手動套用）
 - `GET /api/v1/chillers/{id}/maintenance`（`hvac.chillers:read`）、`POST /api/v1/chillers/{id}/maintenance/reset`（`hvac.thresholds:update`）

@@ -76,6 +76,8 @@ services:
       Collector__Ddc2__Port: ${DDC2_PORT:-502}
       Collector__ApiBaseUrl: "http://api:8080"
       Collector__InternalToken: ${INTERNAL_TOKEN:?請在 .env 設定 INTERNAL_TOKEN}
+      # 冰水主機開機後幾分鐘才判定水溫門檻（暖機寬限），理由見 CollectorOptions.ChillerWarmupMinutes
+      Collector__ChillerWarmupMinutes: ${CHILLER_WARMUP_MINUTES:-15}
     depends_on:
       mariadb:
         condition: service_healthy

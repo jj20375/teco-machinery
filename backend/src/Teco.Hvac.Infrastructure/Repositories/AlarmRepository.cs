@@ -178,6 +178,27 @@ public sealed class AlarmRepository(TecoDbConnectionFactory factory)
             new { deviceType = (int)deviceType, deviceId, ruleCode, endedAt = endedAtUtc.UtcDateTime });
     }
 
+    /// <summary>
+    /// 一次結案同一台設備多個規則代碼的未結案告警（設備停機／關機時結案溫度門檻告警用）。
+    /// </summary>
+    /// <param name="deviceType">設備類型。</param>
+    /// <param name="deviceId">設備 ID。</param>
+    /// <param name="ruleCodes">要結案的規則代碼；空集合時不做任何事。</param>
+    /// <param name="endedAtUtc">結案時間戳記。</param>
+    /// <param name="ct">控制非同步作業取消的語彙基元。</param>
+    /// <returns>被結案的告警筆數。</returns>
+    public async Task<int> CloseActiveEventsAsync(
+        AlarmDeviceType deviceType, int deviceId, IReadOnlyCollection<string> ruleCodes, DateTimeOffset endedAtUtc,
+        CancellationToken ct = default)
+    {
+        if (ruleCodes.Count == 0) return 0;
+        using var conn = await factory.CreateOpenAsync(ct);
+        return await conn.ExecuteAsync(
+            "UPDATE alarm_event SET ended_at = @endedAt " +
+            "WHERE device_type = @deviceType AND device_id = @deviceId AND rule_code IN @ruleCodes AND ended_at IS NULL",
+            new { deviceType = (int)deviceType, deviceId, ruleCodes = ruleCodes.ToArray(), endedAt = endedAtUtc.UtcDateTime });
+    }
+
     public async Task<bool> TryFindActiveAsync(AlarmDeviceType deviceType, int deviceId, string ruleCode, CancellationToken ct = default)
     {
         using var conn = await factory.CreateOpenAsync(ct);

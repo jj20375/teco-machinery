@@ -248,6 +248,9 @@ const save = handleSubmit(async (values) => {
         <p class="text-xs text-[#94A3B8]">
           門檻改變後，儲存後約數秒內自動套用新設定，不需要重新啟動系統。數值超出範圍需持續 60 秒才會告警，所以存檔後約 1 分鐘才會看到結果；回到範圍內則在下一次讀取（數秒內）解除。
         </p>
+        <p class="text-xs text-[#94A3B8]">
+          室內溫度只在 FCU 開機時判定：關機的區域不告警，關機前已發出的室溫告警會自動解除。
+        </p>
       </div>
     </AdminRightPanel>
 
