@@ -133,6 +133,9 @@ function isSelf(u: MerchantUserRow): boolean {
 const callerIsOwner = computed(() => users.value.some((u) => isSelf(u) && u.isOwner));
 function lockReason(u: MerchantUserRow, action: 'delete' | 'toggle' | 'reset' | 'rename' | 'features'): string | null {
   const self = isSelf(u);
+  // 本人不能調整自己的權限、停用自己（後端 MerchantMembershipGuard 同一條）：拿掉自己的「使用者管理」就再也改不回來。
+  if (self && action === 'features') return '無法調整自己的權限，請由其他有「使用者管理」權限的人調整';
+  if (self && action === 'toggle') return '無法停用自己的帳號';
   if (u.isOwner) {
     if (action === 'delete') return '這是場館的擁有者（第一位管理員），無法刪除';
     if (action === 'toggle') return '這是場館的擁有者（第一位管理員），無法停用';

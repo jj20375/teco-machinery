@@ -151,6 +151,8 @@ backend/
   原始授予沒有 `per_update` 就只有 read，所以個人專屬角色的可編輯要明確寫入 C/R/U/D。全部勾選但有僅檢視就不是管理員。
   自己只能檢視的人不能幫別人開啟或取消「可編輯」。既有資料要跑 `017_floor_plan_read_only.sql`（簡化模式場館的自訂角色補上完整 CRUD，維持原本可編輯）；
   系統範本 `viewer` 只有讀取，規則改了之後空間配置就是唯讀。
+- **不能調整自己的權限、停用自己**（2026-10-19）：`MerchantMembershipGuard` 對本人的 `ChangeRole`／`Deactivate` 一律拒絕（含擁有者），
+  `SetUserFeatures` 在勾選有變動時也走這條；403＋中文原因，並留下失敗的操作紀錄。改名、改密碼不受限。
 - **場館自訂角色代碼不可重複**（2026-10-12）：新增角色時 `CreateRole` 會檢查代碼，同場館的自訂角色、全平台共用的系統範本（`editor`／`merchant-admin`…，
   `merchant_id` 為 NULL，資料庫唯一鍵擋不住）都算占用，大小寫視為相同；`member-` 開頭是「編輯成員」個人專屬角色用的，一律保留。重複回 409＋中文原因。
   `GET /api/v1/merchant/roles/code-availability?code=` 給畫面輸入時即時檢查用（需 `merchant.roles:create`），回 `{ available, message }`。代碼建立後不可修改。

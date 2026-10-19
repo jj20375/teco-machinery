@@ -621,6 +621,13 @@ public static class MerchantEndpoints
         // 勾選結果跟目前完全一樣就什麼都不做：不寫資料、不留紀錄，也不能讓對方的登入失效（自己存一次就被登出）。
         if (features.SameAs(beforeFeatures)) return Results.NoContent();
 
+        if (membership.UserId == scope.UserId
+            && await MerchantMembershipGuard.CheckAsync(scope, membership, MemberAction.ChangeRole, memberships, roles, ct) is { } selfDenied)
+        {
+            await LogMemberDeniedAsync(opLog, users, scope, "merchant.user.features.update", membership, "調整自己的權限", selfDenied, ct);
+            return MerchantMembershipGuard.Denied(selfDenied);
+        }
+
         var currentRole = membership.RoleId is int currentRoleId ? await roles.FindByIdAsync(currentRoleId, ct) : null;
         var currentIsAdmin = IsAdminRole(currentRole);
         var newIsAdmin = features.IsAdmin;

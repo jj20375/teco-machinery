@@ -28,6 +28,7 @@ public enum MemberAction
 /// - 擁有者（場館第一位管理員）：不能被刪除、停用、改角色；別人不能幫他重設密碼或改名，只有他本人能。
 /// - 其他場館管理員：只有擁有者能刪除、停用、改角色、重設密碼、改名；本人改自己的名字／密碼不受限。
 /// - 一般成員：沒有額外限制（原本的 merchant.users 權限檢查照舊）。
+/// - 任何人都不能調整自己的權限、停用自己：手滑拿掉自己的「使用者管理」就再也改不回來（2026-10-19）。改名、改密碼不受限。
 /// 平台管理員走 /api/v1/platform，不經過這裡，仍可處理擁有者的密碼重設。
 /// </summary>
 public static class MerchantMembershipGuard
@@ -50,6 +51,11 @@ public static class MerchantMembershipGuard
         RequestScope scope, MerchantMembership target, MemberAction action,
         MembershipRepository memberships, RoleRepository roles, CancellationToken ct)
     {
+        if (target.UserId == scope.UserId && action is MemberAction.ChangeRole or MemberAction.Deactivate)
+            return action == MemberAction.ChangeRole
+                ? "無法調整自己的權限，請由其他有「使用者管理」權限的人調整。"
+                : "無法停用自己的帳號，請由其他有「使用者管理」權限的人處理。";
+
         // 判定目標對象是否為場館管理員角色
         var targetIsAdmin = false;
         if (target.RoleId is int roleId)

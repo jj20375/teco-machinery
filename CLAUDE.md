@@ -183,6 +183,8 @@
   只擋「刪除」不夠——能重設密碼、改角色、停用就能接管或癱瘓帳號，所以這幾條路都要擋。前端只是讓按鈕點不到，
   真正的防線在後端，且要先用 `membership.MerchantId == scope.MerchantId` 確認屬於自己的場館。
   平台建立場館的第一位管理員時自動成為擁有者（`PlatformEndpoints.CreateMerchantMembership`）。
+  **任何人都不能調整自己的權限、停用自己**（2026-10-19，`MerchantMembershipGuard` 最前面那條，含擁有者）：手滑拿掉自己的「使用者管理」就再也改不回來；
+  改名、改密碼不受限，原樣存檔（沒有變更）也不擋。自己的權限要由其他有「使用者管理」權限的人調整。
 - **使用者權限改成直接勾選功能，角色機制在畫面上隱藏**（2026-10-12）：新增／編輯使用者是 9 個功能核取方塊（`MemberFeatures`，後端與
   `user-service.ts` 的 `MEMBER_FEATURE_OPTIONS` 要同步），**全部勾選＝場館管理員**（指到 `merchant-admin` 系統角色，全權限且未來新增的功能自動涵蓋），
   否則是個人專屬角色 `member-{membershipId}`。側邊欄的「角色管理」已隱藏（`AdminSidebar.vue` 註解掉一行即可恢復），頁面與後端角色 API 都保留。
