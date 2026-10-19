@@ -72,8 +72,10 @@ export interface CreateMerchantUserInput {
   email: string;
   /** 初始密碼 */
   password: string;
-  /** 可使用的功能代碼；全部勾選（見 MEMBER_FEATURE_OPTIONS）後端就當成場館管理員。 */
+  /** 可使用的功能代碼；全部勾選（見 MEMBER_FEATURE_OPTIONS）而且沒有「僅檢視」，後端就當成場館管理員。 */
   features: string[];
+  /** features 裡設成「僅檢視」的功能（只能是 READ_ONLY_CAPABLE_FEATURES 裡的）。 */
+  readOnlyFeatures: string[];
 }
 
 /** 取得目前場館的成員清單（含角色名稱、啟用狀態、最後登入時間）。 */
@@ -150,11 +152,22 @@ export const MEMBER_FEATURE_OPTIONS = [
 ] as const;
 
 /**
+ * 可以設成「僅檢視」的功能（勾選後另外選可編輯或僅檢視），其餘功能勾選＝完整操作。
+ * 跟後端 MerchantRolePermissionConfigurationRules.ReadOnlyCapableResources 一致。
+ */
+export const READ_ONLY_CAPABLE_FEATURES: readonly string[] = ['hvac.floor_plan'];
+
+export interface MemberFeatureSelection {
+  features: string[];
+  readOnlyFeatures: string[];
+}
+
+/**
  * 目前這個成員實際可使用哪些功能（讀他現有角色的實際授予；場館管理員視為全部）。
  * @param membershipId 目標成員關係 ID
  * @returns 啟用的功能代碼字串陣列
  */
-export function getMemberFeaturesApi(membershipId: number): Promise<{ features: string[] }> {
+export function getMemberFeaturesApi(membershipId: number): Promise<MemberFeatureSelection> {
   return authorizedJsonApi(`/api/v1/merchant/users/${membershipId}/features`);
 }
 
@@ -163,12 +176,12 @@ export function getMemberFeaturesApi(membershipId: number): Promise<{ features: 
  * 不會動到 merchant-admin／editor／viewer 這三個跨場館共用的系統範本。
  * 升級／降級管理員會經過後端的管理員保護（擁有者不能被降級、不能降級最後一位管理員），失敗訊息可直接顯示。
  * @param membershipId 目標成員關係 ID
- * @param features 勾選之功能代碼陣列
+ * 操作者自己沒有的功能不能變更（加上或拿掉都不行），送出時要原樣帶回對方目前的狀態，否則後端會拒絕。
  */
-export function setMemberFeaturesApi(membershipId: number, features: string[]): Promise<void> {
+export function setMemberFeaturesApi(membershipId: number, selection: MemberFeatureSelection): Promise<void> {
   return authorizedJsonApi(`/api/v1/merchant/users/${membershipId}/features`, {
     method: 'PUT',
-    body: JSON.stringify({ features }),
+    body: JSON.stringify(selection),
   });
 }
 

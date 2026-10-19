@@ -112,10 +112,18 @@ function moveDevice(id: string, point: Point, rotation?: number) {
   selectedAreaId.value = p.areaId;
   notify('位置已調整，尚未儲存。');
 }
-// 改名打的是 FCU 管理的 API（PATCH /api/v1/fcus/{id}），要有「FCU管理」的編輯權限；
-// 只有「空間設備配置」權限的人看得到名稱但不能改。後端也會擋，這裡只是不讓按鈕出現。
-const canRenameFcu = computed(() =>
-  getSessionApi()?.user.grants.some((g) => g.code === 'hvac.fcus' && g.actions.includes('update')) ?? false);
+// 兩個權限都在掛載後才讀 session（SSR 讀不到，理由見 AdminSidebar.vue），讀到之前一律當成不能改，不會先閃出編輯按鈕。
+// 「僅檢視」＝沒有 hvac.floor_plan 的 update：只能看、匯出，不能新增、移動、移除或儲存（後端儲存也會擋）。
+// 改名打的是 FCU 管理的 API（PATCH /api/v1/fcus/{id}），要有「FCU管理」的編輯權限。
+const canEditLayout = ref(false);
+const canRenameFcu = ref(false);
+onMounted(() => {
+  const session = getSessionApi();
+  const can = (code: string) => !session || session.user.scopeKind !== 'merchant'
+    || session.user.grants.some((g) => g.code === code && g.actions.includes('update'));
+  canEditLayout.value = can('hvac.floor_plan');
+  canRenameFcu.value = can('hvac.fcus');
+});
 const nameEditing = ref(false);
 const nameDraft = ref('');
 const nameSaving = ref(false);
@@ -247,9 +255,9 @@ onUnmounted(() => window.removeEventListener('beforeunload', beforeLeave));
     <div class="plan-page">
       <div class="page-heading">
         <div><div class="eyebrow">SPACE & EQUIPMENT</div><h2>{{ floor }} 空間配置</h2><p>點選區域，加入冰水主機或 FCU，再調整設備位置。</p></div>
-        <div class="actions"><span class="save-state" :class="{ dirty }">{{ dirty ? '● 尚未儲存' : '已同步' }}</span>
+        <div class="actions"><span v-if="!canEditLayout && !loading" class="read-only-badge">僅檢視</span><span v-else class="save-state" :class="{ dirty }">{{ dirty ? '● 尚未儲存' : '已同步' }}</span>
           <AdminButton variant="tertiary" :disabled="loading || !!loadError" @click="exportDraft">匯出配置</AdminButton>
-          <AdminButton :disabled="loading || !!loadError || !dirty || saving" @click="save">
+          <AdminButton v-if="canEditLayout" :disabled="loading || !!loadError || !dirty || saving" @click="save">
             {{ saving ? '儲存中…' : '儲存配置' }}
           </AdminButton>
         </div>
@@ -269,7 +277,7 @@ onUnmounted(() => window.removeEventListener('beforeunload', beforeLeave));
           <div class="map-caption"><span>CAD 分區圖 <span class="divider">/</span> {{ areas.length }} 個分區</span><span>{{ placements.length }} 台已配置 <span class="divider">·</span> {{ abnormalCount }} 台異常 <span class="divider">·</span> {{ maintenanceCount }} 台待保養</span></div>
           <div v-if="loading" class="loading" role="status">正在讀取配置…</div>
           <div v-else-if="view === '2d'" class="map-stage">
-            <FloorPlanCanvas ref="canvasRef" :floor="floor" :placements="placements" :equipment="equipment" :editable="!loadError" :initial-scale="DEFAULT_ZOOM"
+            <FloorPlanCanvas ref="canvasRef" :floor="floor" :placements="placements" :equipment="equipment" :editable="!loadError && canEditLayout" :initial-scale="DEFAULT_ZOOM"
               zoomable :selected-area-id="selectedAreaId" :selected-device-id="selectedDeviceId"
               @select-area="chooseArea" @select-device="selectDevice" @move="moveDevice" @view-change="zoomView = $event" />
           </div>
@@ -300,12 +308,15 @@ onUnmounted(() => window.removeEventListener('beforeunload', beforeLeave));
               <small>約 {{ selectedArea.sqm }} ㎡ · {{ areaPlacements.length }} 台設備</small>
               <p v-if="selectedArea.unnamed" class="area-note">此分區尚未命名，目前以編號顯示。</p>
             </div>
+            <p v-if="!canEditLayout" class="hint">您的帳號只能檢視空間設備配置，無法新增、移動或移除設備。</p>
+            <template v-else>
             <div class="inspector-heading"><span class="step">02</span><h3>新增設備到此區域</h3></div>
             <div class="kind-tabs"><button type="button" :aria-pressed="kind === 'chiller'" @click="kind = 'chiller'">冰水主機</button><button type="button" :aria-pressed="kind === 'fcu'" @click="kind = 'fcu'">FCU</button></div>
             <label class="field-label" for="equipment-select">未配置的設備</label>
             <select id="equipment-select" v-model="pendingDeviceId" :disabled="!available.length || !!loadError"><option v-if="!available.length" value="">此類設備已全部配置</option><option v-for="e in available" :key="e.id" :value="e.id">{{ e.name ?? '未設定' }} · {{ e.code }} · {{ equipmentStatus(e.status) }}</option></select>
             <AdminButton class="add-button" :disabled="!pendingDeviceId || !!loadError" @click="addEquipment">＋ 加入此區域</AdminButton>
             <p class="hint">從系統設備清單加入，不會改變設備的啟停設定。</p>
+            </template>
           </template>
 
           <div v-if="selectedEquipment && selectedPlacement" class="device-detail">
@@ -326,8 +337,10 @@ onUnmounted(() => window.removeEventListener('beforeunload', beforeLeave));
             <div v-if="selectedEquipment.vendorLabel" class="device-metric"><span>供應商編號</span><b class="vendor-code">{{ selectedEquipment.vendorLabel }}</b></div>
             <div class="device-metric"><span>{{ selectedEquipment.kind === 'chiller' ? '出水溫度' : '室內溫度' }}</span><b>{{ selectedEquipment.temperature === undefined ? '無資料' : `${selectedEquipment.temperature.toFixed(1)} °C` }}</b></div>
             <div class="device-metric"><span>方向</span><b>{{ selectedPlacement.rotation }}°</b></div>
-            <div class="device-actions"><AdminButton variant="tertiary" size="sm" @click="rotateDevice">旋轉 90°</AdminButton><button class="remove" type="button" @click="removeDevice">移除位置</button></div>
-            <p class="hint">{{ view === '2d' ? '拖曳設備可調整位置；也可聚焦設備後使用方向鍵微調。' : '切換到 2D 平面即可調整設備位置。' }}</p>
+            <template v-if="canEditLayout">
+              <div class="device-actions"><AdminButton variant="tertiary" size="sm" @click="rotateDevice">旋轉 90°</AdminButton><button class="remove" type="button" @click="removeDevice">移除位置</button></div>
+              <p class="hint">{{ view === '2d' ? '拖曳設備可調整位置；也可聚焦設備後使用方向鍵微調。' : '切換到 2D 平面即可調整設備位置。' }}</p>
+            </template>
           </div>
 
           <div v-if="areaPlacements.length" class="placed-list"><h3>此區域設備 <span>{{ areaPlacements.length }}</span></h3><button v-for="p in areaPlacements" :key="p.deviceId" type="button" :class="{ active: selectedDeviceId === p.deviceId }" @click="selectDevice(p.deviceId)"><i :style="{ background: equipmentColor(equipment.find(e => e.id === p.deviceId)?.status) }" /><span>{{ equipment.find(e => e.id === p.deviceId)?.name ?? '未設定' }}</span><small>{{ equipment.find(e => e.id === p.deviceId)?.code }} · {{ equipmentStatus(equipment.find(e => e.id === p.deviceId)?.status) }}</small></button></div>
@@ -350,7 +363,7 @@ onUnmounted(() => window.removeEventListener('beforeunload', beforeLeave));
 h2 { font-size: 25px; font-weight: 750; color: #142b3b; margin: 4px 0; }
 .page-heading p { color: #64748b; font-size: 13px; margin: 0; }
 .actions { gap: 10px; }
-.save-state { font-size: 12px; color: #64748b; margin-right: 4px; }.save-state.dirty { color: #a16207; }
+.save-state { font-size: 12px; color: #64748b; margin-right: 4px; }.read-only-badge { font-size: 12px; color: #475569; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 999px; padding: 3px 10px; margin-right: 4px; }.save-state.dirty { color: #a16207; }
 .workspace { display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: 20px; align-items: start; }
 .map-panel { background: #0c1925; border: 1px solid #263b4b; border-radius: 14px; overflow: hidden; color: #d8e7ef; }
 .map-toolbar { justify-content: space-between; padding: 15px 18px; gap: 12px; flex-wrap: wrap; border-bottom: 1px solid #253847; }

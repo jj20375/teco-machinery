@@ -145,7 +145,12 @@ backend/
   違規回 403＋中文原因。平台管理員走 `/api/v1/platform`，仍可重設擁有者的密碼。擁有者換人目前沒有畫面，要直接改資料庫。
 - **使用者權限＝勾選功能**（2026-10-12）：`POST /merchant/users` 可直接帶 `features`（取代 `roleId`，舊寫法保留相容），`PUT /merchant/users/{id}/features` 儲存。
   9 個功能（`MemberFeatures`）勾選＝授予 read（簡化模式展開成完整 CRUD）；**全部勾選就指到 `merchant-admin` 系統角色**，否則給個人專屬角色 `member-{id}`。
-  授予的功能必須是操作者本身也有的（防提權）；升級／降級管理員經 `MerchantMembershipGuard`，且不能降級最後一位在職管理員；勾選沒變就不處理。需 `merchant.users:update` ＋ `assign_role` 子功能。
+  操作者本身沒有的功能不能變更（不能幫人加上、也不能拿掉，送出時要原樣帶回對方現況，否則 403；防提權）；升級／降級管理員經 `MerchantMembershipGuard`，且不能降級最後一位在職管理員；勾選沒變就不處理。需 `merchant.users:update` ＋ `assign_role` 子功能。
+  **「空間設備配置」可設成僅檢視**（2026-10-19）：兩支 API 另帶 `readOnlyFeatures`（`GET .../features` 也回傳），只接受
+  `MerchantRolePermissionConfigurationRules.ReadOnlyCapableResources` 裡的功能（目前只有 `hvac.floor_plan`）。簡化模式對這些功能不再一律展開成完整 CRUD：
+  原始授予沒有 `per_update` 就只有 read，所以個人專屬角色的可編輯要明確寫入 C/R/U/D。全部勾選但有僅檢視就不是管理員。
+  自己只能檢視的人不能幫別人開啟或取消「可編輯」。既有資料要跑 `017_floor_plan_read_only.sql`（簡化模式場館的自訂角色補上完整 CRUD，維持原本可編輯）；
+  系統範本 `viewer` 只有讀取，規則改了之後空間配置就是唯讀。
 - **場館自訂角色代碼不可重複**（2026-10-12）：新增角色時 `CreateRole` 會檢查代碼，同場館的自訂角色、全平台共用的系統範本（`editor`／`merchant-admin`…，
   `merchant_id` 為 NULL，資料庫唯一鍵擋不住）都算占用，大小寫視為相同；`member-` 開頭是「編輯成員」個人專屬角色用的，一律保留。重複回 409＋中文原因。
   `GET /api/v1/merchant/roles/code-availability?code=` 給畫面輸入時即時檢查用（需 `merchant.roles:create`），回 `{ available, message }`。代碼建立後不可修改。

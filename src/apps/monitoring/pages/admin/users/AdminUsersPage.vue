@@ -77,8 +77,8 @@ const updateUserMutation = useMutation({
 });
 
 const setFeaturesMutation = useMutation({
-  mutationFn: (input: { membershipId: number; features: string[] }) =>
-    setMemberFeaturesApi(input.membershipId, input.features),
+  mutationFn: (input: { membershipId: number; features: string[]; readOnlyFeatures: string[] }) =>
+    setMemberFeaturesApi(input.membershipId, { features: input.features, readOnlyFeatures: input.readOnlyFeatures }),
   onSuccess: (_data, variables) => {
     queryClient.invalidateQueries({ queryKey: ['merchant-user-features', variables.membershipId] });
     return invalidateUsers();
@@ -107,7 +107,8 @@ const panelLoading = ref(false);
 const saveError = ref('');
 const activeUser = ref<MerchantUserRow | null>(null);
 const originalFeatures = ref<string[]>([]);
-const form = reactive<{ features: string[]; isActive: boolean }>({ features: [], isActive: true });
+const originalReadOnly = ref<string[]>([]);
+const form = reactive<{ features: string[]; readOnly: string[]; isActive: boolean }>({ features: [], readOnly: [], isActive: true });
 const saving = computed(() => setFeaturesMutation.isPending.value || updateUserMutation.isPending.value);
 
 /** 全部功能都勾選＝場館管理員（跟後端 AssignFeaturesAsync 一致，角色代碼是 merchant-admin）。 */
@@ -156,24 +157,24 @@ async function openPanel(u: MerchantUserRow) {
     // （staleTime 內短時間重開同一個人的面板不用重打 API），但觸發時機是「點擊
     // 打開面板」這個指令式動作，用 fetchQuery 直接拿 Promise 比硬套響應式
     // enabled/queryKey 搭配 watch 更直接、也更符合這裡的程式碼流程。
-    const { features } = await queryClient.fetchQuery({
+    const { features, readOnlyFeatures } = await queryClient.fetchQuery({
       queryKey: ['merchant-user-features', u.membershipId],
       queryFn: () => getMemberFeaturesApi(u.membershipId),
       staleTime: 10_000,
     });
     originalFeatures.value = features;
+    originalReadOnly.value = readOnlyFeatures ?? [];
     form.features = [...features];
+    form.readOnly = [...originalReadOnly.value];
   } catch (err) {
     saveError.value = err instanceof Error ? err.message : '讀取權限設定失敗，請稍後再試。';
   } finally {
     panelLoading.value = false;
   }
 }
-const featuresChanged = computed(() => {
-  const a = [...form.features].sort().join(',');
-  const b = [...originalFeatures.value].sort().join(',');
-  return a !== b;
-});
+const sameSet = (a: readonly string[], b: readonly string[]) => [...a].sort().join(',') === [...b].sort().join(',');
+const featuresChanged = computed(() =>
+  !sameSet(form.features, originalFeatures.value) || !sameSet(form.readOnly, originalReadOnly.value));
 const changed = computed(() => {
   if (!activeUser.value) return false;
   return featuresChanged.value || form.isActive !== activeUser.value.isActive;
@@ -183,7 +184,9 @@ async function save() {
   saveError.value = '';
   try {
     if (featuresChanged.value) {
-      await setFeaturesMutation.mutateAsync({ membershipId: activeUser.value.membershipId, features: form.features });
+      await setFeaturesMutation.mutateAsync({
+        membershipId: activeUser.value.membershipId, features: form.features, readOnlyFeatures: form.readOnly,
+      });
     }
     if (form.isActive !== activeUser.value.isActive) {
       await updateUserMutation.mutateAsync({ membershipId: activeUser.value.membershipId, patch: { isActive: form.isActive } });
@@ -289,7 +292,7 @@ async function confirmDelete() {
 const addOpen = ref(false);
 const adding = createUserMutation.isPending;
 const addError = ref('');
-const addForm = reactive({ username: '', displayName: '', email: '', password: '', features: [] as string[] });
+const addForm = reactive({ username: '', displayName: '', email: '', password: '', features: [] as string[], readOnly: [] as string[] });
 
 function openAdd() {
   addForm.username = '';
@@ -297,6 +300,7 @@ function openAdd() {
   addForm.email = '';
   addForm.password = '';
   addForm.features = [];
+  addForm.readOnly = [];
   addError.value = '';
   addOpen.value = true;
 }
@@ -322,6 +326,7 @@ async function submitAdd() {
       email: addForm.email.trim(),
       password: addForm.password,
       features: addForm.features,
+      readOnlyFeatures: addForm.readOnly,
     });
     addOpen.value = false;
   } catch (err) {
@@ -471,7 +476,7 @@ async function submitAdd() {
 
         <section>
           <div v-if="panelLoading" class="text-xs text-[#94A3B8] py-4 text-center">載入中…</div>
-          <MemberFeatureChecklist v-else v-model="form.features" />
+          <MemberFeatureChecklist v-else v-model="form.features" v-model:read-only="form.readOnly" />
         </section>
 
         <section>
@@ -608,7 +613,7 @@ async function submitAdd() {
             <input v-model="addForm.password" autocomplete="new-password" name="new-user-initial-password" data-lpignore="true" data-1p-ignore type="text" placeholder="請告知使用者，日後可自行修改"
               class="w-full px-3 py-2.5 text-sm text-black border border-[#CBD5E1] rounded-lg focus:outline-none focus:border-[#00D1B2] placeholder-[#94A3B8]" />
           </div>
-          <MemberFeatureChecklist v-model="addForm.features" />
+          <MemberFeatureChecklist v-model="addForm.features" v-model:read-only="addForm.readOnly" />
 
           <div class="flex justify-end gap-3 pt-2">
             <AdminButton type="button" variant="tertiary" @click="addOpen = false">取消</AdminButton>

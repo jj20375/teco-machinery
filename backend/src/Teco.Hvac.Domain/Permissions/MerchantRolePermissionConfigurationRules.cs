@@ -14,6 +14,14 @@ public static class MerchantRolePermissionConfigurationRules
     private static readonly string[] FullCrudActions = ["create", "read", "update", "delete"];
 
     /// <summary>
+    /// 可以設成「僅檢視」的資源。簡化模式本來是「有授予就展開成完整 CRUD」，這些資源例外：
+    /// 原始授予沒有 update 時只給 read，否則「空間設備配置」無法只開放查看（2026-10-19 需求）。
+    /// 使用者管理畫面的「可編輯／僅檢視」選項（MerchantEndpoints）也以這份清單為準。
+    /// </summary>
+    public static readonly IReadOnlySet<string> ReadOnlyCapableResources =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "hvac.floor_plan" };
+
+    /// <summary>
     /// 依據場館之簡化模式開關，對單一資源的權限授予進行動態展開或保留細項設定。
     /// 若場館關閉細部 CRUD 配置，只要該功能被授予即自動展開為擁有 Full CRUD；
     /// 若關閉細部選項配置，只要功能被授予即自動展開為擁有該資源的所有附加功能。
@@ -31,7 +39,12 @@ public static class MerchantRolePermissionConfigurationRules
     {
         return new PermissionGrant(
             grant.Code,
-            isCrudConfigurationEnabled ? grant.Actions : FullCrudActions,
+            isCrudConfigurationEnabled ? grant.Actions : SimplifiedActions(grant),
             isOptionConfigurationEnabled ? grant.Options : availableOptions);
     }
+
+    private static IReadOnlyCollection<string> SimplifiedActions(PermissionGrant grant) =>
+        ReadOnlyCapableResources.Contains(grant.Code) && !grant.Actions.Contains("update")
+            ? grant.Actions.Contains("read") ? ["read"] : []
+            : FullCrudActions;
 }
