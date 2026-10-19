@@ -72,6 +72,10 @@
      `typeof localStorage === 'undefined'`，SSR 階段回傳 `null`（等 hydrate 後用真正的
      session 重新算），新寫的程式碼如果要在元件頂層存取這類瀏覽器 API，一律要先加這種守衛，
      不要假設「只要不是在 `onMounted` 裡就一定在瀏覽器執行」。
+     **光有守衛還不夠：依 session 決定「畫什麼」的內容（選單、按鈕、可否編輯）要在 `onMounted` 之後才算。**
+     SSR 讀不到 session 所以照一種樣子輸出，瀏覽器第一次渲染若算出另一種樣子，正式版 hydration 只沿用既有節點、
+     不修正 class／屬性，畫面就會錯位。2026-10-19 修過的真實 bug：沒有「空間設備配置」權限的帳號，側邊欄圖示整排錯位、
+     使用者管理和操作紀錄同時高亮（`AdminSidebar.vue` 改成掛載後才產生選單）。`npm run dev` 不一定看得出來，要用建置版驗證。
    - **`v-for` 迭代物件字面量時，參數順序是 `(value, key)`，不是 `(key, value)`。**
      這是 2026-09-21 修過的真實 bug（`AdminRolesPage.vue` 的角色權限勾選格）：寫成
      `v-for="(field, label) in { create: '新增', read: '讀取' }"` 時，`field` 拿到的其實是

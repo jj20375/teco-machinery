@@ -4,7 +4,7 @@
  * 後台側邊欄 — 對齊 Figma（node 58-6 等）
  * 頂部品牌 + 選單（統計報表可展開 3 子項）+ 底部版本文字
  */
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { getSessionApi } from '../_services/auth-service';
 import { ADMIN_MENU_ITEMS as ALL_MENU_ITEMS, type MenuItem } from '../_services/admin-menu';
 
@@ -27,7 +27,14 @@ const visibleCodes = computed<Set<string> | null>(() => {
   return codes;
 });
 
+// 掛載前一律不畫選單：SSR 讀不到 session，若伺服器輸出完整選單、瀏覽器第一次渲染卻是過濾後的，
+// 正式版 hydration 只沿用既有節點、不修正 class，選單的圖示與高亮會整排錯位（2026-10-19 修過的 bug，
+// 沒有「空間設備配置」權限的帳號，冰水主機管理顯示成地圖圖示、使用者管理與操作紀錄同時高亮）。
+const mounted = ref(false);
+onMounted(() => { mounted.value = true; });
+
 const MENU_ITEMS = computed<MenuItem[]>(() => {
+  if (!mounted.value) return [];
   const codes = visibleCodes.value;
   if (codes === null) return ALL_MENU_ITEMS;
   return ALL_MENU_ITEMS.filter((item) => codes.has(item.permissionCode));
