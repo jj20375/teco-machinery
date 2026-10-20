@@ -1994,3 +1994,33 @@ migration 016 套用到本機後，`merchant_admin`（場館 1）與 `kym_leader
 **修正**：`MerchantMembershipGuard.CheckAsync` 最前面加一條：本人對自己的 `ChangeRole`、`Deactivate` 一律拒絕（含擁有者），訊息請對方找其他有「使用者管理」權限的人處理。`SetUserFeatures` 原本只有升降管理員時才呼叫 guard，改成勾選有變動且是本人時也檢查；原樣存檔（沒有變更）仍回 204。被擋下時留下失敗的操作紀錄。前端使用者管理頁自己那一列的「設定」變灰、啟用開關鎖住，滑鼠移上去說明原因。改名、改密碼不受影響。
 
 **驗證**：本機重建 API 後以 API 測——一般使用者拿掉自己的 FCU 管理 → 403、原樣存檔 → 204、停用自己 → 403、改自己名字 → 204；擁有者改自己權限 → 403；管理員改別人權限 → 204。建置版使用者管理頁：`merchant_admin` 自己那列「設定」為灰色並附說明、啟用開關停用；其他人那列正常。測試帳號已刪除。
+
+## 圖面對齊現場最終版 PPT：旋轉 180°、補分區、1F 小圖、95 台批次配置（2026-10-20）
+
+**起因**：現場最終版 `ClubM B1+B2F分區送風機編號示意圖-0909.pptx` 標了每台送風機的位置與名稱（`名稱/序號`，顏色是集中控制器 MC1～MC5）。系統的 B1／B2 圖面跟它差 180°，而且設計端的紅框跟 PPT 位置對不齊，95 台 FCU 的配置又是驗收用的模擬資料。
+
+**比對**：用程式把 PPT 底圖旋轉 180° 後自動對位疊到系統 SVG（B1 縮放 0.479、B2 0.3395，牆、柱、旋轉梯貼合），確認是同一份 CAD、只差方向。名稱／序號與廠商 Excel（`大直明水路集中控制器+APP 顯示名稱20260831.xlsx`）逐筆核對：B1 64 台、B2 31 台完全一致，只有 B2 的 `T12-13` 在 Excel 寫成 `T12/T13`。
+
+**圖面**（`scripts/floor-plan/zone-plan.mjs`、`scripts/extract-floor-plan.mjs`、新增 `scripts/floor-plan/inset-1f.mjs`）
+- 兩層 `rotate: 180`：底圖整層包 `matrix(-1 0 0 -1 W H)`，紅框、外框、補的分區在編號前先轉，B1 的 Z 編號因此依新方向重編。B2 沿用設計稿 id，但方位字母對調（E↔W、N↔S），旋轉後 E 仍在東（圖面右側）。
+- `extraZones`：PPT 有送風機、設計端沒畫紅框的位置——B1 補 B5（第 4 間圓弧包廂）、V男廁、V女廁；B2 補休息區、梯廳、藍置物櫃、綠置物櫃、更衣室入口（`B2-C07`～`C11`）。座標是依 PPT 底圖對位後量出的矩形，不是精確牆線，之後設計端在 Illustrator 補畫紅框就把對應項目刪掉。
+- B1 右上角的「1F 原始圖」小圖（1F大門、1F電梯前的 2 台 MC5 FCU）：依 PPT 重繪簡化版，放進建築右上的空白三角區（縮到 85%），給 `1F 大門`、`1F 電梯前` 兩個分區。小圖在建築外框之外，產生檔新增 `EXTRA_OUTLINES`，`FloorPlan.extraOutlines`、`placementArea`（四個角要落在同一個外框內）與 `FloorPlan3D.vue`（每個外框各擠一塊樓地板）都認它。
+- 結果：B1 72 → 77 個分區，B2 41 → 46 個分區；`npm run extract:floor-plan` 無警告。
+
+**配置與名稱**（新增 `npm run build:ppt-layout`、`scripts/apply-ppt-layout.mjs`、`scripts/floor-plan/ppt-labels.json`、`docs/floor-plan-ppt-mapping.md`）
+- `build-ppt-layout.mjs` 依標籤位置判定分區（標籤壓在牆線、走道、圖外的 17 台在 `ZONE_OVERRIDES` 逐台指定並寫明理由），再用前端自己的 `canPlace` 找離標籤最近且合法的座標，所以存檔不會在前端驗證階段失敗。兩台冰水主機沿用原位置旋轉 180°（CH-1 → `B1-Z11`、CH-2 → `B1-Z14`，朝向 +180°）。
+- `apply-ppt-layout.mjs` 打正式 API：整層 `PUT /api/v1/floor-plan/{floor}/placements`（帶樂觀鎖版本、回寫 `zone_code`、寫操作紀錄）＋逐台 `PATCH /api/v1/fcus/{id}` 寫自訂名稱；預設只預覽，`--apply` 才寫入，可重複執行（已一致的名稱不再寫）。帳號密碼從環境變數 `TECO_USERNAME`／`TECO_PASSWORD` 讀。
+- 測試（`tests/floor-plan.test.mjs`）：更新分區數與 id、旋轉後的測試座標，新增 1F 小圖檢查；順便移除早就失效的檢查（`storageKey` 已不存在、`getFloorEquipmentApi` 需要真實 API），原本這支測試在 `storageKey is not a function` 就停了。
+
+**驗證**
+- `npm run extract:floor-plan`、`node tests/floor-plan.test.mjs`、`npm run typecheck`、`npm run build` 通過。
+- 疊圖（PPT 底圖＋新 SVG＋分區＋標籤點）人工逐區檢查 B1、B2：方向與 PPT 一致，補的分區、1F 小圖位置正確。
+- 本機 API 寫入後資料庫：95 筆 FCU 配置（B1 64、B2 31）＋2 台冰水主機，`zone_code` 全部與配置一致、無 NULL，95 台自訂名稱都已寫入。
+- 建置版（本機 :8081）以專案測試帳號 `oplog_admin` 登入：空間設備配置 B1 顯示 77 個分區、66 台已配置，B2 顯示 46 個分區、31 台已配置，圖上標籤是 PPT 名稱（含 `1F大門`、`1F電梯前`、`T12-13`）；實際移動設備後按「儲存配置」，B1、B2 都顯示「配置已儲存」；3D 檢視含 1F 小圖；監控中心與前台戰情室熱區圖載入正常、方向與 PPT 一致（截圖解析度低，沒有逐一檢查標籤文字）。測試移動後已還原。
+- 瀏覽器 console 有 `Hydration completed but contains mismatches`，使用者管理頁（跟圖面無關）也會出現，不是這次改動造成的，這次沒有處理。
+
+**未驗證／要注意**
+- 座標只是依 PPT 標籤位置推得，不是現場實際位置；對照表備註欄標了需確認的案例（B1 28 台、B2 4 台：壓在牆線、走道、靠近分區邊界，其中 17 台是逐台指定分區）。補畫的分區與 1F 小圖都是簡化的示意，不是精確牆線。
+- 正式機與測試環境（VM）還沒同步：要重新部署前端、對資料庫執行 `apply-ppt-layout.mjs`（先預覽）；VM 上若冰水主機位置跟本機不同，要在頁面手動調整。
+- 這次寫入的操作紀錄記在 `oplog_admin`（稽核測試管理員）名下；交機前本來就會用 `go-live-cleanup.sh` 清操作紀錄。
+- 前台戰情室右側「FCU 設備總覽」清單仍以 `zone_code`（例如 `B1-Z63`）顯示，不是自訂名稱，這是既有設計，沒有改。

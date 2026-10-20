@@ -211,10 +211,9 @@ EF Core 10 不相容。與其混用 EFCore9 + net10 app（會有一堆隱性版�
 - **FCU 對照表管理**：不需要另外開發——「空間設備配置」頁面（`/admin/floor-plan`）儲存時
   就會透過 `FloorPlanRepository.SyncFcuZoneCodesAsync` 同步寫入 `device_fcu.zone_code`，
   這就是 `docs/BACKEND_INTEGRATION_PLAN.md` §2.6 講的「FCU ↔ 分區對照表」，只是用視覺化
-  拖拉介面取代表格 CRUD。剩下的只是「把 64/31 台真實 FCU 對應到 72/41 個分區」這個資料填寫
-  工作，要等供應商/現場人員提供分區對照資料才能做，不是功能缺口——**目前 93 台 FCU 的
-  `zone_code` 全部是驗收用的模擬對照表，交機前必須換成真實對照**（見 `CHANGELOG.md`
-  「FCU 對照表管理」一節）。
+  拖拉介面取代表格 CRUD。2026-10-20 起 95 台 FCU 已依現場最終版 PPT 配置（B1 77 個分區含 1F 小圖、B2 46 個分區，圖面旋轉 180°
+  對齊 PPT；對照表見 `docs/floor-plan-ppt-mapping.md`，見 `CHANGELOG.md`「圖面對齊現場最終版 PPT」一節）——**座標只是依 PPT
+  標籤位置推得，交機前仍要現場人員在「空間設備配置」頁檢查微調**。
 - **既有自訂角色不會自動取得新增的權限**：`hvac.alarms`/`hvac.thresholds`/`hvac.floor_plan`
   加進權限目錄後，只有系統範本角色（`merchant-admin`/`editor`/`viewer`）的授權被 migration
   更新，場館自己複製出來的自訂角色（例如測試用的 `member-1`）不會自動補上，需要場館管理員自己
