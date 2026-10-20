@@ -111,6 +111,8 @@ export interface FloorPlan {
   height: number;
   /** 建築外框；放置設備的第一層過濾與 3D 樓地板量體都用它 */
   outline: Point[];
+  /** 建築外框以外的獨立區塊（B1 右上角的 1F 小圖）；跟 outline 一樣算「可以放設備的範圍」，沒有就是空陣列 */
+  extraOutlines: Point[][];
   /** 該樓層所有空間分區清單 */
   areas: Area[];
   /** 底圖 SVG 相對路徑 */
@@ -132,6 +134,7 @@ interface GeneratedPlanModule {
   PLAN_HEIGHT: number;
   UNITS_PER_SQM: number;
   OUTLINE: Point[];
+  EXTRA_OUTLINES: Point[][];
   GENERATED_AREAS: GeneratedArea[];
 }
 
@@ -154,6 +157,7 @@ function toPlan(floor: FloorId, source: GeneratedPlanModule): FloorPlan {
     width: source.PLAN_WIDTH,
     height: source.PLAN_HEIGHT,
     outline: source.OUTLINE,
+    extraOutlines: source.EXTRA_OUTLINES,
     areas: source.GENERATED_AREAS.map((zone) => ({ ...zone, name: zone.name || zone.id, unnamed: !zone.name })),
     baseImage: `/floor-plans/${floor.toLowerCase()}-base.svg`,
     baseOpacity: BASE_OPACITY[floor],
@@ -339,7 +343,8 @@ export function placementArea(
   const angle = rotation * Math.PI / 180;
   const corners = rect(-width / 2, -height / 2, width, height).map(([cx, cy]) =>
     [x + cx * Math.cos(angle) - cy * Math.sin(angle), y + cx * Math.sin(angle) + cy * Math.cos(angle)] as Point);
-  if (!corners.every(([cx, cy]) => containsPoint(plan.outline, cx, cy))) return;
+  // 四個角要落在同一個外框內：主建築外框，或 1F 小圖這類獨立區塊（兩者不相連，不會跨）。
+  if (![plan.outline, ...plan.extraOutlines].some((outline) => corners.every(([cx, cy]) => containsPoint(outline, cx, cy)))) return;
   // 目前的紅框互不重疊（產生腳本會檢查），取面積最小的候選只是防呆：
   // 之後若畫成「大區內再框小區」，這裡不必跟著改。
   const candidates = plan.areas.filter((a) => corners.every(([cx, cy]) => containsPoint(a.points, cx, cy)));

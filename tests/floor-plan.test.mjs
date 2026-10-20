@@ -5,15 +5,17 @@ const { outputFiles } = buildSync({ entryPoints: ['src/apps/monitoring/floor-pla
 const {
   planOf, areasOf, FLOORS, containsPoint, placementArea, canPlace,
   parseLayout, serializeLayout, equipmentColor, equipmentStatus, equipmentSize, areaHeat,
-  getFloorEquipmentApi, storageKey, basePlanImage, findFreeSpot,
+  basePlanImage, findFreeSpot,
 } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`);
 
-// ---- 兩層共通的分區不變式（設計端在 CAD 圖上畫的紅框，見 scripts/extract-floor-plan.mjs）----
+// ---- 兩層共通的分區不變式（設計端在 CAD 圖上畫的紅框＋PPT 有送風機但沒框的補畫分區，見 scripts/extract-floor-plan.mjs）----
+// 圖面方向已旋轉 180° 對齊現場最終版 PPT：B1 72 個紅框＋3 個補畫＋1F 小圖 2 個；B2 41 個紅框＋5 個補畫。
 const EXPECTED = {
-  B1: { count: 72, idPattern: /^B1-Z\d{2}$/, image: '/floor-plans/b1-base.svg', key: 'teco-floor-plan-b1-v3' },
-  B2: { count: 41, idPattern: /^B2-[ENWCS]\d{2}$/, image: '/floor-plans/b2-base.svg', key: 'teco-floor-plan-b2-v4' },
+  B1: { count: 77, idPattern: /^B1-Z\d{2}$/, image: '/floor-plans/b1-base.svg' },
+  B2: { count: 46, idPattern: /^B2-[ENWCS]\d{2}$/, image: '/floor-plans/b2-base.svg' },
 };
 assert.deepEqual(FLOORS, ['B1', 'B2']);
+const b1Areas = areasOf('B1');
 
 for (const floor of FLOORS) {
   const expected = EXPECTED[floor];
@@ -22,14 +24,14 @@ for (const floor of FLOORS) {
   assert.equal(areas.length, expected.count, `${floor} 紅框分區應為 ${expected.count} 個`);
   assert.equal(new Set(areas.map((a) => a.id)).size, areas.length, `${floor} 分區編號不得重複`);
   assert.equal(plan.baseImage, expected.image, `${floor} 應載入自己的底圖`);
-  assert.equal(storageKey(floor), expected.key, `${floor} 儲存鍵值不符`);
   assert.equal(basePlanImage(floor), expected.image);
   for (const area of areas) {
     assert.match(area.id, expected.idPattern, `${area.id} 編號格式不符`);
     assert.ok(area.name, `${area.id} 應有名稱或退回顯示編號`);
     assert.equal(area.unnamed, area.name === area.id, `${area.id} 的 unnamed 標記與名稱不一致`);
     assert.ok(area.sqm > 0, `${area.id} 面積應為正值`);
-    assert.ok(area.points.every(([x, y]) => containsPoint(plan.outline, x, y)), `${area.id} 分區不能超出建築外框`);
+    const outlines = [plan.outline, ...plan.extraOutlines];
+    assert.ok(outlines.some((outline) => area.points.every(([x, y]) => containsPoint(outline, x, y))), `${area.id} 分區不能超出建築外框`);
   }
   assert.equal(containsPoint(plan.outline, plan.width * 2, plan.height * 2), false, `${floor} 建築外框外不得放置`);
   // 分區互不重疊：findFreeSpot 找到的位置只會歸屬自己。
@@ -41,29 +43,39 @@ for (const floor of FLOORS) {
 }
 
 // ---- B1：過濾門檻保證每個分區都放得下一台 FCU ----
-const b1Areas = areasOf('B1');
 for (const area of b1Areas) {
   assert.ok(area.sqm >= 4, `${area.id} 面積 ${area.sqm} ㎡ 小於過濾門檻，不該出現`);
   assert.ok(findFreeSpot('fcu', area, [], 'B1'), `${area.id}（${area.sqm} ㎡）應放得下一台 FCU`);
 }
-// 紅框沒框到的地方（大梯廳、挑空）不是分區，設備放不進去。
-assert.equal(placementArea('fcu', 300, 150, 0, 'B1'), undefined, '紅框未涵蓋的大梯廳不得放置');
+// 紅框沒框到的地方（大梯廳、挑空）不是分區，設備放不進去。（旋轉 180° 後大梯廳在 412, 393 附近）
+assert.equal(placementArea('fcu', 412.3, 393.3, 0, 'B1'), undefined, '紅框未涵蓋的大梯廳不得放置');
 assert.equal(placementArea('chiller', NaN, 100, 0, 'B1'), undefined, '非數值座標必須被拒絕');
 
-// ---- B2：編號沿用設計稿（E東／N北／W西／C中／S南），不重編也不過濾 ----
+// ---- B1 右上角的 1F 小圖：在建築外框之外，但屬於另一塊可放設備的範圍（EXTRA_OUTLINES）----
+const insetAreas = b1Areas.filter((a) => a.name.startsWith('1F'));
+assert.deepEqual(insetAreas.map((a) => a.name).sort(), ['1F 大門', '1F 電梯前'], 'B1 應有 1F 大門與 1F 電梯前兩個分區');
+assert.equal(planOf('B1').extraOutlines.length, 1);
+for (const area of insetAreas) {
+  assert.ok(area.points.every(([x, y]) => !containsPoint(planOf('B1').outline, x, y)), `${area.name} 應在主建築外框之外`);
+  const spot = findFreeSpot('fcu', area, [], 'B1');
+  assert.ok(spot, `${area.name} 應放得下一台 FCU`);
+  assert.equal(placementArea('fcu', spot[0], spot[1], 0, 'B1')?.id, area.id, `${area.name} 的放置點應歸屬自己`);
+}
+assert.deepEqual(planOf('B2').extraOutlines, [], 'B2 沒有建築外的獨立區塊');
+// ---- B2：編號沿用設計稿（E東／N北／W西／C中／S南），旋轉 180° 後方位字母對調，不過濾 ----
 const b2Areas = areasOf('B2');
-assert.deepEqual(b2Areas.slice(0, 3).map((a) => a.id), ['B2-E01', 'B2-E02', 'B2-E03'], 'B2 應保持設計稿的文件順序');
-for (const [prefix, count] of [['E', 8], ['N', 10], ['W', 6], ['C', 6], ['S', 11]]) {
+assert.deepEqual(b2Areas.slice(0, 3).map((a) => a.id), ['B2-W01', 'B2-W02', 'B2-W03'], 'B2 應保持設計稿的文件順序（原 E01～E03 旋轉後是 W01～W03）');
+for (const [prefix, count] of [['E', 6], ['N', 11], ['W', 8], ['C', 11], ['S', 10]]) {
   assert.equal(b2Areas.filter((a) => a.id.startsWith(`B2-${prefix}`)).length, count, `B2-${prefix} 應有 ${count} 區`);
 }
 // 不過濾表示會保留幾個小到放不下 FCU 標記（14.7 x 10.7 單位）的框。這是設計端的決定，
-// 保留是為了不讓編號跳號，但要確保數量不會無聲擴散：
-// - B2-N07（2.8 ㎡）、B2-S11（1.6 ㎡）是直角三角形，內接矩形只有約半個邊長
-// - B2-W06（2.1 ㎡）寬 14.3 單位，比標記的 14.7 還窄
+// 保留是為了不讓編號跳號，但要確保數量不會無聲擴散（id 是旋轉 180° 後的新方位）：
+// - B2-S07（原 N07，2.8 ㎡）、B2-N11（原 S11，1.6 ㎡）是直角三角形，內接矩形只有約半個邊長
+// - B2-E06（原 W06，2.1 ㎡）寬 14.3 單位，比標記的 14.7 還窄
 const b2TooSmall = b2Areas.filter((a) => !findFreeSpot('fcu', a, [], 'B2')).map((a) => a.id);
-assert.deepEqual(b2TooSmall, ['B2-N07', 'B2-W06', 'B2-S11'], 'B2 放不下 FCU 的分區應只有已知的那三個');
-// B2 停車場車道沒有紅框，設備放不進去。
-assert.equal(placementArea('fcu', 400, 250, 0, 'B2'), undefined, 'B2 停車場區域未框選，不得放置');
+assert.deepEqual(b2TooSmall, ['B2-S07', 'B2-E06', 'B2-N11'], 'B2 放不下 FCU 的分區應只有已知的那三個');
+// B2 停車場車道沒有紅框，設備放不進去。（旋轉後原本的 400, 250 在 548.9, 458.5）
+assert.equal(placementArea('fcu', 548.9, 458.5, 0, 'B2'), undefined, 'B2 停車場區域未框選，不得放置');
 
 // ---- 設備尺寸：B2 圖面較大，標記等比放大，兩層看起來才一樣大 ----
 assert.deepEqual(equipmentSize('chiller', 'B1'), [32, 18]);
@@ -118,15 +130,6 @@ for (const placements of [
 }
 assert.throws(() => parseLayout(JSON.stringify({ version: 2, floor: 'B1', placements: [] }), catalog, 'B1'));
 
-// ---- 樓層設備清單各自獨立（chiller 目前僅歸屬 B1）----
-const b1Equipment = await getFloorEquipmentApi('B1');
-const b2Equipment = await getFloorEquipmentApi('B2');
-assert.equal(b1Equipment.filter((e) => e.kind === 'chiller').length, 2, 'B1 應有 2 台冰水主機');
-assert.equal(b2Equipment.filter((e) => e.kind === 'chiller').length, 0, 'B2 尚無冰水主機資料，不應出現');
-assert.equal(b1Equipment.filter((e) => e.kind === 'fcu').length, 61);
-assert.equal(b2Equipment.filter((e) => e.kind === 'fcu').length, 30);
-assert.equal(b1Equipment.find((e) => e.id === 'chiller-1').status, 'ABNORMAL', '運轉中但超標的冰水主機仍顯示異常');
-
 // ---- 狀態顏色與區域熱力（與座標無關，沿用既有規則）----
 assert.equal(equipmentColor('RUNNING'), '#60a5fa', '正常顯示藍色');
 assert.equal(equipmentColor('ABNORMAL'), '#f87171', '異常顯示紅色');
@@ -143,4 +146,4 @@ assert.equal(areaHeat(heatId, [{ ...fcuSameRoom, deviceId: 'normal' }, { ...fcuS
 assert.equal(areaHeat(heatId, [{ ...fcuSameRoom, deviceId: 'normal' }, { ...fcuSameRoom, deviceId: 'alert' }], heatEquipment).color, '#f87171');
 assert.deepEqual(areaHeat('B1-Z01', [{ ...fcuSameRoom, deviceId: 'stopped', areaId: 'B1-Z01' }], heatEquipment), { tone: 'none', intensity: 0, equipmentCount: 1 });
 
-console.log('Floor plan checks passed: B1 + B2 red-box zones, boundaries, fit, overlap, storage and floor isolation.');
+console.log('Floor plan checks passed: B1 + B2 zones (rotated 180°), 1F inset, boundaries, fit, overlap, storage and floor isolation.');

@@ -277,7 +277,7 @@ function fit() {
   if (!width || !height) return;
   const aspect = width/height;
   camera.updateMatrixWorld();
-  const projected = plan().outline.map(([x,y]) => new THREE.Vector3(x-plan().width/2, 0, y-plan().height/2).applyMatrix4(camera.matrixWorldInverse));
+  const projected = [plan().outline, ...plan().extraOutlines].flat().map(([x,y]) => new THREE.Vector3(x-plan().width/2, 0, y-plan().height/2).applyMatrix4(camera.matrixWorldInverse));
   const halfWidth = Math.max(...projected.map((p) => Math.abs(p.x))) + 43;
   const halfHeight = Math.max(...projected.map((p) => Math.abs(p.y))) + 43;
   const vertical = Math.max(halfHeight, halfWidth/aspect);
@@ -323,10 +323,13 @@ onMounted(() => {
     scene.add(sun);
     // OUTLINE 是底圖輪廓的凸包（見 scripts/extract-floor-plan.mjs），左側斜牆等非凸角會被填平，
     // 樓地板量體因此略大於實際建築輪廓——這是刻意的安全誤差方向，只作示意用。
-    const base = new THREE.Mesh(new THREE.ExtrudeGeometry(shape(plan().outline), { depth: 4, bevelEnabled: false }), new THREE.MeshStandardMaterial({ color: '#223e50' }));
-    base.rotation.x = -Math.PI/2;
-    base.position.y = -4;
-    scene.add(base);
+    // 建築外的小圖（B1 的 1F 原始圖）另外各擠一塊樓地板。
+    for (const outline of [plan().outline, ...plan().extraOutlines]) {
+      const base = new THREE.Mesh(new THREE.ExtrudeGeometry(shape(outline), { depth: 4, bevelEnabled: false }), new THREE.MeshStandardMaterial({ color: '#223e50' }));
+      base.rotation.x = -Math.PI/2;
+      base.position.y = -4;
+      scene.add(base);
+    }
     // 底圖線稿：跟 2D 平面圖同一張圖，貼在地板正上方。紅框沒圈到的地方（例如 B2
     // 幾乎整層的停車場）原本只有一片素色地板，貼上線稿才看得出那裡其實是什麼。
     // 圖片本身除了畫出來的線之外都是透明，蓋在分區量體上也不會擋到分區顏色。

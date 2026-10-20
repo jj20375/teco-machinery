@@ -4,6 +4,8 @@
 // 每層的來源檔與抽取方式寫在 scripts/floor-plan/zone-plan.mjs 的 FLOOR_PLANS。
 // 兩層都是兩個檔案：精簡版當底圖、紅框版當分區來源，兩檔 viewBox 一致所以不需對位。
 // 紅框的抽法依匯出管道而異：B1 靠 class 篩，B2 的紅框自己一個 <g>。
+// 現場最終版（PPT）的方向跟來源檔差 180°，兩層都設 rotate: 180，底圖與分區旋轉後才輸出；
+// PPT 有送風機但沒有紅框的位置由 FLOOR_PLANS 的 extraZones 補，B1 另外附一張 1F 小圖（inset-1f.mjs）。
 //
 // 產出：public/floor-plans/<floor>-base.svg、src/apps/monitoring/floor-plan/<floor>-areas.generated.ts、
 // 以及 docs/floor-plan-extract-report.md（兩層合併一份報告）。
@@ -17,6 +19,7 @@ import {
   dedupe, dropCollinear, selfIntersections, labelPoint, round,
 } from './floor-plan/geometry.mjs';
 import { FLOOR_PLANS, FLOOR_IDS, unitScaleOf } from './floor-plan/zone-plan.mjs';
+import { buildInset1f } from './floor-plan/inset-1f.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -126,13 +129,31 @@ function extractFloor(floor) {
   const baseLayers = baseLayersOf(baseSvg, plan.pick);
   if (!baseLayers.length) throw new Error(`${plan.base} 找不到可見底圖圖層，請確認檔案未被重新匯出`);
 
-  const baseBox = boundingBox(sampledPoints(baseLayers));
   const [, , PLAN_WIDTH, PLAN_HEIGHT] = viewBoxOf(baseSvg);
+
+  // 旋轉 180° 就是繞圖面中心點對稱：底圖整層加 matrix，紅框、外框、補的分區都走 rotatePoint。
+  // 一律在編號之前轉完，所以 numbering: 'position' 排的是旋轉後的位置。
+  const rotated = plan.rotate === 180;
+  if (plan.rotate && !rotated) throw new Error(`${floor} 的 rotate 只支援 180，收到 ${plan.rotate}`);
+  const rotatePoint = ([x, y]) => (rotated ? [PLAN_WIDTH - x, PLAN_HEIGHT - y] : [x, y]);
+  // 旋轉後東西南北反過來，沿用設計稿 id 的樓層（B2）要把方位字母跟著對調。
+  const swapId = (id) => (plan.idSwap
+    ? id.replace(/^(B\d-)([A-Z])(\d+)$/, (match, prefix, letter, digits) => `${prefix}${plan.idSwap[letter] ?? letter}${digits}`)
+    : id);
+
+  const sourceBox = boundingBox(sampledPoints(baseLayers));
+  const baseBox = rotated
+    ? [PLAN_WIDTH - sourceBox[2], PLAN_HEIGHT - sourceBox[3], PLAN_WIDTH - sourceBox[0], PLAN_HEIGHT - sourceBox[1]]
+    : sourceBox;
 
   // 判定用的是貼齊底圖的外框；匯出的 OUTLINE 再往外推 4 個單位，
   // 否則剛好落在邊界上的分區角點，會被 containsPoint 的射線判定當成「在外面」。
   const OUTLINE = padConvexHull(simplifyOutline(convexHull(sampledPoints(baseLayers))), 4 * unitScale)
-    .map(([x, y]) => [round(x), round(y)]);
+    .map(rotatePoint).map(([x, y]) => [round(x), round(y)]);
+
+  // 建築外的小圖（B1 的 1F 原始圖）：座標已經是旋轉後的最終圖面，不再轉。
+  const inset = plan.inset1f ? buildInset1f() : null;
+  const EXTRA_OUTLINES = inset ? [inset.outline] : [];
 
   // ---------------------------------------------------------------- 紅框分區
 
@@ -149,7 +170,7 @@ function extractFloor(floor) {
   const dropped = [];
   const zones = [];
   for (const element of zoneElementsOf(zoneSvg, plan.pick)) {
-    const points = dropCollinear(dedupe(elementPoints(element)));
+    const points = dropCollinear(dedupe(elementPoints(element))).map(rotatePoint);
     if (points.length < 3) continue;
     const area = Math.abs(signedArea(points));
     const box = boundingBox(points);
@@ -159,13 +180,23 @@ function extractFloor(floor) {
       continue;
     }
     zones.push({
-      sourceId: element.attributes?.id ?? '',
+      sourceId: swapId(element.attributes?.id ?? ''),
       points: points.map(([x, y]) => [round(x), round(y)]),
       area,
       label: labelPoint(points).map(round),
     });
   }
   if (!zones.length) throw new Error(`${plan.zones} 找不到任何紅框`);
+
+  // 設計端沒畫紅框、但 PPT 有送風機的位置（座標在來源座標系，跟著一起旋轉）。
+  const extras = (plan.extraZones ?? []).map((extra) => {
+    const points = dedupe(extra.points).map(rotatePoint).map(([x, y]) => [round(x), round(y)]);
+    return { sourceId: extra.id ?? '', name: '', points, area: Math.abs(signedArea(points)), label: labelPoint(points).map(round) };
+  });
+  const insetZones = (inset?.zones ?? []).map((zone) => ({
+    sourceId: '', name: zone.name, points: zone.points, area: Math.abs(signedArea(zone.points)), label: labelPoint(zone.points).map(round),
+  }));
+  zones.push(...extras, ...insetZones);
 
   // 對位檢查：紅框整體必須落在底圖的繪圖範圍內。
   // 不比對兩檔的 bbox——底圖用精簡版、紅框檔是完整設備配置圖，兩者的繪圖範圍本來就會差
@@ -194,11 +225,13 @@ function extractFloor(floor) {
     const id = plan.numbering === 'id' ? zone.sourceId : `${plan.idPrefix}${String(index + 1).padStart(2, '0')}`;
     const crossings = selfIntersections(zone.points);
     if (crossings.length) warnings.push(`${id} 有 ${crossings.length} 處自我相交，3D 擠出前需確認`);
-    if (!zone.points.every(([x, y]) => containsPoint(OUTLINE, x, y))) warnings.push(`${id} 有頂點落在建築外框之外`);
+    if (![OUTLINE, ...EXTRA_OUTLINES].some((outline) => zone.points.every(([x, y]) => containsPoint(outline, x, y)))) {
+      warnings.push(`${id} 有頂點落在建築外框之外`);
+    }
     const box = boundingBox(zone.points);
     const shortSide = Math.min(box[2] - box[0], box[3] - box[1]);
     return {
-      id, name: plan.names[id] ?? '', points: zone.points, label: zone.label,
+      id, name: zone.name || plan.names[id] || '', points: zone.points, label: zone.label,
       area: round(zone.area), sqm: round(zone.area / plan.unitsPerSqm), shortSide: round(shortSide),
     };
   });
@@ -233,9 +266,12 @@ function extractFloor(floor) {
 
   // ---------------------------------------------------------------- 產出底圖
 
+  const detail = baseLayers.map(serialize).join('');
   const composed = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"`
     + ` viewBox="0 0 ${PLAN_WIDTH} ${PLAN_HEIGHT}" width="${PLAN_WIDTH}" height="${PLAN_HEIGHT}">`
-    + `<g id="${lower}-detail" fill="${BASE_TONE}">${baseLayers.map(serialize).join('')}</g></svg>`;
+    + `<g id="${lower}-detail" fill="${BASE_TONE}">`
+    + (rotated ? `<g transform="matrix(-1 0 0 -1 ${PLAN_WIDTH} ${PLAN_HEIGHT})">${detail}</g>` : detail)
+    + `${inset ? inset.baseSvg : ''}</g></svg>`;
   const optimized = optimize(composed, {
     multipass: true,
     floatPrecision: 1,
@@ -248,8 +284,8 @@ function extractFloor(floor) {
   // ---------------------------------------------------------------- 產出分區資料
 
   const numberingNote = plan.numbering === 'id'
-    ? '編號沿用設計稿紅框的 id。'
-    : '編號依圖面位置自動給。';
+    ? `編號沿用設計稿紅框的 id${plan.idSwap ? '（旋轉後方位字母對調）' : ''}。`
+    : '編號依圖面位置自動給（旋轉後的位置）。';
   const areasTs = `// 由 scripts/extract-floor-plan.mjs 產生，請勿手改。
 // 分區範圍是設計端在 ${plan.zones} 上畫的紅框，${numberingNote}
 // 要調整範圍請改那張圖；要補中文名稱請改 scripts/floor-plan/zone-plan.mjs 的 FLOOR_PLANS.${floor}.names。
@@ -262,6 +298,8 @@ export const PLAN_HEIGHT = ${PLAN_HEIGHT};
 export const UNITS_PER_SQM = ${plan.unitsPerSqm};
 /** 由底圖輪廓求得的建築外框；放置設備的第一層過濾與 3D 樓地板量體都用它 */
 export const OUTLINE: Point[] = [${OUTLINE.map(([x, y]) => `[${x},${y}]`).join(', ')}];
+/** 建築外框以外的獨立區塊（B1 的 1F 原始圖小圖）；判定設備能不能放時，在 OUTLINE 或任一個區塊內都算數 */
+export const EXTRA_OUTLINES: Point[][] = [${EXTRA_OUTLINES.map((outline) => `[${outline.map(([x, y]) => `[${x},${y}]`).join(', ')}]`).join(', ')}];
 
 export const GENERATED_AREAS: GeneratedArea[] = [
 ${areas.map((a) => `  { id: '${a.id}', name: ${quote(a.name)}, points: [${a.points.map(([x, y]) => `[${x},${y}]`).join(', ')}],`
@@ -272,7 +310,7 @@ ${areas.map((a) => `  { id: '${a.id}', name: ${quote(a.name)}, points: [${a.poin
   mkdirSync(dirname(areasTsOut), { recursive: true });
   writeFileSync(areasTsOut, areasTs);
 
-  return { floor, plan, areas, dropped, warnings, OUTLINE, PLAN_WIDTH, PLAN_HEIGHT, baseBox, unitScale, minZoneArea, sizeKb: optimized.data.length / 1024 };
+  return { floor, plan, areas, dropped, warnings, OUTLINE, EXTRA_OUTLINES, extras, insetZones, PLAN_WIDTH, PLAN_HEIGHT, baseBox, unitScale, minZoneArea, sizeKb: optimized.data.length / 1024 };
 }
 
 // ================================================================ 執行
@@ -295,7 +333,10 @@ function reportSection(r) {
 - 分區來源：\`${plan.zones}\`（${plan.pick.zones.kind === 'group' ? `\`<g id="${plan.pick.zones.group}">\` 底下的紅框` : `\`class="${plan.pick.zones.className}"\` 的紅框`}）
 - 圖面尺寸：${r.PLAN_WIDTH} x ${r.PLAN_HEIGHT} 圖面單位；底圖實際範圍 ${r.baseBox.map(round).join(', ')}
 - 比例尺：1 ㎡ ≈ ${plan.unitsPerSqm} 圖面單位²（相對 B1 圖面 ${round(r.unitScale, 3)} 倍）；**非施工尺寸**
-- 編號方式：${plan.numbering === 'id' ? '沿用設計稿紅框 id' : '依圖面位置自動給（由上而下、由左而右）'}
+- 圖面方向：${r.plan.rotate ? `來源檔旋轉 ${r.plan.rotate}°（對齊現場最終版 PPT）` : '同來源檔'}
+- 編號方式：${plan.numbering === 'id' ? `沿用設計稿紅框 id${plan.idSwap ? '，旋轉後方位字母對調（E↔W、N↔S）' : ''}` : '依旋轉後的圖面位置自動給（由上而下、由左而右）'}
+- 補畫的分區：${r.extras.length ? `${r.extras.length} 個（PPT 有送風機但設計端沒畫紅框：${plan.extraZones.map((z) => z.key).join('、')}）` : '無'}
+- 1F 小圖：${r.insetZones.length ? `有（分區 ${r.insetZones.map((z) => z.name).join('、')}，外框另列在 EXTRA_OUTLINES）` : '無'}
 - 分區數：${areas.length}（已命名 ${areas.filter((a) => a.name).length} 個，其餘顯示編號）
 - 總面積：${round(areas.reduce((sum, a) => sum + a.sqm, 0))} ㎡
 - 過濾條件：${filtered
