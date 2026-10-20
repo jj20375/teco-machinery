@@ -1,0 +1,1467 @@
+{
+ "generatedBy": "npm run build:ppt-layout",
+ "source": "ClubM B1+B2F分區送風機編號示意圖-0909.pptx",
+ "rows": [
+  {
+   "floor": "B1",
+   "kind": "chiller",
+   "code": "CH-1",
+   "areaId": "B1-Z11",
+   "x": 218.3,
+   "y": 131.3,
+   "rotation": 180,
+   "notes": [
+    "沿用原本的位置旋轉 180°"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "chiller",
+   "code": "CH-2",
+   "areaId": "B1-Z14",
+   "x": 519.3,
+   "y": 68.3,
+   "rotation": 180,
+   "notes": [
+    "沿用原本的位置旋轉 180°"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 1,
+   "position": 1,
+   "vendorCode": "FC_MC1_01",
+   "name": "東側門",
+   "areaId": "B1-Z63",
+   "x": 509.9,
+   "y": 320.9,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 1,
+   "position": 2,
+   "vendorCode": "FC_MC1_02",
+   "name": "V區男廁",
+   "areaId": "B1-Z64",
+   "x": 503.9,
+   "y": 357.8,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 1,
+   "position": 3,
+   "vendorCode": "FC_MC1_03",
+   "name": "V區女廁",
+   "areaId": "B1-Z67",
+   "x": 487.8,
+   "y": 388.1,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 1,
+   "position": 4,
+   "vendorCode": "FC_MC1_04",
+   "name": "V區酒瓶陳列",
+   "areaId": "B1-Z68",
+   "x": 554,
+   "y": 384,
+   "rotation": 0,
+   "notes": [
+    "標籤靠近分區邊界（3.5 單位）"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 1,
+   "position": 5,
+   "vendorCode": "FC_MC1_05",
+   "name": "V1",
+   "areaId": "B1-Z65",
+   "x": 552.3,
+   "y": 347.3,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 1,
+   "position": 6,
+   "vendorCode": "FC_MC1_06",
+   "name": "V宴1",
+   "areaId": "B1-Z66",
+   "x": 591.9,
+   "y": 366.6,
+   "rotation": 0,
+   "notes": [
+    "與同分區共 3 台"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 1,
+   "position": 7,
+   "vendorCode": "FC_MC1_07",
+   "name": "V宴2",
+   "areaId": "B1-Z66",
+   "x": 629.6,
+   "y": 351.7,
+   "rotation": 0,
+   "notes": [
+    "與同分區共 3 台"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 1,
+   "position": 8,
+   "vendorCode": "FC_MC1_08",
+   "name": "V廚",
+   "areaId": "B1-Z69",
+   "x": 656,
+   "y": 365,
+   "rotation": 0,
+   "notes": [
+    "標籤在 VIP 廚房外側"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 1,
+   "position": 9,
+   "vendorCode": "FC_MC1_09",
+   "name": "V5",
+   "areaId": "B1-Z72",
+   "x": 650.8,
+   "y": 407.9,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 1,
+   "position": 10,
+   "vendorCode": "FC_MC1_10",
+   "name": "V宴前走道",
+   "areaId": "B1-Z66",
+   "x": 634,
+   "y": 374,
+   "rotation": 0,
+   "notes": [
+    "標籤在宴廳前的走道（沒有紅框），歸宴廳",
+    "與同分區共 3 台"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 1,
+   "position": 11,
+   "vendorCode": "FC_MC1_11",
+   "name": "V2",
+   "areaId": "B1-Z71",
+   "x": 598,
+   "y": 417,
+   "rotation": 0,
+   "notes": [
+    "標籤靠近分區邊界（0.9 單位）"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 1,
+   "position": 12,
+   "vendorCode": "FC_MC1_12",
+   "name": "V3",
+   "areaId": "B1-Z74",
+   "x": 597,
+   "y": 441,
+   "rotation": 0,
+   "notes": [
+    "V3、V4 在同一個紅框",
+    "與同分區共 2 台"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 1,
+   "position": 13,
+   "vendorCode": "FC_MC1_13",
+   "name": "V4",
+   "areaId": "B1-Z74",
+   "x": 597,
+   "y": 469,
+   "rotation": 0,
+   "notes": [
+    "V3、V4 在同一個紅框",
+    "與同分區共 2 台"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 1,
+   "position": 14,
+   "vendorCode": "FC_MC1_14",
+   "name": "V7",
+   "areaId": "B1-Z77",
+   "x": 661.8,
+   "y": 465.7,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 1,
+   "position": 15,
+   "vendorCode": "FC_MC1_15",
+   "name": "V6",
+   "areaId": "B1-Z75",
+   "x": 648,
+   "y": 438,
+   "rotation": 0,
+   "notes": [
+    "標籤壓在 V6、V5 兩間的牆線上"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 2,
+   "position": 1,
+   "vendorCode": "FC_MC2_01",
+   "name": "B1男廁",
+   "areaId": "B1-Z50",
+   "x": 136,
+   "y": 281,
+   "rotation": 0,
+   "notes": [
+    "標籤靠近分區邊界（2.0 單位）"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 2,
+   "position": 2,
+   "vendorCode": "FC_MC2_02",
+   "name": "B1女廁",
+   "areaId": "B1-Z51",
+   "x": 141.8,
+   "y": 307.9,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 2,
+   "position": 3,
+   "vendorCode": "FC_MC2_03",
+   "name": "辦公室",
+   "areaId": "B1-Z34",
+   "x": 202,
+   "y": 235,
+   "rotation": 0,
+   "notes": [
+    "標籤在辦公室（31 sqm）旁，取面積相近的那個"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 3,
+   "position": 1,
+   "vendorCode": "FC_MC3_01",
+   "name": "活動1",
+   "areaId": "B1-Z21",
+   "x": 474.6,
+   "y": 166.1,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 3,
+   "position": 2,
+   "vendorCode": "FC_MC3_02",
+   "name": "活動2",
+   "areaId": "B1-Z26",
+   "x": 433.3,
+   "y": 152.1,
+   "rotation": 0,
+   "notes": [
+    "與同分區共 3 台"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 3,
+   "position": 3,
+   "vendorCode": "FC_MC3_03",
+   "name": "活動3",
+   "areaId": "B1-Z26",
+   "x": 431.7,
+   "y": 191.5,
+   "rotation": 0,
+   "notes": [
+    "與同分區共 3 台"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 3,
+   "position": 4,
+   "vendorCode": "FC_MC3_04",
+   "name": "活動4",
+   "areaId": "B1-Z26",
+   "x": 385.1,
+   "y": 192.4,
+   "rotation": 0,
+   "notes": [
+    "與同分區共 3 台"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 3,
+   "position": 5,
+   "vendorCode": "FC_MC3_05",
+   "name": "大M-logo",
+   "areaId": "B1-Z20",
+   "x": 354.3,
+   "y": 152.2,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 3,
+   "position": 6,
+   "vendorCode": "FC_MC3_06",
+   "name": "果嶺1",
+   "areaId": "B1-Z25",
+   "x": 319.5,
+   "y": 188.1,
+   "rotation": 0,
+   "notes": [
+    "與同分區共 4 台"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 3,
+   "position": 7,
+   "vendorCode": "FC_MC3_07",
+   "name": "果嶺2",
+   "areaId": "B1-Z25",
+   "x": 281.6,
+   "y": 156.9,
+   "rotation": 0,
+   "notes": [
+    "與同分區共 4 台"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 3,
+   "position": 8,
+   "vendorCode": "FC_MC3_08",
+   "name": "果嶺3",
+   "areaId": "B1-Z25",
+   "x": 230.4,
+   "y": 189.2,
+   "rotation": 0,
+   "notes": [
+    "與同分區共 4 台"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 3,
+   "position": 9,
+   "vendorCode": "FC_MC3_09",
+   "name": "果嶺4",
+   "areaId": "B1-Z25",
+   "x": 208.7,
+   "y": 158.6,
+   "rotation": 0,
+   "notes": [
+    "與同分區共 4 台"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 3,
+   "position": 10,
+   "vendorCode": "FC_MC3_10",
+   "name": "咖啡廳入口",
+   "areaId": "B1-Z24",
+   "x": 151,
+   "y": 170,
+   "rotation": 0,
+   "notes": [
+    "標籤靠近分區邊界（2.8 單位）",
+    "與同分區共 2 台"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 3,
+   "position": 11,
+   "vendorCode": "FC_MC3_11",
+   "name": "咖啡廳座位",
+   "areaId": "B1-Z24",
+   "x": 121.6,
+   "y": 158.6,
+   "rotation": 0,
+   "notes": [
+    "與同分區共 2 台"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 3,
+   "position": 12,
+   "vendorCode": "FC_MC3_12",
+   "name": "A9",
+   "areaId": "B1-Z45",
+   "x": 246,
+   "y": 244,
+   "rotation": 0,
+   "notes": [
+    "A 排 9 格由左到右是 A9…A1（A6、A3 沒裝）"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 3,
+   "position": 13,
+   "vendorCode": "FC_MC3_13",
+   "name": "G1",
+   "areaId": "B1-Z55",
+   "x": 293,
+   "y": 296,
+   "rotation": 0,
+   "notes": [
+    "標籤靠近分區邊界（3.4 單位）"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 3,
+   "position": 14,
+   "vendorCode": "FC_MC3_14",
+   "name": "G3",
+   "areaId": "B1-Z53",
+   "x": 231,
+   "y": 295,
+   "rotation": 0,
+   "notes": [
+    "標籤靠近分區邊界（4.6 單位）"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 3,
+   "position": 15,
+   "vendorCode": "FC_MC3_15",
+   "name": "A8",
+   "areaId": "B1-Z35",
+   "x": 270.3,
+   "y": 244.7,
+   "rotation": 0,
+   "notes": [
+    "A 排 9 格由左到右是 A9…A1（A6、A3 沒裝）"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 3,
+   "position": 16,
+   "vendorCode": "FC_MC3_16",
+   "name": "A7",
+   "areaId": "B1-Z36",
+   "x": 297,
+   "y": 244,
+   "rotation": 0,
+   "notes": [
+    "A 排 9 格由左到右是 A9…A1（A6、A3 沒裝）"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 3,
+   "position": 17,
+   "vendorCode": "FC_MC3_17",
+   "name": "A5",
+   "areaId": "B1-Z38",
+   "x": 347,
+   "y": 244,
+   "rotation": 0,
+   "notes": [
+    "A 排 9 格由左到右是 A9…A1（A6、A3 沒裝）"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 3,
+   "position": 18,
+   "vendorCode": "FC_MC3_18",
+   "name": "A4",
+   "areaId": "B1-Z39",
+   "x": 372,
+   "y": 244,
+   "rotation": 0,
+   "notes": [
+    "A 排 9 格由左到右是 A9…A1（A6、A3 沒裝）"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 3,
+   "position": 19,
+   "vendorCode": "FC_MC3_19",
+   "name": "A2",
+   "areaId": "B1-Z41",
+   "x": 423,
+   "y": 244,
+   "rotation": 0,
+   "notes": [
+    "A 排 9 格由左到右是 A9…A1（A6、A3 沒裝）"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 3,
+   "position": 20,
+   "vendorCode": "FC_MC3_20",
+   "name": "A1",
+   "areaId": "B1-Z46",
+   "x": 457,
+   "y": 244,
+   "rotation": 0,
+   "notes": [
+    "A 排 9 格由左到右是 A9…A1（A6、A3 沒裝）"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 3,
+   "position": 21,
+   "vendorCode": "FC_MC3_21",
+   "name": "紅置物櫃",
+   "areaId": "B1-Z32",
+   "x": 489.8,
+   "y": 224.4,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 4,
+   "position": 1,
+   "vendorCode": "FC_MC4_01",
+   "name": "服務台1",
+   "areaId": "B1-Z16",
+   "x": 499,
+   "y": 90.3,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 4,
+   "position": 2,
+   "vendorCode": "FC_MC4_02",
+   "name": "服務台2",
+   "areaId": "B1-Z18",
+   "x": 508,
+   "y": 123,
+   "rotation": 0,
+   "notes": [
+    "標籤在 B1002（16 sqm）旁"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 4,
+   "position": 3,
+   "vendorCode": "FC_MC4_03",
+   "name": "B1",
+   "areaId": "B1-Z33",
+   "x": 535.7,
+   "y": 196.5,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 4,
+   "position": 4,
+   "vendorCode": "FC_MC4_04",
+   "name": "B2",
+   "areaId": "B1-Z42",
+   "x": 535.7,
+   "y": 225.4,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 4,
+   "position": 5,
+   "vendorCode": "FC_MC4_05",
+   "name": "B3",
+   "areaId": "B1-Z47",
+   "x": 535.7,
+   "y": 255,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 4,
+   "position": 6,
+   "vendorCode": "FC_MC4_06",
+   "name": "B4",
+   "areaId": "B1-Z61",
+   "x": 534.6,
+   "y": 285.1,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 4,
+   "position": 7,
+   "vendorCode": "FC_MC4_07",
+   "name": "B8",
+   "areaId": "B1-Z62",
+   "x": 626,
+   "y": 291.9,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 4,
+   "position": 8,
+   "vendorCode": "FC_MC4_08",
+   "name": "B7",
+   "areaId": "B1-Z48",
+   "x": 610.3,
+   "y": 258.1,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 4,
+   "position": 9,
+   "vendorCode": "FC_MC4_09",
+   "name": "B6",
+   "areaId": "B1-Z43",
+   "x": 603.8,
+   "y": 228.7,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 4,
+   "position": 10,
+   "vendorCode": "FC_MC4_10",
+   "name": "B5",
+   "areaId": "B1-Z27",
+   "x": 589.7,
+   "y": 193.2,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 4,
+   "position": 11,
+   "vendorCode": "FC_MC4_11",
+   "name": "學苑1",
+   "areaId": "B1-Z23",
+   "x": 596.3,
+   "y": 166.6,
+   "rotation": 0,
+   "notes": [
+    "與同分區共 3 台"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 4,
+   "position": 12,
+   "vendorCode": "FC_MC4_12",
+   "name": "學苑2",
+   "areaId": "B1-Z23",
+   "x": 573,
+   "y": 84.8,
+   "rotation": 0,
+   "notes": [
+    "與同分區共 3 台"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 4,
+   "position": 13,
+   "vendorCode": "FC_MC4_13",
+   "name": "學苑3",
+   "areaId": "B1-Z23",
+   "x": 567,
+   "y": 67,
+   "rotation": 0,
+   "notes": [
+    "標籤靠近分區邊界（1.0 單位）",
+    "與同分區共 3 台"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 4,
+   "position": 14,
+   "vendorCode": "FC_MC4_14",
+   "name": "工坊1",
+   "areaId": "B1-Z14",
+   "x": 491,
+   "y": 71,
+   "rotation": 0,
+   "notes": [
+    "與同分區共 2 台"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 4,
+   "position": 15,
+   "vendorCode": "FC_MC4_15",
+   "name": "工坊2",
+   "areaId": "B1-Z06",
+   "x": 489,
+   "y": 42,
+   "rotation": 0,
+   "notes": [
+    "標籤在圓形小室與 F1 的房間之間，取較近的圓形小室"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 4,
+   "position": 16,
+   "vendorCode": "FC_MC4_16",
+   "name": "F1",
+   "areaId": "B1-Z07",
+   "x": 523.9,
+   "y": 27.6,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 4,
+   "position": 17,
+   "vendorCode": "FC_MC4_17",
+   "name": "工坊3",
+   "areaId": "B1-Z14",
+   "x": 473,
+   "y": 61,
+   "rotation": 0,
+   "notes": [
+    "標籤靠近分區邊界（1.7 單位）",
+    "與同分區共 2 台"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 4,
+   "position": 18,
+   "vendorCode": "FC_MC4_18",
+   "name": "F2",
+   "areaId": "B1-Z04",
+   "x": 408.3,
+   "y": 30.3,
+   "rotation": 0,
+   "notes": [
+    "與同分區共 2 台"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 4,
+   "position": 19,
+   "vendorCode": "FC_MC4_19",
+   "name": "F3",
+   "areaId": "B1-Z02",
+   "x": 356,
+   "y": 35,
+   "rotation": 0,
+   "notes": [
+    "標籤靠近分區邊界（2.7 單位）"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 4,
+   "position": 20,
+   "vendorCode": "FC_MC4_20",
+   "name": "F4",
+   "areaId": "B1-Z12",
+   "x": 351.8,
+   "y": 82,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 4,
+   "position": 21,
+   "vendorCode": "FC_MC4_21",
+   "name": "F5",
+   "areaId": "B1-Z04",
+   "x": 390,
+   "y": 60,
+   "rotation": 0,
+   "notes": [
+    "標籤靠近分區邊界（0.7 單位）",
+    "與同分區共 2 台"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 4,
+   "position": 22,
+   "vendorCode": "FC_MC4_22",
+   "name": "雄獅1",
+   "areaId": "B1-Z13",
+   "x": 389,
+   "y": 91,
+   "rotation": 0,
+   "notes": [
+    "標籤靠近分區邊界（3.7 單位）"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 4,
+   "position": 23,
+   "vendorCode": "FC_MC4_23",
+   "name": "雄獅2",
+   "areaId": "B1-Z17",
+   "x": 389.4,
+   "y": 122.3,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 5,
+   "position": 1,
+   "vendorCode": "FC_MC5_01",
+   "name": "1F大門",
+   "areaId": "B1-Z09",
+   "x": 640,
+   "y": 40.6,
+   "rotation": 0,
+   "notes": [
+    "1F 小圖（重繪的簡化版）上的 1F 大門"
+   ]
+  },
+  {
+   "floor": "B1",
+   "kind": "fcu",
+   "channel": 1,
+   "station": 5,
+   "position": 2,
+   "vendorCode": "FC_MC5_02",
+   "name": "1F電梯前",
+   "areaId": "B1-Z15",
+   "x": 640,
+   "y": 73.3,
+   "rotation": 0,
+   "notes": [
+    "1F 小圖（重繪的簡化版）上的 1F 電梯前"
+   ]
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 1,
+   "vendorCode": "FC_MC1_01",
+   "name": "B2櫃台",
+   "areaId": "B2-E04",
+   "x": 504,
+   "y": 179,
+   "rotation": 0,
+   "notes": [
+    "標籤靠近分區邊界（4.0 單位）"
+   ]
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 2,
+   "vendorCode": "FC_MC1_02",
+   "name": "T9",
+   "areaId": "B2-C02",
+   "x": 472.2,
+   "y": 123.4,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 3,
+   "vendorCode": "FC_MC1_03",
+   "name": "T1",
+   "areaId": "B2-N02",
+   "x": 493.5,
+   "y": 60.2,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 4,
+   "vendorCode": "FC_MC1_04",
+   "name": "T10",
+   "areaId": "B2-C03",
+   "x": 416.8,
+   "y": 125.9,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 5,
+   "vendorCode": "FC_MC1_05",
+   "name": "T2",
+   "areaId": "B2-N03",
+   "x": 415.9,
+   "y": 89.8,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 6,
+   "vendorCode": "FC_MC1_06",
+   "name": "T11",
+   "areaId": "B2-C04",
+   "x": 379.1,
+   "y": 125.9,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 7,
+   "vendorCode": "FC_MC1_07",
+   "name": "T3",
+   "areaId": "B2-N04",
+   "x": 371.2,
+   "y": 90.1,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 8,
+   "vendorCode": "FC_MC1_08",
+   "name": "T12-13",
+   "areaId": "B2-C05",
+   "x": 331.2,
+   "y": 126.3,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 9,
+   "vendorCode": "FC_MC1_09",
+   "name": "T4",
+   "areaId": "B2-N05",
+   "x": 326.3,
+   "y": 89.8,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 10,
+   "vendorCode": "FC_MC1_10",
+   "name": "T5",
+   "areaId": "B2-N06",
+   "x": 293.4,
+   "y": 67.8,
+   "rotation": 0,
+   "notes": [
+    "與同分區共 2 台"
+   ]
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 11,
+   "vendorCode": "FC_MC1_11",
+   "name": "綠置物櫃",
+   "areaId": "B2-C10",
+   "x": 255.1,
+   "y": 153.5,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 12,
+   "vendorCode": "FC_MC1_12",
+   "name": "更衣室入口",
+   "areaId": "B2-C11",
+   "x": 202,
+   "y": 112,
+   "rotation": 0,
+   "notes": [
+    "標籤靠近分區邊界（3.2 單位）"
+   ]
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 13,
+   "vendorCode": "FC_MC1_13",
+   "name": "T6",
+   "areaId": "B2-N06",
+   "x": 214.5,
+   "y": 67.2,
+   "rotation": 0,
+   "notes": [
+    "與同分區共 2 台"
+   ]
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 14,
+   "vendorCode": "FC_MC1_14",
+   "name": "T7",
+   "areaId": "B2-N07",
+   "x": 171.5,
+   "y": 83.8,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 15,
+   "vendorCode": "FC_MC1_15",
+   "name": "T8",
+   "areaId": "B2-N08",
+   "x": 131,
+   "y": 82.8,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 16,
+   "vendorCode": "FC_MC1_16",
+   "name": "R9",
+   "areaId": "B2-W08",
+   "x": 77,
+   "y": 73,
+   "rotation": 0,
+   "notes": [
+    "標籤靠近分區邊界（1.7 單位）"
+   ]
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 17,
+   "vendorCode": "FC_MC1_17",
+   "name": "R8",
+   "areaId": "B2-W07",
+   "x": 82.8,
+   "y": 113.4,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 18,
+   "vendorCode": "FC_MC1_18",
+   "name": "B2休息區",
+   "areaId": "B2-C07",
+   "x": 133,
+   "y": 164,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 19,
+   "vendorCode": "FC_MC1_19",
+   "name": "R7",
+   "areaId": "B2-W06",
+   "x": 82.8,
+   "y": 155.2,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 20,
+   "vendorCode": "FC_MC1_20",
+   "name": "R6",
+   "areaId": "B2-W05",
+   "x": 82.8,
+   "y": 194.9,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 21,
+   "vendorCode": "FC_MC1_21",
+   "name": "R5",
+   "areaId": "B2-W04",
+   "x": 82.5,
+   "y": 233.3,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 22,
+   "vendorCode": "FC_MC1_22",
+   "name": "S3",
+   "areaId": "B2-S02",
+   "x": 153.8,
+   "y": 278.9,
+   "rotation": 0,
+   "notes": [
+    "與同分區共 2 台"
+   ]
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 23,
+   "vendorCode": "FC_MC1_23",
+   "name": "S2",
+   "areaId": "B2-S02",
+   "x": 186.2,
+   "y": 238,
+   "rotation": 0,
+   "notes": [
+    "與同分區共 2 台"
+   ]
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 24,
+   "vendorCode": "FC_MC1_24",
+   "name": "R4",
+   "areaId": "B2-W03",
+   "x": 82.5,
+   "y": 272.9,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 25,
+   "vendorCode": "FC_MC1_25",
+   "name": "R3",
+   "areaId": "B2-W02",
+   "x": 82.5,
+   "y": 312.4,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 26,
+   "vendorCode": "FC_MC1_26",
+   "name": "R2",
+   "areaId": "B2-W01",
+   "x": 82.5,
+   "y": 351.7,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 27,
+   "vendorCode": "FC_MC1_27",
+   "name": "R1",
+   "areaId": "B2-S01",
+   "x": 136.5,
+   "y": 351.7,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 28,
+   "vendorCode": "FC_MC1_28",
+   "name": "藍置物櫃",
+   "areaId": "B2-C09",
+   "x": 171.6,
+   "y": 310.9,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 29,
+   "vendorCode": "FC_MC1_29",
+   "name": "B2化妝室前",
+   "areaId": "B2-S09",
+   "x": 230.2,
+   "y": 347.4,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 30,
+   "vendorCode": "FC_MC1_30",
+   "name": "B2梯廳",
+   "areaId": "B2-C08",
+   "x": 237.6,
+   "y": 290.8,
+   "rotation": 0,
+   "notes": []
+  },
+  {
+   "floor": "B2",
+   "kind": "fcu",
+   "channel": 2,
+   "station": 1,
+   "position": 31,
+   "vendorCode": "FC_MC1_31",
+   "name": "B2大門",
+   "areaId": "B2-S06",
+   "x": 236,
+   "y": 195,
+   "rotation": 0,
+   "notes": [
+    "標籤靠近分區邊界（1.2 單位）"
+   ]
+  }
+ ]
+}

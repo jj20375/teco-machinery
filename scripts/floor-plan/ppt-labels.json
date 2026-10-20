@@ -1,0 +1,781 @@
+{
+ "_說明": "由 ClubM B1+B2F分區送風機編號示意圖-0909.pptx 抽出的標籤（名稱/序號、顏色＝集中控制器群組 MC1～MC5）。px、py 是標籤文字框中心在 PPT 底圖（1920x1080）上的像素位置；registration 把 PPT 像素換成旋轉後的最終圖面座標：x = origin[0] + scale*px、y = origin[1] + scale*py（PPT 底圖與系統 SVG 自動對位求得，兩者同一份 CAD，只差方向）。B1 的 station 1～5 = MC1～MC5（VIP 區、辦公室、開放區、工坊區、1F）；B2 是 DDC2 站號 1。",
+ "registration": {
+  "B1": {
+   "scale": 0.479,
+   "origin": [
+    -94.0,
+    5.2
+   ]
+  },
+  "B2": {
+   "scale": 0.3395,
+   "origin": [
+    -44.5,
+    16.5
+   ]
+  }
+ },
+ "labels": [
+  {
+   "floor": "B1",
+   "station": 1,
+   "position": 1,
+   "name": "東側門",
+   "px": 1260.8,
+   "py": 659.1
+  },
+  {
+   "floor": "B1",
+   "station": 1,
+   "position": 2,
+   "name": "V區男廁",
+   "px": 1248.2,
+   "py": 736.1
+  },
+  {
+   "floor": "B1",
+   "station": 1,
+   "position": 3,
+   "name": "V區女廁",
+   "px": 1214.6,
+   "py": 799.4
+  },
+  {
+   "floor": "B1",
+   "station": 1,
+   "position": 4,
+   "name": "V區酒瓶陳列",
+   "px": 1352.0,
+   "py": 789.6
+  },
+  {
+   "floor": "B1",
+   "station": 1,
+   "position": 5,
+   "name": "V1",
+   "px": 1349.2,
+   "py": 714.2
+  },
+  {
+   "floor": "B1",
+   "station": 1,
+   "position": 6,
+   "name": "V宴1",
+   "px": 1431.9,
+   "py": 754.4
+  },
+  {
+   "floor": "B1",
+   "station": 1,
+   "position": 7,
+   "name": "V宴2",
+   "px": 1510.6,
+   "py": 723.4
+  },
+  {
+   "floor": "B1",
+   "station": 1,
+   "position": 8,
+   "name": "V廚",
+   "px": 1598.3,
+   "py": 743.7
+  },
+  {
+   "floor": "B1",
+   "station": 1,
+   "position": 9,
+   "name": "V5",
+   "px": 1555.0,
+   "py": 840.7
+  },
+  {
+   "floor": "B1",
+   "station": 1,
+   "position": 10,
+   "name": "V宴前走道",
+   "px": 1484.3,
+   "py": 802.2
+  },
+  {
+   "floor": "B1",
+   "station": 1,
+   "position": 11,
+   "name": "V2",
+   "px": 1455.7,
+   "py": 859.4
+  },
+  {
+   "floor": "B1",
+   "station": 1,
+   "position": 12,
+   "name": "V3",
+   "px": 1455.7,
+   "py": 910.8
+  },
+  {
+   "floor": "B1",
+   "station": 1,
+   "position": 13,
+   "name": "V4",
+   "px": 1455.7,
+   "py": 967.8
+  },
+  {
+   "floor": "B1",
+   "station": 1,
+   "position": 14,
+   "name": "V7",
+   "px": 1577.9,
+   "py": 961.4
+  },
+  {
+   "floor": "B1",
+   "station": 1,
+   "position": 15,
+   "name": "V6",
+   "px": 1563.6,
+   "py": 898.8
+  },
+  {
+   "floor": "B1",
+   "station": 2,
+   "position": 1,
+   "name": "B1男廁",
+   "px": 487.7,
+   "py": 575.9
+  },
+  {
+   "floor": "B1",
+   "station": 2,
+   "position": 2,
+   "name": "B1女廁",
+   "px": 492.3,
+   "py": 632.0
+  },
+  {
+   "floor": "B1",
+   "station": 2,
+   "position": 3,
+   "name": "辦公室",
+   "px": 618.6,
+   "py": 565.2
+  },
+  {
+   "floor": "B1",
+   "station": 3,
+   "position": 1,
+   "name": "活動1",
+   "px": 1187.1,
+   "py": 335.9
+  },
+  {
+   "floor": "B1",
+   "station": 3,
+   "position": 2,
+   "name": "活動2",
+   "px": 1100.8,
+   "py": 306.6
+  },
+  {
+   "floor": "B1",
+   "station": 3,
+   "position": 3,
+   "name": "活動3",
+   "px": 1097.4,
+   "py": 388.9
+  },
+  {
+   "floor": "B1",
+   "station": 3,
+   "position": 4,
+   "name": "活動4",
+   "px": 1000.2,
+   "py": 390.9
+  },
+  {
+   "floor": "B1",
+   "station": 3,
+   "position": 5,
+   "name": "大M-logo",
+   "px": 935.9,
+   "py": 306.9
+  },
+  {
+   "floor": "B1",
+   "station": 3,
+   "position": 6,
+   "name": "果嶺1",
+   "px": 863.2,
+   "py": 381.9
+  },
+  {
+   "floor": "B1",
+   "station": 3,
+   "position": 7,
+   "name": "果嶺2",
+   "px": 784.2,
+   "py": 316.7
+  },
+  {
+   "floor": "B1",
+   "station": 3,
+   "position": 8,
+   "name": "果嶺3",
+   "px": 677.2,
+   "py": 384.1
+  },
+  {
+   "floor": "B1",
+   "station": 3,
+   "position": 9,
+   "name": "果嶺4",
+   "px": 632.0,
+   "py": 320.3
+  },
+  {
+   "floor": "B1",
+   "station": 3,
+   "position": 10,
+   "name": "咖啡廳入口",
+   "px": 517.9,
+   "py": 343.4
+  },
+  {
+   "floor": "B1",
+   "station": 3,
+   "position": 11,
+   "name": "咖啡廳座位",
+   "px": 450.2,
+   "py": 320.3
+  },
+  {
+   "floor": "B1",
+   "station": 3,
+   "position": 12,
+   "name": "A9",
+   "px": 709.0,
+   "py": 470.2
+  },
+  {
+   "floor": "B1",
+   "station": 3,
+   "position": 13,
+   "name": "G1",
+   "px": 812.8,
+   "py": 606.7
+  },
+  {
+   "floor": "B1",
+   "station": 3,
+   "position": 14,
+   "name": "G3",
+   "px": 680.8,
+   "py": 604.8
+  },
+  {
+   "floor": "B1",
+   "station": 3,
+   "position": 15,
+   "name": "A8",
+   "px": 760.5,
+   "py": 500.1
+  },
+  {
+   "floor": "B1",
+   "station": 3,
+   "position": 16,
+   "name": "A7",
+   "px": 827.0,
+   "py": 476.4
+  },
+  {
+   "floor": "B1",
+   "station": 3,
+   "position": 17,
+   "name": "A5",
+   "px": 931.3,
+   "py": 478.2
+  },
+  {
+   "floor": "B1",
+   "station": 3,
+   "position": 18,
+   "name": "A4",
+   "px": 1005.3,
+   "py": 479.4
+  },
+  {
+   "floor": "B1",
+   "station": 3,
+   "position": 19,
+   "name": "A2",
+   "px": 1081.5,
+   "py": 479.9
+  },
+  {
+   "floor": "B1",
+   "station": 3,
+   "position": 20,
+   "name": "A1",
+   "px": 1149.4,
+   "py": 482.1
+  },
+  {
+   "floor": "B1",
+   "station": 3,
+   "position": 21,
+   "name": "紅置物櫃",
+   "px": 1218.7,
+   "py": 457.6
+  },
+  {
+   "floor": "B1",
+   "station": 4,
+   "position": 1,
+   "name": "服務台1",
+   "px": 1238.0,
+   "py": 177.6
+  },
+  {
+   "floor": "B1",
+   "station": 4,
+   "position": 2,
+   "name": "服務台2",
+   "px": 1237.5,
+   "py": 245.6
+  },
+  {
+   "floor": "B1",
+   "station": 4,
+   "position": 3,
+   "name": "B1",
+   "px": 1314.7,
+   "py": 399.4
+  },
+  {
+   "floor": "B1",
+   "station": 4,
+   "position": 4,
+   "name": "B2",
+   "px": 1314.7,
+   "py": 459.7
+  },
+  {
+   "floor": "B1",
+   "station": 4,
+   "position": 5,
+   "name": "B3",
+   "px": 1314.7,
+   "py": 521.5
+  },
+  {
+   "floor": "B1",
+   "station": 4,
+   "position": 6,
+   "name": "B4",
+   "px": 1312.4,
+   "py": 584.4
+  },
+  {
+   "floor": "B1",
+   "station": 4,
+   "position": 7,
+   "name": "B8",
+   "px": 1503.2,
+   "py": 598.6
+  },
+  {
+   "floor": "B1",
+   "station": 4,
+   "position": 8,
+   "name": "B7",
+   "px": 1470.4,
+   "py": 528.0
+  },
+  {
+   "floor": "B1",
+   "station": 4,
+   "position": 9,
+   "name": "B6",
+   "px": 1456.8,
+   "py": 466.7
+  },
+  {
+   "floor": "B1",
+   "station": 4,
+   "position": 10,
+   "name": "B5",
+   "px": 1427.4,
+   "py": 392.5
+  },
+  {
+   "floor": "B1",
+   "station": 4,
+   "position": 11,
+   "name": "學苑1",
+   "px": 1441.2,
+   "py": 337.0
+  },
+  {
+   "floor": "B1",
+   "station": 4,
+   "position": 12,
+   "name": "學苑2",
+   "px": 1392.5,
+   "py": 166.1
+  },
+  {
+   "floor": "B1",
+   "station": 4,
+   "position": 13,
+   "name": "學苑3",
+   "px": 1392.8,
+   "py": 128.3
+  },
+  {
+   "floor": "B1",
+   "station": 4,
+   "position": 14,
+   "name": "工坊1",
+   "px": 1294.2,
+   "py": 136.6
+  },
+  {
+   "floor": "B1",
+   "station": 4,
+   "position": 15,
+   "name": "工坊2",
+   "px": 1231.9,
+   "py": 80.6
+  },
+  {
+   "floor": "B1",
+   "station": 4,
+   "position": 16,
+   "name": "F1",
+   "px": 1290.0,
+   "py": 46.7
+  },
+  {
+   "floor": "B1",
+   "station": 4,
+   "position": 17,
+   "name": "工坊3",
+   "px": 1175.7,
+   "py": 116.3
+  },
+  {
+   "floor": "B1",
+   "station": 4,
+   "position": 18,
+   "name": "F2",
+   "px": 1048.6,
+   "py": 52.5
+  },
+  {
+   "floor": "B1",
+   "station": 4,
+   "position": 19,
+   "name": "F3",
+   "px": 946.8,
+   "py": 63.0
+  },
+  {
+   "floor": "B1",
+   "station": 4,
+   "position": 20,
+   "name": "F4",
+   "px": 930.7,
+   "py": 160.4
+  },
+  {
+   "floor": "B1",
+   "station": 4,
+   "position": 21,
+   "name": "F5",
+   "px": 1010.7,
+   "py": 123.0
+  },
+  {
+   "floor": "B1",
+   "station": 4,
+   "position": 22,
+   "name": "雄獅1",
+   "px": 1009.2,
+   "py": 180.2
+  },
+  {
+   "floor": "B1",
+   "station": 4,
+   "position": 23,
+   "name": "雄獅2",
+   "px": 1009.2,
+   "py": 244.5
+  },
+  {
+   "floor": "B1",
+   "station": 5,
+   "position": 1,
+   "name": "1F大門",
+   "px": 1690.0,
+   "py": 101.9
+  },
+  {
+   "floor": "B1",
+   "station": 5,
+   "position": 2,
+   "name": "1F電梯前",
+   "px": 1712.7,
+   "py": 169.2
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 1,
+   "name": "B2櫃台",
+   "px": 1612.8,
+   "py": 483.4
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 2,
+   "name": "T9",
+   "px": 1521.8,
+   "py": 314.8
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 3,
+   "name": "T1",
+   "px": 1584.7,
+   "py": 128.6
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 4,
+   "name": "T10",
+   "px": 1358.9,
+   "py": 322.3
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 5,
+   "name": "T2",
+   "px": 1356.1,
+   "py": 216.0
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 6,
+   "name": "T11",
+   "px": 1247.7,
+   "py": 322.3
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 7,
+   "name": "T3",
+   "px": 1224.4,
+   "py": 216.9
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 8,
+   "name": "T12-13",
+   "px": 1106.5,
+   "py": 323.4
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 9,
+   "name": "T4",
+   "px": 1092.2,
+   "py": 216.0
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 10,
+   "name": "T5",
+   "px": 995.3,
+   "py": 151.0
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 11,
+   "name": "綠置物櫃",
+   "px": 882.6,
+   "py": 403.5
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 12,
+   "name": "更衣室入口",
+   "px": 725.7,
+   "py": 288.1
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 13,
+   "name": "T6",
+   "px": 763.0,
+   "py": 149.2
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 14,
+   "name": "T7",
+   "px": 636.1,
+   "py": 198.3
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 15,
+   "name": "T8",
+   "px": 516.9,
+   "py": 195.2
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 16,
+   "name": "R9",
+   "px": 375.1,
+   "py": 166.1
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 17,
+   "name": "R8",
+   "px": 375.1,
+   "py": 285.5
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 18,
+   "name": "B2休息區",
+   "px": 518.2,
+   "py": 433.6
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 19,
+   "name": "R7",
+   "px": 375.1,
+   "py": 408.4
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 20,
+   "name": "R6",
+   "px": 375.1,
+   "py": 525.6
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 21,
+   "name": "R5",
+   "px": 374.2,
+   "py": 638.5
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 22,
+   "name": "S3",
+   "px": 584.1,
+   "py": 772.8
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 23,
+   "name": "S2",
+   "px": 679.4,
+   "py": 652.5
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 24,
+   "name": "R4",
+   "px": 374.2,
+   "py": 755.1
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 25,
+   "name": "R3",
+   "px": 374.2,
+   "py": 871.7
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 26,
+   "name": "R2",
+   "px": 374.2,
+   "py": 987.4
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 27,
+   "name": "R1",
+   "px": 533.0,
+   "py": 987.4
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 28,
+   "name": "藍置物櫃",
+   "px": 636.4,
+   "py": 867.2
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 29,
+   "name": "B2化妝室前",
+   "px": 809.2,
+   "py": 974.6
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 30,
+   "name": "B2梯廳",
+   "px": 830.8,
+   "py": 808.0
+  },
+  {
+   "floor": "B2",
+   "station": 1,
+   "position": 31,
+   "name": "B2大門",
+   "px": 845.6,
+   "py": 525.6
+  }
+ ]
+}

@@ -8,7 +8,8 @@
     "build": "ASTRO_TELEMETRY_DISABLED=1 astro build",
     "preview": "ASTRO_TELEMETRY_DISABLED=1 astro preview",
     "typecheck": "ASTRO_TELEMETRY_DISABLED=1 astro check",
-    "extract:floor-plan": "node scripts/extract-floor-plan.mjs"
+    "extract:floor-plan": "node scripts/extract-floor-plan.mjs",
+    "build:ppt-layout": "node scripts/build-ppt-layout.mjs"
   },
   "dependencies": {
     "@ant-design/icons-vue": "^7.0.1",
