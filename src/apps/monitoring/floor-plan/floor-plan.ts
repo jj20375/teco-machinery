@@ -159,7 +159,7 @@ function toPlan(floor: FloorId, source: GeneratedPlanModule): FloorPlan {
     outline: source.OUTLINE,
     extraOutlines: source.EXTRA_OUTLINES,
     areas: source.GENERATED_AREAS.map((zone) => ({ ...zone, name: zone.name || zone.id, unnamed: !zone.name })),
-    baseImage: `/floor-plans/${floor.toLowerCase()}-base.svg`,
+    baseImage: `/floor-plans/${floor.toLowerCase()}-base.svg?v=${__FLOOR_PLAN_VERSION__}`,
     baseOpacity: BASE_OPACITY[floor],
     unitsPerSqm: source.UNITS_PER_SQM,
     unitScale: Math.sqrt(source.UNITS_PER_SQM / B1.UNITS_PER_SQM),

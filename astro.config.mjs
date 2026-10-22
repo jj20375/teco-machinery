@@ -2,6 +2,17 @@ import { defineConfig } from 'astro/config';
 import vue from '@astrojs/vue';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath, URL } from 'node:url';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+
+// 樓層底圖放在 public/，檔名不會帶 hash，伺服器也沒有快取指示，瀏覽器會一直沿用舊圖。
+// 網址加上兩張底圖的內容雜湊（floor-plan.ts 的 baseImage），底圖一改網址就變，所有人自動抓新圖。
+// 2026-10-22 修過的真實問題：圖面旋轉 180° 部署後，設備位置是新的、底圖卻是快取的舊圖，整張對不上。
+const floorPlanVersion = createHash('sha256')
+  .update(readFileSync(fileURLToPath(new URL('./public/floor-plans/b1-base.svg', import.meta.url))))
+  .update(readFileSync(fileURLToPath(new URL('./public/floor-plans/b2-base.svg', import.meta.url))))
+  .digest('hex')
+  .slice(0, 10);
 
 export default defineConfig({
   srcDir: './src',
@@ -15,6 +26,9 @@ export default defineConfig({
     plugins: [
       tailwindcss(),
     ],
+    define: {
+      __FLOOR_PLAN_VERSION__: JSON.stringify(floorPlanVersion),
+    },
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
