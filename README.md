@@ -10,12 +10,13 @@ CAD 底圖產生流程）；完整代理人規則見 [`CLAUDE.md`](CLAUDE.md)，
 
 - `/admin/floor-plan`：可切換 B1／B2 樓層頁籤；點選區域，選擇現有冰水主機或 FCU 加入，可拖曳或用方向鍵移動、旋轉、移除位置、儲存與匯出 JSON。切換樓層若有未儲存變更會先詢問確認。
 - 底圖取自 CLUB-M 的 B1／B2 CAD 圖（見下節），2D SVG 與 Three.js 立體瀏覽共用同一份座標。兩層各有自己的底圖、建築外框與分區；B1／B2 的設備清單與儲存配置也各自獨立（chiller 目前僅歸屬 B1，B2 尚無主機資料）。
-- 分區範圍是**設計端直接在 CAD 圖上畫的紅框**，紅框沒有框到的地方（B1 的大梯廳挑空、B2 的停車場車道）不是分區，設備放不進去。中文名稱尚未指定，目前顯示編號。
+- 分區範圍是**設計端直接在 CAD 圖上畫的紅框**，加上現場最終版 PPT 有送風機、但設計端沒畫紅框的位置（B1 補 3 個、B2 補 5 個）與 B1 右上角的 1F 小圖；其餘沒框到的地方（B1 的大梯廳挑空、B2 的停車場車道）不是分區，設備放不進去。中文名稱大多尚未指定，顯示編號（B1 只有「1F 大門」「1F 電梯前」有名稱）。
+- 兩層圖面都旋轉 180° 對齊現場 PPT 的方向。
 
 | 樓層 | 分區數 | 編號 | 說明 |
 | --- | ---: | --- | --- |
-| B1 | 72 | `B1-Z01`～`B1-Z72` | 編號依圖面位置自動給（由上而下、由左而右） |
-| B2 | 41 | `B2-E01`…、`N`、`W`、`C`、`S` | 沿用設計稿紅框 id，字母代表方位（E東／N北／W西／C中／S南） |
+| B1 | 77 | `B1-Z01`～`B1-Z77` | 編號依旋轉後的圖面位置自動給（由上而下、由左而右） |
+| B2 | 46 | `B2-E01`…、`N`、`W`、`C`、`S` | 沿用設計稿紅框 id，字母代表方位（E東／N北／W西／C中／S南，旋轉後 E↔W、N↔S 對調）；補畫的分區編為 `B2-C07`～`C11` |
 
 - 正常設備為藍色，異常或待保養為紅色，離線或停止為灰色；設備資料與即時狀態來自真實後端 API
   （`GET /chillers`／`GET /fcus`／`GET /alarms`，登入後台走認證版、前台戰情室走
@@ -24,8 +25,9 @@ CAD 底圖產生流程）；完整代理人規則見 [`CLAUDE.md`](CLAUDE.md)，
   2026-09-16），跨瀏覽器／跨裝置都會看到相同配置，不再只存在單一瀏覽器的 localStorage；儲存採
   整層覆寫＋樂觀鎖（`expectedVersion`），期間有別人存過檔會回 409。細節見
   [`backend/CHANGELOG.md`](backend/CHANGELOG.md)「平面圖配置改由後端保存」一節。
-- ⚠️ 目前 95 台 FCU 的分區對照（`zone_code`）全部是驗收用的模擬對照表，不是真實物理位置，
-  正式上線前必須由現場人員在這個頁面重新拖拉、存檔覆蓋掉，細節見 `backend/CHANGELOG.md` 同名章節。
+- ⚠️ 95 台 FCU 的圖面配置（座標與 `zone_code`）是依現場最終版 PPT 的標籤位置推得（2026-10-20，對照表見
+  [`docs/floor-plan-ppt-mapping.md`](docs/floor-plan-ppt-mapping.md)），**不是現場實際量測的位置**；已部署到正式機與測試環境（2026-10-22），
+  仍要現場人員在這個頁面檢查、微調座標。細節見 `backend/CHANGELOG.md`「圖面對齊現場最終版 PPT」一節。
 - 檢查：`node tests/floor-plan.test.mjs`、`npm run typecheck`、`npm run build`。
 
 ## 底圖與分區（CAD 原圖）
@@ -41,11 +43,12 @@ CAD 底圖產生流程）；完整代理人規則見 [`CLAUDE.md`](CLAUDE.md)，
 - 底圖線稿的不透明度依樓層而定（B1 `.42`、B2 `.22`），設定在 `floor-plan.ts` 的 `BASE_OPACITY`：B2 的停車格斜線鋪滿整張圖，不壓低分區會讀不出來。線寬與字級兩層是一致的（實測都是 4.8px／0.69px）。
 - 產生：`npm run extract:floor-plan`（只跑單層加 `-- --floor B2`），輸出 `public/floor-plans/<floor>-base.svg`（底圖，以 `<image>` 引用，勿 inline）、`src/apps/monitoring/floor-plan/<floor>-areas.generated.ts`（`floor-plan.ts` 由此組出每層的 `planOf(floor)`）、[`docs/floor-plan-extract-report.md`](docs/floor-plan-extract-report.md)（兩層的分區清單、面積、被濾掉的框）。
 - **要調整分區就回去改來源圖的紅框再重跑**；要補中文名稱請改 `FLOOR_PLANS.<floor>.names`。兩者都不要手改產生出來的 `*-areas.generated.ts`。
-- 過濾條件依樓層而定：B1 濾掉面積小於 4 ㎡ 或短邊小於 12 圖面單位的紅框（那種框連一台 FCU 標記都放不下），被濾掉的列在報告裡；**B2 不過濾**，因為 41 個框都是設計端逐一畫好並編號的，濾掉會讓編號跳號。B2 有 3 個框（`B2-N07`、`B2-W06`、`B2-S11`）小到放不下 FCU 標記，保留但放不進設備。
+- 圖面方向（兩層 `rotate: 180`）、補畫的分區（`extraZones`）也寫在 `zone-plan.mjs`，B1 的 1F 小圖由 [`scripts/floor-plan/inset-1f.mjs`](scripts/floor-plan/inset-1f.mjs) 重繪。**重新抽取會讓 B1 的 Z 編號依位置重編**，已寫入資料庫的配置要跟著重跑 `npm run build:ppt-layout` 與 `scripts/apply-ppt-layout.mjs`（先預覽、加 `--apply` 才寫入），否則 `area_id` 會對不上。
+- 設計端的 Illustrator 原稿（`.ai`）留在 `design/`；匯出的 SVG 已在 `assets/cad/`。
+- 過濾條件依樓層而定：B1 濾掉面積小於 4 ㎡ 或短邊小於 12 圖面單位的紅框（那種框連一台 FCU 標記都放不下），被濾掉的列在報告裡；**B2 不過濾**，因為 46 個分區都是設計端逐一畫好並編號（或 PPT 補畫）的，濾掉會讓編號跳號。B2 有 3 個分區（`B2-S07`、`B2-E06`、`B2-N11`）小到放不下 FCU 標記，保留但放不進設備（`tests/floor-plan.test.mjs` 有檢查這份清單）。
 - 產生腳本會檢查分區互相重疊、頂點超出建築外框、多邊形自相交、編號重複，有問題會在報告的「警告」欄列出。
 - 比例尺：B1 以 B1019 訓練打擊空間 328 ㎡ 校準，約 1 ㎡ ≈ 79.2 圖面單位²。B2 圖面是同一棟建築但匯出縮放不同（線性約 1.334 倍），以兩張圖的建築外框面積比回推為 1 ㎡ ≈ 140.9 單位²；設備標記尺寸也依這個比例放大，兩層看起來才一樣大。`sqm` 欄位僅供判讀分區大小，**非施工尺寸**。
-- 分區編號對照圖：[`docs/b1-zone-reference.png`](docs/b1-zone-reference.png)（B1）。
-- 換版計畫與各階段完成狀態見 [`docs/superpowers/plans/2026-09-10-b1-cad-floor-plan-migration.md`](docs/superpowers/plans/2026-09-10-b1-cad-floor-plan-migration.md)。
+- 分區編號、面積與標籤位置見 [`docs/floor-plan-extract-report.md`](docs/floor-plan-extract-report.md)；FCU 與分區的對照見 [`docs/floor-plan-ppt-mapping.md`](docs/floor-plan-ppt-mapping.md)。
 
 ## 專案規格文件
 

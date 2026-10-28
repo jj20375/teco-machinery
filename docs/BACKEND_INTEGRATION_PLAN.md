@@ -1,7 +1,7 @@
 # 東元智慧環境監控 — 後端整合規劃（ASP.NET Core 10 + MariaDB + Docker on Windows）
 
 > 依據：`docs/Teco_Golf_DataCollector/Teco_Golf_DataCollector_使用說明書.docx`（v1.0, .NET 8）
-> 與 `docs/Teco_Golf_DataCollector/Release/*.dll`（實際交付組合）
+> 與供應商交付的 8 個 DLL（現行版本在 `backend/lib/`；2026-10-22 起是供應商新版）
 > 撰寫日期：2026-09-14
 
 ---

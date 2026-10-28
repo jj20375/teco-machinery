@@ -2021,6 +2021,35 @@ migration 016 套用到本機後，`merchant_admin`（場館 1）與 `kym_leader
 
 **未驗證／要注意**
 - 座標只是依 PPT 標籤位置推得，不是現場實際位置；對照表備註欄標了需確認的案例（B1 28 台、B2 4 台：壓在牆線、走道、靠近分區邊界，其中 17 台是逐台指定分區）。補畫的分區與 1F 小圖都是簡化的示意，不是精確牆線。
-- 正式機與測試環境（VM）還沒同步：要重新部署前端、對資料庫執行 `apply-ppt-layout.mjs`（先預覽）；VM 上若冰水主機位置跟本機不同，要在頁面手動調整。
+- 正式機與測試環境（VM）還沒同步（2026-10-22 已完成，見「現場設備接通」一節）：要重新部署前端、對資料庫執行 `apply-ppt-layout.mjs`（先預覽）；VM 上若冰水主機位置跟本機不同，要在頁面手動調整。
 - 這次寫入的操作紀錄記在 `oplog_admin`（稽核測試管理員）名下；交機前本來就會用 `go-live-cleanup.sh` 清操作紀錄。
 - 前台戰情室右側「FCU 設備總覽」清單仍以 `zone_code`（例如 `B1-Z63`）顯示，不是自訂名稱，這是既有設計，沒有改。
+
+## 現場設備接通：Windows portproxy 代轉、換上供應商新版 DLL、圖面部署到正式機（2026-10-22）
+
+**起因**：主機接上現場網路（乙太網路 3：`192.168.50.199`＋`192.168.10.199`，閘道 `192.168.50.1`；乙太網路 2 仍有 `192.168.84.108`）。
+Windows 主機自己連漢鐘、DDC1、DDC2 都通（來源位址 `192.168.10.199`），但 VM 經 Default Switch NAT 出去時，來源位址被換成 `192.168.50.199`
+（主機 `Get-NetNatSession` 的 `ExternalSourceAddress` 看得到），設備回不來，三個通道全部不通。這正是 10-14 事故（部署手冊附錄 B.1）預期會再發生的
+「主機有多個 IP 時 NAT 挑錯對外位址」。
+
+**解法（已套用並驗證）**：讓 Windows 主機自己去連設備，來源位址自然是對的，不必改主機 IP、不必建 External 交換器。
+- 主機 `netsh interface portproxy` 三筆，只聽 Teco-NAT 的 `192.168.100.1`：`4196` → `192.168.10.198:4196`（漢鐘）、`5021` → `192.168.10.12:502`（DDC1）、
+  `5022` → `192.168.10.14:502`（DDC2）。
+- 防火牆規則 `Teco-Collector-Proxy`（入站 TCP 4196／5021／5022，來源限 `192.168.100.0/24`）；IP Helper（`iphlpsvc`）服務要在跑，已設自動啟動。
+- 正式機 `backend/deploy/.env`：`HANBELL_IP`、`DDC1_IP`、`DDC2_IP` 都填 `192.168.100.1`，`*_PORT` 分別填 `4196`、`5021`、`5022`。
+- 移除：`netsh interface portproxy delete v4tov4 listenaddress=192.168.100.1 listenport=<埠>`、`Remove-NetFirewallRule -Name Teco-Collector-Proxy`。
+
+**換上供應商新版 DLL**（commit `178d656`）：只有 `Teco_Golf_DataCollector`、`CS_Communication_Golf_DDC` 有實質改動，介面不變，其餘 5 個是同一包重新編譯；
+`backend/lib/` 已換新。依 commit 訊息，新版內含 DDC／漢鐘回應逾時設定，專案端（`.env`、`compose.yaml`）沒有另外設定它。
+舊版可從 git 歷史取得；`backend/tools/probe/lib/` 仍是舊版（探針只用來測連線，沒有同步換）。2026-10-28 起 `docs/Teco_Golf_DataCollector/Release/` 的舊版 DLL 副本已移除，
+現行版本以 `backend/lib/` 為準。
+
+**驗證**：先在測試環境用模擬器驗證通過，再讓正式 Collector 以新 DLL 啟動：三通道 Connected、95 台 FCU 與 2 台冰水主機讀取成功、資料寫入資料庫。
+
+**圖面部署到正式機與測試環境**（承 2026-10-20 一節）：先備份正式整庫與測試機配置；前端 `dist` rsync 到 VM（正式與測試的 web 掛同一份 `~/teco/dist`，兩邊同時換新）；
+正式與測試各用場館管理員帳號跑一次 `scripts/apply-ppt-layout.mjs --apply`（B1 66、B2 31 筆配置、95 台自訂名稱；原本 FC_MC1_01、FC_MC1_02 的自訂名稱被換成 PPT 名稱）。
+驗證：95／95 有名稱與 `zone_code`，前台熱區圖顯示新配置。這次沒有後端程式與 migration 變更。
+
+**要注意**：
+- portproxy 是 Windows 主機上的設定，不在 repo 裡；主機或設備 IP 變動時，portproxy 的 `connectaddress` 要同步改。
+- 座標仍是依 PPT 標籤位置推得，要現場人員在「空間設備配置」頁微調；冰水主機位置也是在頁面手動調整。

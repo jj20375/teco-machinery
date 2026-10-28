@@ -54,6 +54,9 @@ DDC2_IP=實際位址
 DDC2_PORT=502
 ```
 
+> VM 掛在 NAT 後面、經 Windows 主機 `portproxy` 代轉時（2026-10-22 正式機的做法），`*_IP` 填主機的 Teco-NAT 位址 `192.168.100.1`，
+> `*_PORT` 填代轉埠（漢鐘 4196、DDC1 5021、DDC2 5022），不是設備本身的位址；見 `backend/CHANGELOG.md`「現場設備接通」。
+
 改完後重建 collector，讓新設定生效：
 
 ```bash
@@ -86,6 +89,9 @@ docker compose ps
 越底層越先查。**下層不通，上層一定不通**，不要跳著看。
 
 ### 第 1 層：網路（主機到設備）
+
+> 若 Collector 是經 Windows 主機的 `portproxy` 連設備，這裡要測的是代轉位址（例如 `192.168.100.1:5021`）；測不通時，除了設備本身，
+> 也要查主機的 portproxy 規則與 IP Helper（`iphlpsvc`）服務是否在跑。
 
 從主機測 TCP 連線：
 
