@@ -1,7 +1,13 @@
 // Run: node tests/floor-plan.test.mjs
 import assert from 'node:assert/strict';
 import { buildSync } from 'esbuild';
-const { outputFiles } = buildSync({ entryPoints: ['src/apps/monitoring/floor-plan/floor-plan.ts'], bundle: true, write: false, platform: 'node', format: 'esm' });
+// floor-plan.ts 的底圖網址用到 Vite 的 define（astro.config.mjs），這裡不經過 Vite，要自己補，否則載入就 ReferenceError。
+const VERSION = 'test';
+const { outputFiles } = buildSync({
+  entryPoints: ['src/apps/monitoring/floor-plan/floor-plan.ts'],
+  bundle: true, write: false, platform: 'node', format: 'esm',
+  define: { __FLOOR_PLAN_VERSION__: JSON.stringify(VERSION) },
+});
 const {
   planOf, areasOf, FLOORS, containsPoint, placementArea, canPlace,
   parseLayout, serializeLayout, equipmentColor, equipmentStatus, equipmentSize, areaHeat,
@@ -23,8 +29,9 @@ for (const floor of FLOORS) {
   const areas = areasOf(floor);
   assert.equal(areas.length, expected.count, `${floor} 紅框分區應為 ${expected.count} 個`);
   assert.equal(new Set(areas.map((a) => a.id)).size, areas.length, `${floor} 分區編號不得重複`);
-  assert.equal(plan.baseImage, expected.image, `${floor} 應載入自己的底圖`);
-  assert.equal(basePlanImage(floor), expected.image);
+  // 網址帶內容版本號，底圖一改瀏覽器就會抓新圖（見 astro.config.mjs）
+  assert.equal(plan.baseImage, `${expected.image}?v=${VERSION}`, `${floor} 應載入自己的底圖（帶版本號）`);
+  assert.equal(basePlanImage(floor), `${expected.image}?v=${VERSION}`);
   for (const area of areas) {
     assert.match(area.id, expected.idPattern, `${area.id} 編號格式不符`);
     assert.ok(area.name, `${area.id} 應有名稱或退回顯示編號`);

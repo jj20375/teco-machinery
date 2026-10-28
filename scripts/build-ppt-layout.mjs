@@ -13,9 +13,11 @@ import { fileURLToPath } from 'node:url';
 import { buildSync } from 'esbuild';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+// floor-plan.ts 的底圖網址用到 Vite 的 define（astro.config.mjs），這裡不經過 Vite，要自己補；本腳本不會用到底圖網址，值隨意。
 const { outputFiles } = buildSync({
   entryPoints: [resolve(ROOT, 'src/apps/monitoring/floor-plan/floor-plan.ts')],
   bundle: true, write: false, platform: 'node', format: 'esm',
+  define: { __FLOOR_PLAN_VERSION__: '"script"' },
 });
 const { areasOf, planOf, canPlace, equipmentSize } = await import(
   `data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`);
