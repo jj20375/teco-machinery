@@ -1,7 +1,7 @@
 # Teco.Hvac Backend
 
 東元智慧環境監控的後端：接住 `Teco_Golf_DataCollector`（供應商 DLL）的即時資料、
-落地到 MariaDB、透過 ASP.NET Core 10 API + SignalR 供前後台使用。
+落地到 MariaDB、透過 ASP.NET Core 10 API 供前後台使用（前端以輪詢取即時資料；API 也提供 SignalR hub，但目前沒有前端使用）。
 
 規劃全文見 [`../docs/BACKEND_INTEGRATION_PLAN.md`](../docs/BACKEND_INTEGRATION_PLAN.md)；
 本檔案是「這個 repo 目前實際長什麼樣子、怎麼跑」的現況說明，**只保留現在的狀態**。
@@ -53,7 +53,7 @@ backend/
 
 **P1–P4 端對端**（`docker compose up -d --build`，於本機 Docker 跑過完整流程）：
 - MariaDB 11.8 初始化：`000_create_app_user.sh`（建 `teco_app` 帳號）→ `001_schema.sql`
-  （15 張表，含分割表）→ `002_seed.sql`（2 台冰水主機、95 台 FCU＝64+31、3 角色、4 權限、2 條告警規則）
+  （驗證當時 15 張表、含分割表；現在 19 張）→ `002_seed.sql`（2 台冰水主機、95 台 FCU＝64+31、2 條告警規則；角色與權限當時是 3 角色、4 權限，現在種子是 5 個系統角色、14 筆權限目錄）
   → **實測中抓到並修正**：MariaDB 的 `PARTITION ... MAXVALUE` 語法必須寫成
   `VALUES LESS THAN (MAXVALUE)`，單獨 `MAXVALUE` 會報 `ERROR 1479`
 - Collector 啟動、載入設備對照表（95 台 FCU 全部對到 `device_fcu`，無「找不到對照」警告）、
@@ -111,9 +111,10 @@ backend/
 **尚未驗證**（需要現場環境或使用者操作）：
 - P6 部署後仍沒測到的：斷電或當機這類「不乾淨關機」、空掛載點 `chattr +i` 防呆、第三層異地備份（要先跟客戶確認放哪），
   詳見 `CHANGELOG.md`「首次部署到 Hyper-V Ubuntu VM」「資料庫備份第一層與第二層上線」「VM 重開機測試與自動啟動設定」各節
-- SignalR 前端訂閱（後端廣播邏輯已驗證會被觸發，但沒有瀏覽器端訂閱測試）
+- SignalR：前端目前**沒有任何程式訂閱**（前台改為每 5 秒輪詢，見 `docs/IOT_資料對照與缺口清單.md` 2.12）；後端的 `/hubs/telemetry` 與 Caddy 的 `/hubs/*` 轉發保留著，
+  廣播邏輯只驗證過會被觸發，沒有端對端的訂閱測試
 - 平台管理前端（場館管理／系統帳號／角色管理）目前只用 curl 驗證過 API 行為，沒有實際
-  用瀏覽器點過畫面（詳見 `CHANGELOG.md`「平台管理前端＋雙軌身分切換」一節）
+  用瀏覽器點過畫面（詳見 `CHANGELOG.md`「平台管理前端＋雙軌身分切換」一節；之後的 CHANGELOG 也沒有補做的紀錄，2026-10-28 核對。系統診斷頁不在此列，已用瀏覽器實測）
 
 ## 權限機制
 
@@ -163,7 +164,7 @@ backend/
 - **JWT 失效機制**：`AppUser.AuthVersion` 在密碼重設、角色/權限變更、場館開關變更時遞增；
   `Program.cs` 的 `OnTokenValidated` 每次請求都比對 DB，版本不符立即拒絕。
 
-**端點**：`/api/v1/auth/{login,scopes,scopes/select,refresh,refresh-token,me,change-password}`、
+**端點**：`/api/v1/auth/{login,logout,scopes,scopes/select,refresh,refresh-token,me,change-password}`、
 `/api/v1/platform/{merchants,system-users,roles,permissions}`（平台管理員專用，前端見
 `src/apps/monitoring/pages/platform/`）、
 `/api/v1/merchant/{users,roles,permissions,operation-logs}`（場館自己的日常管理，受

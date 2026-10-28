@@ -3,6 +3,8 @@
 > 依據：`docs/Teco_Golf_DataCollector/Teco_Golf_DataCollector_使用說明書.docx`（v1.0, .NET 8）
 > 與供應商交付的 8 個 DLL（現行版本在 `backend/lib/`；2026-10-22 起是供應商新版）
 > 撰寫日期：2026-09-14
+> **現況核對（2026-10-28）**：本文是規劃全文，P0～P4 與後續的告警門檻、權限稽核、平台管理、P6 部署都已完成（P6 仍有少數項目未驗證，見 `backend/README.md`「尚未驗證」）。
+> 與實作不同的地方已就地標註；資料表欄位以 `backend/deploy/mariadb/init/*.sql`、路由以 `backend/src/Teco.Hvac.Api/Endpoints/` 為準，不要照本文的草稿直接寫程式。
 
 ---
 
@@ -37,6 +39,7 @@ Data Collector 是一個 **push 模式、每 5 秒一次全場快照、唯讀** 
 
 現場電腦 IP：主 `192.168.50.199` / 進階 `192.168.10.199`（雙網段）。
 → **容器必須能路由到 192.168.10.0/24**，這是 Docker 網路設計的唯一硬需求。
+（實際部署時 VM 經 NAT 直接連不到設備，改由 Windows 主機 `portproxy` 代轉，見 `backend/CHANGELOG.md`「現場設備接通」。）
 
 ### 1.3 執行時序（內部常數，API 不開放調整）
 
@@ -73,7 +76,7 @@ Data Collector 是一個 **push 模式、每 5 秒一次全場快照、唯讀** 
 1. 改用**絕對室溫上下限**（可依樓層／分區各自設定門檻）— 這與 Figma 前台 FCU 清單的呈現一致，也是我建議的預設。
 2. 請供應商加開設定溫度暫存器（`Address = 40051 + (Position−1) × 16`，同一個 16-register 區塊裡很可能就有 setpoint）。
 
-這正好可以結案 `teco-spec-review-findings` 的第 1 項（三方矛盾），答案偏向「絕對溫度」。
+這正好結案了規格書審查時「FCU 異常判定基準三方矛盾」的疑慮（規格書寫 ΔT、規格書 Q&A 寫絕對室溫、Figma 與報表又不一致），答案偏向「絕對溫度」。
 
 **決定（2026-10-02）**：採第 1 條，不再請供應商加開暫存器；畫面上的「設定溫度」「溫度差 ΔT」欄位已移除。
 
@@ -110,17 +113,20 @@ Collector 公開 API 只有 `Start` / `Stop` / 兩個事件。`FCUUnit.Update()`
 ### 2.5 負載率不用自己算
 
 `TecoGolfHanbellStatus.LoadPercentage` 直接給 %，`ChilledWaterTemperatureDifference` 也直接給 ΔT。
-→ `teco-spec-review-findings` 第 4 項（負載率公式三選一）**可直接結案：用設備回報值**。
+→ 規格書審查時「負載率公式三選一」的疑慮**可直接結案：用設備回報值**。
 （kW/RT 效率不在設計稿與規格書的畫面裡，不需要額定容量 RT；`device_chiller.rated_capacity_rt` 保留為可空欄位，日後有需求再填。2026-09-30 確認。）
 
 ### 2.6 FCU 台數 vs 前台分區數對不上
 
-| | Collector | 前台圖面分區 |
-|---|---|---|
-| B1F | 64 台 | 72 區 |
-| B2F | 31 台 | 41 區 |
+| | Collector | 前台圖面分區（規劃時） | 現在（2026-10-20 起） |
+|---|---|---|---|
+| B1F | 64 台 | 72 區 | 77 區（旋轉 180° 後補了 3 個分區，另加 1F 小圖 2 個） |
+| B2F | 31 台 | 41 區 | 46 區（補了 5 個分區） |
 
 需要一份 **FCU ↔ 分區對照表**。建議做成後台可維護的資料表，不要寫死在前端。
+
+**實作**：沒有另做表格 CRUD，由「空間設備配置」頁拖拉設備，儲存時同步寫入 `device_fcu.zone_code`。
+2026-10-20 起 95 台依現場最終版 PPT 配置（對照表見 `docs/floor-plan-ppt-mapping.md`），座標是依標籤位置推得，仍要現場人員微調。
 
 ### 2.7 FCU ID 跨 DDC 會重複
 
@@ -169,7 +175,7 @@ Collector 公開 API 只有 `Start` / `Stop` / 兩個事件。`FCUUnit.Update()`
 │   Hyper-V Linux VM（Ubuntu 24.04 LTS）或 WSL2   ── Docker Engine CE (Apache-2.0)          │
 │                                                                                          │
 │   ┌────────────────┐   POST /internal/ingest   ┌────────────────┐                        │
-│   │ teco-collector │ ────────────────────────► │    teco-api    │ ◄── SignalR ── 前台看板 │
+│   │ teco-collector │ ────────────────────────► │    teco-api    │ ◄── 輪詢 ───── 前台看板 │
 │   │  (.NET 10      │                           │ (ASP.NET Core  │ ◄── REST ───── 後台管理 │
 │   │   Worker)      │ ──┐                       │      10)       │                        │
 │   │  ↓ 8 個 DLL    │   │                       └───────┬────────┘                        │
@@ -200,7 +206,7 @@ Collector 公開 API 只有 `Start` / `Stop` / 兩個事件。`FCUUnit.Update()`
 
 ### Collector → API 的即時通道
 
-用 **內網 HTTP POST**（compose network 內，帶 `X-Internal-Token`），API 維護記憶體內的 current state 並經 SignalR 廣播。
+用 **內網 HTTP POST**（compose network 內，帶 `X-Internal-Token`），API 維護記憶體內的 current state。前端實際是用 REST 輪詢（前台每 5 秒）取用；SignalR hub（`/hubs/telemetry`）已提供，但目前沒有任何前端程式訂閱。
 不引入 Redis / MQTT：單站、單一 collector、5 秒一次，多一個元件的維運成本不划算。
 （備案：API 每 5 秒讀 DB 最新一筆。更鬆耦合，但延遲多一拍。）
 
@@ -218,9 +224,9 @@ Teco.Hvac/
 │  ├─ Teco.Hvac.Collector/      Worker：包 DLL、正規化、節流、寫 DB、POST API
 │  ├─ Teco.Hvac.Api/            ASP.NET Core 10：REST + SignalR + 認證
 │  ├─ Teco.Hvac.Domain/         實體、告警規則、值物件
-│  ├─ Teco.Hvac.Infrastructure/ EF Core 10 + Pomelo(MariaDB)、Repository
+│  ├─ Teco.Hvac.Infrastructure/ Dapper + MySqlConnector（見 §6.1）、Repository
 │  └─ Teco.Hvac.Contracts/      DTO（Collector 與 Api 共用）
-├─ tests/
+├─ tools/probe/                 P0 技術驗證用的獨立探針（沒有建立 tests/ 專案）
 └─ deploy/
    ├─ compose.yaml
    ├─ collector.Dockerfile
@@ -344,7 +350,7 @@ public sealed class CollectorHostedService : BackgroundService
 | 告警 | 狀態機，只記「進入 / 離開」兩筆 | 極少 | 極少 |
 | 通道健康 | 只記狀態變化 | 極少 | 極少 |
 
-寫法：單次 multi-row `INSERT`（95 筆一起），不要 95 次來回。EF Core 用 `ExecuteSqlRaw`／`MySqlBulkCopy` 皆可。
+寫法：單次 multi-row `INSERT`（95 筆一起），不要 95 次來回。實作在 `TimeSeriesWriter`（Dapper 組出多列 `INSERT`）。
 
 ---
 
@@ -354,13 +360,16 @@ public sealed class CollectorHostedService : BackgroundService
 
 - **MariaDB 11.8 LTS**（或 11.4 LTS），InnoDB，`utf8mb4` + `utf8mb4_uca1400_ai_ci`。
 - 關鍵參數：`innodb_buffer_pool_size` 給宿主記憶體 50–60%、`innodb_flush_log_at_trx_commit=2`（時序資料容忍 1 秒損失，換取吞吐）。
-- 驅動：`Pomelo.EntityFrameworkCore.MySql`，**版本需對齊 EF Core 10**。
-  → 若 Pomelo 尚未釋出對應 EF Core 10 的版本，退路是 `MySqlConnector` + Dapper（時序查詢本來就適合手寫 SQL），只在後台 CRUD 用 EF。這點要在 P0 一併確認。
+- 驅動：**`MySqlConnector` + Dapper**（P0 實測後定案）。Pomelo 9.0.0 把 EF Core Relational 鎖在 `[9.0.0, 9.0.999]`，不支援 EF Core 10，
+  所以全面不用 EF Core，後台 CRUD 也是 Dapper（見 `backend/README.md`「P0-4 決策」與 `CLAUDE.md` 原則 1）。
 
-> 呼應 `teco-spec-review-findings` 第 2 項：**單庫即可**。
+> 規格書審查時「雙資料庫過度設計」的疑慮：**單庫即可**。
 > 這是單站自用系統，不需要 Platform/Customer 雙庫與經銷處/租戶語彙那類多租戶架構。
 
 ### 6.2 資料表
+
+> 以下是規劃時的欄位草稿，實際欄位以 `backend/deploy/mariadb/init/*.sql` 為準。例如：`device_fcu` 沒有 `collector_id`；
+> `device_chiller` 後來多了保養基準點欄位；`operation_log` 多了 `merchant_id`、`actor_*`、`summary`、`is_success` 等欄位。
 
 **設備主檔**
 
@@ -413,11 +422,11 @@ rollup_fcu_1h(device_id, bucket, avg_temp, min_temp, max_temp, on_minutes)
 **後台（補 spec §陸 ERD 缺的權限模型）**
 
 ```sql
-app_user / app_role / app_permission / app_role_permission / app_user_role
+app_user / app_role / app_permission / app_role_permission / merchant / merchant_membership / refresh_token
 operation_log(id, user_id, action, target_type, target_id,
               before_json, after_json, ip, created_at)
 ```
-`before_json` / `after_json` 正是 `teco-spec-review-findings` 第 9 項要求的「異動前/後值」。
+`before_json` / `after_json` 對應規格書 operation-log 要求的「異動前/後值」。
 
 ### 6.3 保留策略
 
@@ -441,7 +450,7 @@ operation_log(id, user_id, action, target_type, target_id,
 
 ```
 GET  /api/v1/realtime/snapshot           目前四組狀態 + 每組 dataQuality
-WS   /hubs/telemetry                     SignalR 推播（5 秒一次）
+WS   /hubs/telemetry                     SignalR 推播（5 秒一次；前端目前沒有訂閱）
 GET  /api/v1/chillers                    主機清單 + 現況
 GET  /api/v1/chillers/{code}/history     ?from&to&interval=raw|1m|1h
 GET  /api/v1/fcus                        ?floor=B1&status=
@@ -455,6 +464,18 @@ CRUD /api/v1/admin/{users,roles,thresholds,fcu-mapping}
 GET  /healthz  /readyz  /metrics
 POST /internal/ingest                    僅限 compose 內網 + 共享 token
 ```
+
+**實際路由（2026-10-28 核對）**：上面是規劃草稿，`/floors/{floor}/heatmap`、`/reports/*`、`/admin/*`、`/metrics` 沒有照這個名稱實作；
+報表直接用各設備的 `history`、`hourly-stats`，管理功能在 `/merchant`、`/platform`、`/thresholds`。現有的是：
+
+- `GET /api/v1/realtime/snapshot`、`/hubs/telemetry`、`/healthz`、`/readyz`、`POST /internal/ingest/{data,connection}`
+- `/api/v1/auth/{login,logout,refresh,refresh-token,scopes,scopes/select,me,change-password}`
+- `/api/v1/chillers`（`GET /`、`/{code}/history`、`PATCH /{id}`）、`/api/v1/chillers/{id}/maintenance`（查詢、`reset`）
+- `/api/v1/fcus`（`GET /`、`/{id}/history`、`/hourly-stats`、`PATCH /{id}`）
+- `/api/v1/alarms`（`GET /`、`POST /{id}/ack`）、`/api/v1/thresholds/{chillers/{code},fcus}`（GET／PUT）
+- `/api/v1/floor-plan/{floor}/placements`（GET／PUT）
+- `/api/v1/merchant/*`（場館自己的使用者、角色、權限、操作紀錄）、`/api/v1/platform/*`（場館、系統帳號、角色、權限、`diagnostics`）
+- `/api/v1/public/{chillers,fcus,fcus/hourly-stats,alarms,floor-plan/{floor}/placements}`：前台免登入的唯讀端點
 
 **每個回應都要帶資料品質欄位**，否則前端無從分辨「0°C」是真值還是初始值：
 
@@ -504,6 +525,8 @@ Windows Server + Hyper-V
 - 與最終正式環境（Linux）完全一致，沒有 WSL 的邊角問題。
 - 開機自啟、快照備份、資源限制都是 Hyper-V 原生能力。
 - 代價：多一層 VM 的記憶體開銷（配 8–16 GB）。
+- **實際部署（2026-09-30 起）**：VM 是 Ubuntu 22.04（`teco_iot_area`）；網路先用 Hyper-V 內建 NAT（Default Switch、`Teco-NAT`），
+  現場設備改由 Windows 主機 `portproxy` 代轉（2026-10-22）。External 交換器的做法留在部署手冊附錄 B，目前沒有採用。
 
 **方案 B — WSL2 + Docker Engine CE（開發機／輕量部署）**
 
@@ -538,6 +561,8 @@ networkingMode=mirrored
 **不建議：Windows 容器。** MariaDB 官方沒有 Windows 映像，資料庫無論如何得跑 Linux 容器；混合兩種容器類型徒增複雜度。只有在 P0 驗證發現 DLL 真的無法在 Linux 執行時，才把 **collector 單獨**改成 Windows 服務（直接跑在宿主，不容器化），其餘維持不變。
 
 ### 8.3 compose 骨架
+
+> 骨架示意。實際以 `backend/deploy/compose.yaml` 為準：專案名 `teco-iot-area`、網站對外 `8081`、前端 `dist` 掛 `../../dist`，另有記憶體與 log 上限等設定。
 
 ```yaml
 services:
@@ -620,14 +645,16 @@ ENTRYPOINT ["dotnet", "Teco.Hvac.Collector.dll"]
 
 ### 8.5 備份
 
-採用 Hyper-V VM 方案後，備份改在 VM 內用 cron 每日執行 `mariadb-dump`（容器名稱是
-`teco-iot-area-mariadb-1`，由 compose.yaml 的 `name: teco-iot-area` 決定），再定期把備份檔
-複製到 VM 以外的機器，加上 Hyper-V VM checkpoint 做整機備份。實際指令見
-`backend/deploy/host-setup/03-docker-context-from-mac.md` §3.5。
+採用 Hyper-V VM 方案後，現行做法是三層備份：VM 內 `06-vm-db-backup.sh` 每天 03:00 備份、Windows 主機 `04-windows-pull-backup.ps1`
+每天 04:00 拉到 `C:\TecoBackup`，第三層（複製到這台主機以外）還沒做。細節與還原方式見 `docs/正式機首次部署手冊.md` 附錄 D。
+Hyper-V checkpoint 不是備份。`03-docker-context-from-mac.md` §3.5 的舊寫法已標註不要用。
 
 ---
 
 ## 9. 執行階段
+
+> **狀態（2026-10-28）**：P0～P4 都已完成並驗證，後續的告警門檻設定、權限稽核、平台管理與 P6（Hyper-V VM 部署）也已完成。
+> P0 第 4 項的結論是 Pomelo 不支援 EF Core 10，改用 Dapper。以下保留當初的規劃內容。
 
 ### P0 — 技術驗證（1–2 天，**整份規劃的前提，先做**）
 
@@ -662,7 +689,7 @@ RBAC、`operation_log` 前後值、compose 正式化、備份、健康檢查、�
 | ~~1~~ | ~~FCU **設定溫度 (setpoint)** 能否從暫存器提供？~~ | **不做（2026-10-02）**：以現有資料為準、不再向供應商確認；異常判定用絕對室溫上下限（§2.1），畫面上的設定溫度與溫度差欄位已移除 |
 | 2 | 是否有**寫入／控制** API（開關、模式、風速、設溫）？ | 後台是否保留控制功能（§2.4） |
 | 3 | `HighPressure` / `LowPressure` 的**物理單位**？（說明書明寫未定義） | 前台顯示與告警門檻 |
-| 4 | **FCU ↔ 樓層分區對照表**（64 台 vs 72 區、31 台 vs 41 區） | 熱力圖能否上線（§2.6） |
+| ~~4~~ | ~~**FCU ↔ 樓層分區對照表**（64 台 vs 72 區、31 台 vs 41 區）~~ | **已結案（2026-10-20）**：依現場最終版 PPT 配置 95 台（B1 77 區、B2 46 區），座標仍需現場微調（§2.6） |
 | ~~5~~ | ~~冰水主機**額定容量 RT**~~ | **已結案（2026-09-30）**：設計稿沒有 kW/RT 效率畫面，負載率直接用設備回報值，不需要 |
 | 6 | Collector 是否允許**多實例同時連線**同一 Gateway？ | 是否能做熱備援 |
 | 7 | Gateway 單點（兩台主機共用一條 TCP）是否可接受？ | 告警設計與可用性承諾 |
@@ -674,4 +701,4 @@ RBAC、`operation_log` 前後值、compose 正式化、備份、健康檢查、�
 ## 11. 與既有文件的關係
 
 - 本文推翻／補充 `docs/TECO_HVAC_SPECIFICATION.md` 的：§參.二（FCU 異常判定）、負載率公式、雙資料庫設計、缺少的通訊協定章節。
-- 前端 `src/` 目前的 mock service 介面，建議在 P2 直接對齊本文 §7 的回應格式（特別是 `dataQuality`），避免二次改寫。
+- 前端 `src/` 原本的 mock service 已全部換成真實 API 並刪除，`dataQuality`（資料品質）欄位也已在畫面上處理（離線時顯示 `--`）。
